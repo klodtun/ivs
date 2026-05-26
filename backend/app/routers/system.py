@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import asyncio
 import json
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models import User, UserRole, App, AppStatus, AuditLog, AuditLogExport, SystemConfig
 from app.schemas import SystemHealth, AuditLogResponse, AuditLogExportResponse, DNSConfigUpdate, DNSConfigResponse
 from app.middleware.auth import get_current_user, require_role
@@ -31,7 +31,9 @@ async def get_system_health(db: Session = Depends(get_db), user: User = Depends(
     cpu = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
-    running, total = docker_service.get_running_app_count()
+    # Count from database (source of truth) instead of Docker labels
+    total = db.query(App).count()
+    running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
 
     return SystemHealth(
         cpu_percent=cpu,
@@ -504,7 +506,13 @@ async def ws_health(websocket: WebSocket):
             cpu = psutil.cpu_percent(interval=1)
             mem = psutil.virtual_memory()
             disk = psutil.disk_usage("/")
-            running, total = docker_service.get_running_app_count()
+            # Count from database (source of truth) instead of Docker labels
+            db = SessionLocal()
+            try:
+                total = db.query(App).count()
+                running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
+            finally:
+                db.close()
 
             await websocket.send_json({
                 "cpu_percent": cpu,

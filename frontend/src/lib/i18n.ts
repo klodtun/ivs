@@ -75,6 +75,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "deploy.warn.fullstack_no_dist": "ไม่มี frontend/dist/ — IVS จะ build ให้แต่จะช้ากว่า",
     "deploy.warn.vite_prebuilt_detected": "ตรวจพบ Vite app พร้อม dist/ — จะ deploy เป็น Static Web",
     "deploy.warn.vite_preview_detected": "ตรวจพบ Vite app พร้อม vite preview — จะใช้ npm start",
+    "deploy.warn.custom_dockerfile": "ใช้ Dockerfile ที่มากับโปรเจค — IVS จะไม่สร้างให้อัตโนมัติ",
+    "deploy.warn.dockerfile_cmd_missing_file": "⛔ Dockerfile CMD ชี้ไปไฟล์ที่ไม่มี: {file} — อาจรันไม่ได้",
+    "deploy.warn.dockerfile_db_dependency": "⛔ ไฟล์ {file} ใช้ {db} — Docker container ไม่มี Database จะเกิด Connection Error",
+    "deploy.warn.multiple_server_files": "มีหลาย server file: {files} — ตรวจสอบว่า Dockerfile CMD ชี้ถูกตัว",
     "deploy.issue.vite_no_start_script": "Vite app ไม่มี start script — เพิ่ม \"start\": \"vite preview --port 3000 --host\" ใน package.json",
     "deploy.file_too_large_title": "⚠️ ไฟล์ขนาดใหญ่เกินไป",
     "deploy.file_too_large_msg": "ไฟล์ของคุณมีขนาดใหญ่เกินไป ({size} MB) กรุณาตรวจสอบว่าได้ลบโฟลเดอร์ node_modules หรือ .venv ออกก่อนบีบอัดไฟล์แล้วหรือไม่ เพื่อป้องกันระบบค้าง",
@@ -588,6 +592,29 @@ frontend/dist/         → Pre-built (npm run build)
 - No custom domain (use IP:PORT)
 - Single container per app`,
 
+    // Case Studies
+    "guide.tab_cases": "Case ตัวอย่าง",
+    "guide.cases_title": "ปัญหาที่พบบ่อยและวิธีแก้ไข",
+    "guide.cases_subtitle": "เคสจริงจากการใช้งาน IVS + Vibe Code",
+
+    "guide.case.line_oa.title": "LINE OA Webhook Error",
+    "guide.case.line_oa.problem": "LINE Developers แจ้ง Webhook Error ทั้งที่ container ทำงานปกติ",
+    "guide.case.line_oa.cause": "1. Dockerfile CMD ชี้ไปไฟล์ server.js ที่ต้องใช้ MySQL แต่ Docker ไม่มี DB → Connection Error\n2. ควรใช้ local-server.js (JSON file-based) แทน",
+    "guide.case.line_oa.fix": "• ตรวจสอบ Dockerfile CMD ว่าชี้ไปไฟล์ที่ถูกต้อง\n• ถ้ามีหลาย server file ให้เลือกตัวที่ไม่พึ่ง Database\n• IVS จะแจ้งเตือน ⛔ อัตโนมัติถ้าพบ DB dependency",
+    "guide.case.line_oa.tag": "LINE OA · Webhook · Dockerfile",
+
+    "guide.case.ngrok.title": "ngrok Tunnel ใช้ไม่ได้ (422 Error)",
+    "guide.case.ngrok.problem": "ngrok tunnel ส่ง request ได้แต่ได้ HTTP 422 กลับมา ทั้งที่ container ตอบ 200",
+    "guide.case.ngrok.cause": "1. ใช้ flag --pooling-enabled ซึ่งสร้าง Cloud Endpoint พร้อม AI Gateway\n2. AI Gateway ดักจับ POST requests ทั้งหมดแล้วคืน 422 (ERR_NGROK_3803)\n3. แม้ลบ flag แล้ว Cloud Endpoint ยังค้างอยู่บน Dashboard",
+    "guide.case.ngrok.fix": "• ห้ามใช้ --pooling-enabled กับ webhook/API tunnel\n• ถ้าใช้ไปแล้ว → ไป ngrok Dashboard → Endpoints → ลบ Cloud Endpoint\n• สั่งใหม่: ngrok http PORT --url=your-domain.ngrok-free.dev\n• ถ้า Deploy บน IVS แล้ว ต้องสร้าง Tunnel ใหม่ใน IVS (ไม่ใช้ของ Vibe Code)",
+    "guide.case.ngrok.tag": "ngrok · Tunnel · AI Gateway · 422",
+
+    "guide.case.db_deploy.title": "Deploy แอปที่ใช้ MySQL/Database ไม่ได้",
+    "guide.case.db_deploy.problem": "แอปรันบนเครื่อง Dev ได้ แต่ Deploy บน IVS แล้ว error เพราะเชื่อมต่อ Database ไม่ได้",
+    "guide.case.db_deploy.cause": "1. IVS Docker container ไม่มี Database server (MySQL, PostgreSQL, MongoDB)\n2. แอปที่ require('mysql2') หรือ import mysql จะ crash ทันที\n3. Vibe Code มักสร้าง 2 ไฟล์: server.js (ใช้ DB) กับ local-server.js (ใช้ JSON)",
+    "guide.case.db_deploy.fix": "• ใช้ JSON file แทน Database สำหรับ Deploy บน IVS\n• แก้ Dockerfile CMD ให้ชี้ไฟล์ที่ไม่พึ่ง DB:\n  CMD [\"node\", \"src/local-server.js\"]\n• หรือใช้ SQLite (ไฟล์เดียว ไม่ต้อง server)\n• IVS จะแจ้งเตือน ⛔ อัตโนมัติถ้าพบ DB dependency ตอน validate",
+    "guide.case.db_deploy.tag": "MySQL · Database · JSON · Dockerfile",
+
     // Resources
     "res.title": "ทรัพยากรระบบ",
     "res.subtitle": "ตรวจสอบ Hardware, Capacity และประสิทธิภาพแต่ละแอป",
@@ -710,6 +737,10 @@ frontend/dist/         → Pre-built (npm run build)
     "deploy.warn.fullstack_no_dist": "Missing frontend/dist/ — IVS will build but slower",
     "deploy.warn.vite_prebuilt_detected": "Pre-built Vite app with dist/ detected — will deploy as Static Web",
     "deploy.warn.vite_preview_detected": "Vite app with vite preview detected — will use npm start",
+    "deploy.warn.custom_dockerfile": "Using project's own Dockerfile — IVS will not auto-generate",
+    "deploy.warn.dockerfile_cmd_missing_file": "⛔ Dockerfile CMD points to missing file: {file} — may fail to run",
+    "deploy.warn.dockerfile_db_dependency": "⛔ File {file} requires {db} — Docker container has no Database, will cause Connection Error",
+    "deploy.warn.multiple_server_files": "Multiple server files found: {files} — verify Dockerfile CMD targets the right one",
     "deploy.issue.vite_no_start_script": "Vite app missing start script — add \"start\": \"vite preview --port 3000 --host\" to package.json",
     "deploy.file_too_large_title": "⚠️ File Too Large",
     "deploy.file_too_large_msg": "Your file is too large ({size} MB). Please check that you've removed node_modules or .venv before compressing to prevent system issues.",
@@ -1216,6 +1247,29 @@ frontend/dist/         → Pre-built (npm run build)
 - No persistent storage (data lost on redeploy)
 - No custom domain (use IP:PORT)
 - Single container per app`,
+
+    // Case Studies
+    "guide.tab_cases": "Case Studies",
+    "guide.cases_title": "Common Problems & Solutions",
+    "guide.cases_subtitle": "Real cases from IVS + Vibe Code usage",
+
+    "guide.case.line_oa.title": "LINE OA Webhook Error",
+    "guide.case.line_oa.problem": "LINE Developers shows Webhook Error even though the container is running fine",
+    "guide.case.line_oa.cause": "1. Dockerfile CMD points to server.js that requires MySQL, but Docker has no DB → Connection Error\n2. Should use local-server.js (JSON file-based) instead",
+    "guide.case.line_oa.fix": "• Check Dockerfile CMD points to the correct file\n• If multiple server files exist, choose the one without DB dependency\n• IVS auto-warns ⛔ when DB dependency is detected",
+    "guide.case.line_oa.tag": "LINE OA · Webhook · Dockerfile",
+
+    "guide.case.ngrok.title": "ngrok Tunnel Fails (422 Error)",
+    "guide.case.ngrok.problem": "ngrok tunnel sends request but gets HTTP 422 back, even though container returns 200",
+    "guide.case.ngrok.cause": "1. Used --pooling-enabled flag which creates Cloud Endpoint with AI Gateway\n2. AI Gateway intercepts all POST requests and returns 422 (ERR_NGROK_3803)\n3. Even after removing the flag, Cloud Endpoint persists on Dashboard",
+    "guide.case.ngrok.fix": "• Never use --pooling-enabled for webhook/API tunnels\n• If already used → go to ngrok Dashboard → Endpoints → delete Cloud Endpoint\n• Restart: ngrok http PORT --url=your-domain.ngrok-free.dev\n• When deploying on IVS, create a new Tunnel in IVS (don't reuse Vibe Code's)",
+    "guide.case.ngrok.tag": "ngrok · Tunnel · AI Gateway · 422",
+
+    "guide.case.db_deploy.title": "Cannot Deploy App with MySQL/Database",
+    "guide.case.db_deploy.problem": "App runs on dev machine but crashes on IVS because it can't connect to Database",
+    "guide.case.db_deploy.cause": "1. IVS Docker container has no Database server (MySQL, PostgreSQL, MongoDB)\n2. Apps with require('mysql2') or import mysql will crash immediately\n3. Vibe Code often creates 2 files: server.js (uses DB) and local-server.js (uses JSON)",
+    "guide.case.db_deploy.fix": "• Use JSON file instead of Database for IVS deploy\n• Fix Dockerfile CMD to point to non-DB file:\n  CMD [\"node\", \"src/local-server.js\"]\n• Or use SQLite (single file, no server needed)\n• IVS auto-warns ⛔ when DB dependency is detected during validation",
+    "guide.case.db_deploy.tag": "MySQL · Database · JSON · Dockerfile",
 
     // Resources
     "res.title": "System Resources",

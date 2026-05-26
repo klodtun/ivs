@@ -1486,9 +1486,9 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
             <div className="bg-gray-50 rounded-md p-3 flex items-center justify-between">
               <div>
                 <p className="text-[9px] text-gray-500 font-medium uppercase">{t("settings.gitea_url")}</p>
-                <p className="text-sm font-mono text-gray-700 mt-0.5">http://gitea.{dnsConfig.domain_suffix || "vibe.local"}:3300</p>
+                <p className="text-sm font-mono text-gray-700 mt-0.5">http://git.{dnsConfig.domain_suffix || "vibe.local"}:3001</p>
               </div>
-              <a href={`http://gitea.${dnsConfig.domain_suffix || "vibe.local"}:3300`} target="_blank" rel="noopener noreferrer"
+              <a href={`http://git.${dnsConfig.domain_suffix || "vibe.local"}:3001`} target="_blank" rel="noopener noreferrer"
                 className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-medium rounded-md hover:bg-green-700 transition flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />

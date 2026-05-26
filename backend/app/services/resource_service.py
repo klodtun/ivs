@@ -66,7 +66,9 @@ def collect_snapshot(db: Session):
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     gpu = _get_gpu_info()
-    running, total = docker_service.get_running_app_count()
+    # Count from database (source of truth) instead of Docker labels
+    total = db.query(App).count()
+    running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
     per_app = _get_per_app_stats(db)
 
     metric = ResourceMetric(
@@ -98,7 +100,9 @@ def get_current_resources(db: Session) -> dict:
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     gpu = _get_gpu_info()
-    running, total = docker_service.get_running_app_count()
+    # Count from database (source of truth) instead of Docker labels
+    total = db.query(App).count()
+    running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
     per_app = _get_per_app_stats(db)
 
     mem_used_mb = int(mem.used / (1024 * 1024))

@@ -402,12 +402,32 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
             <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
               <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-1">{t("deploy.warnings")}</p>
               <ul className="space-y-0.5">
-                {validation.warnings.map((warn, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-[10px] text-amber-700">
-                    <span className="mt-px">⚠️</span>
-                    {t(`deploy.warn.${warn}`)}
-                  </li>
-                ))}
+                {validation.warnings.map((warn, i) => {
+                  // Handle dynamic warnings with ":" parameters
+                  // e.g. "dockerfile_db_dependency:src/server.js:MySQL"
+                  //      "dockerfile_cmd_missing_file:src/server.js"
+                  //      "multiple_server_files:src/server.js,src/local-server.js"
+                  const parts = warn.split(":");
+                  const key = parts[0];
+                  let message = t(`deploy.warn.${key}`);
+                  const isCritical = warn.startsWith("dockerfile_db_dependency") || warn.startsWith("dockerfile_cmd_missing_file");
+
+                  if (parts.length >= 2) {
+                    message = message.replace("{file}", parts[1]);
+                    if (parts.length >= 3) message = message.replace("{db}", parts[2]);
+                    message = message.replace("{files}", parts.slice(1).join(", "));
+                  }
+
+                  // Fallback: if translation not found, show raw key
+                  if (message === `deploy.warn.${key}`) message = warn;
+
+                  return (
+                    <li key={i} className={`flex items-start gap-1.5 text-[10px] ${isCritical ? "text-red-700 font-semibold" : "text-amber-700"}`}>
+                      <span className="mt-px">{isCritical ? "🚨" : "⚠️"}</span>
+                      {message}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

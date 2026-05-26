@@ -14,7 +14,7 @@ export function DeployGuide() {
   const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("static");
-  const [showTemplate, setShowTemplate] = useState(false);
+  const [viewMode, setViewMode] = useState<"prompts" | "template" | "cases">("prompts");
   const [copied, setCopied] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -67,24 +67,21 @@ export function DeployGuide() {
             </button>
           </div>
 
-          {/* Tab Toggle: Prompts vs Template */}
+          {/* Tab Toggle: Prompts / Template / Cases */}
           <div className="flex border-b border-gray-100 flex-shrink-0">
-            <button
-              onClick={() => setShowTemplate(false)}
-              className={`flex-1 py-2 text-[11px] font-medium transition-colors ${!showTemplate ? "text-brand-600 border-b-2 border-brand-500 bg-brand-50/50" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              {t("guide.tab_prompts")}
-            </button>
-            <button
-              onClick={() => setShowTemplate(true)}
-              className={`flex-1 py-2 text-[11px] font-medium transition-colors ${showTemplate ? "text-brand-600 border-b-2 border-brand-500 bg-brand-50/50" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              {t("guide.tab_template")}
-            </button>
+            {(["prompts", "template", "cases"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`flex-1 py-2 text-[11px] font-medium transition-colors ${viewMode === mode ? "text-brand-600 border-b-2 border-brand-500 bg-brand-50/50" : "text-gray-500 hover:text-gray-700"}`}
+              >
+                {t(`guide.tab_${mode}`)}
+              </button>
+            ))}
           </div>
 
           <div className="overflow-y-auto flex-1 min-h-0">
-            {!showTemplate ? (
+            {viewMode === "prompts" ? (
               <div className="p-3">
                 {/* App Type Tabs */}
                 <div className="flex gap-1 mb-3">
@@ -162,7 +159,7 @@ export function DeployGuide() {
                   <p className="text-[10px] text-amber-800">{t(`guide.tip.${activeTab}`)}</p>
                 </div>
               </div>
-            ) : (
+            ) : viewMode === "template" ? (
               /* ivs-app.md Template */
               <div className="p-3">
                 <div className="flex items-center justify-between mb-2">
@@ -198,6 +195,52 @@ export function DeployGuide() {
                 <div className="bg-gray-900 text-gray-300 rounded-lg p-3 text-[11px] font-mono leading-relaxed whitespace-pre overflow-x-auto">
                   {templateContent}
                 </div>
+              </div>
+            ) : (
+              /* Case Studies */
+              <div className="p-3 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-800">{t("guide.cases_title")}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{t("guide.cases_subtitle")}</p>
+                </div>
+                {["line_oa", "ngrok", "db_deploy"].map((caseKey) => (
+                  <div key={caseKey} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {/* Case Header */}
+                    <div className="bg-gray-50 px-3 py-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          caseKey === "line_oa" ? "bg-green-500" : caseKey === "ngrok" ? "bg-orange-500" : "bg-red-500"
+                        }`} />
+                        <span className="text-[11px] font-semibold text-gray-800">{t(`guide.case.${caseKey}.title`)}</span>
+                      </div>
+                    </div>
+                    <div className="px-3 py-2 space-y-2">
+                      {/* Problem */}
+                      <div>
+                        <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Problem</span>
+                        <p className="text-[10px] text-gray-700 mt-0.5">{t(`guide.case.${caseKey}.problem`)}</p>
+                      </div>
+                      {/* Cause */}
+                      <div>
+                        <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Cause</span>
+                        <p className="text-[10px] text-gray-600 mt-0.5 whitespace-pre-line">{t(`guide.case.${caseKey}.cause`)}</p>
+                      </div>
+                      {/* Fix */}
+                      <div>
+                        <span className="text-[9px] font-bold text-green-600 uppercase tracking-wider">Solution</span>
+                        <p className="text-[10px] text-gray-700 mt-0.5 whitespace-pre-line bg-green-50 rounded-md p-2">{t(`guide.case.${caseKey}.fix`)}</p>
+                      </div>
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {t(`guide.case.${caseKey}.tag`).split(" · ").map((tag: string) => (
+                          <span key={tag} className="px-1.5 py-0.5 text-[8px] font-medium bg-gray-100 text-gray-500 rounded">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

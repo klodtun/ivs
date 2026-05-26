@@ -60,6 +60,156 @@ def _can_access_app(user: User, app: App, db: Session) -> bool:
     return access_all or app.id in app_ids
 
 
+def _check_dockerfile_and_db_deps(source_path: str, files: list[str]) -> list[str]:
+    """Check user-provided Dockerfile for potential issues like DB dependencies."""
+    warnings = []
+
+    # --- Check if user-provided Dockerfile exists ---
+    dockerfile_path = os.path.join(source_path, "Dockerfile")
+    if not os.path.exists(dockerfile_path):
+        return warnings
+
+    warnings.append("custom_dockerfile")
+
+    try:
+        with open(dockerfile_path, "r", errors="ignore") as f:
+            dockerfile_content = f.read()
+    except Exception:
+        return warnings
+
+    # Extract CMD/ENTRYPOINT target file from Dockerfile
+    cmd_files = []
+    uses_npm_script = None  # Track if CMD is "npm start" / "npm run ..."
+    for line in dockerfile_content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("CMD") or stripped.startswith("ENTRYPOINT"):
+            # Parse JSON array form: CMD ["node", "src/server.js"]
+            bracket_match = re.search(r'\[(.+)\]', stripped)
+            if bracket_match:
+                parts = [p.strip().strip('"').strip("'") for p in bracket_match.group(1).split(",")]
+                for part in parts:
+                    if part.endswith((".js", ".py", ".ts", ".sh")):
+                        cmd_files.append(part)
+                # Detect "npm start" / "npm run dev" etc.
+                if len(parts) >= 2 and parts[0] == "npm":
+                    if parts[1] == "start":
+                        uses_npm_script = "start"
+                    elif parts[1] == "run" and len(parts) >= 3:
+                        uses_npm_script = parts[2]
+            # Parse shell form: CMD node src/server.js
+            else:
+                shell_parts = stripped.split(None, 1)
+                if len(shell_parts) > 1:
+                    tokens = shell_parts[1].split()
+                    for token in tokens:
+                        if token.endswith((".js", ".py", ".ts")):
+                            cmd_files.append(token)
+                    if len(tokens) >= 2 and tokens[0] == "npm":
+                        if tokens[1] == "start":
+                            uses_npm_script = "start"
+                        elif tokens[1] == "run" and len(tokens) >= 3:
+                            uses_npm_script = tokens[2]
+
+    # Resolve npm scripts to actual files via package.json
+    if uses_npm_script and not cmd_files:
+        pkg_path = os.path.join(source_path, "package.json")
+        if os.path.exists(pkg_path):
+            try:
+                with open(pkg_path, "r") as f:
+                    pkg = json.load(f)
+                script_cmd = pkg.get("scripts", {}).get(uses_npm_script, "")
+                # Extract .js file from script: "node src/server.js" → "src/server.js"
+                for token in script_cmd.split():
+                    if token.endswith((".js", ".ts")):
+                        cmd_files.append(token)
+                # Also check "main" field if script is "start" and no start script
+                if not cmd_files and uses_npm_script == "start" and "main" in pkg:
+                    cmd_files.append(pkg["main"])
+            except Exception:
+                pass
+
+    # Check each CMD target for database dependencies
+    db_patterns = {
+        "mysql": "MySQL",
+        "mysql2": "MySQL",
+        "pg": "PostgreSQL",
+        "postgres": "PostgreSQL",
+        "mongodb": "MongoDB",
+        "mongoose": "MongoDB",
+        "sequelize": "SQL ORM",
+        "prisma": "Prisma ORM",
+        "typeorm": "TypeORM",
+        "knex": "Knex.js",
+    }
+
+    for cmd_file in cmd_files:
+        target_path = os.path.join(source_path, cmd_file)
+        if not os.path.exists(target_path):
+            warnings.append(f"dockerfile_cmd_missing_file:{cmd_file}")
+            continue
+
+        try:
+            with open(target_path, "r", errors="ignore") as f:
+                content = f.read(8192)  # Read first 8KB
+        except Exception:
+            continue
+
+        # Check for DB imports/requires
+        found_dbs = set()
+        for pattern, db_name in db_patterns.items():
+            # Match: require("mysql2"), import mysql from "pg", from "mongodb", etc.
+            if re.search(rf'''(?:require\s*\(\s*['"]|from\s+['"]|import\s+['"]){pattern}[/'"]''', content):
+                found_dbs.add(db_name)
+
+        # Also check indirect: ./db, ./database imports
+        # Matches: import db from "./db.js", require("./db"), import("./database")
+        db_import_patterns = [
+            r'''from\s+['"]\.\/db(?:\.js)?['"]''',        # import X from "./db" or "./db.js"
+            r'''require\s*\(\s*['"]\.\/db(?:\.js)?['"]''', # require("./db") or require("./db.js")
+            r'''from\s+['"]\.\/database(?:\.js)?['"]''',   # import X from "./database"
+            r'''require\s*\(\s*['"]\.\/database(?:\.js)?['"]''',  # require("./database")
+        ]
+        for db_pat in db_import_patterns:
+            if re.search(db_pat, content):
+                # Check the db/database file for actual DB driver imports
+                for db_filename in ["db.js", "db.ts", "database.js", "database.ts"]:
+                    db_file = os.path.join(os.path.dirname(target_path), db_filename)
+                    if os.path.exists(db_file):
+                        try:
+                            with open(db_file, "r", errors="ignore") as dbf:
+                                db_content = dbf.read(4096)
+                            for p2, db2 in db_patterns.items():
+                                if re.search(rf'''(?:require\s*\(\s*['"]|from\s+['"]){p2}[/'"]''', db_content):
+                                    found_dbs.add(db2)
+                        except Exception:
+                            pass
+
+        if found_dbs:
+            db_list = ", ".join(sorted(found_dbs))
+            warnings.append(f"dockerfile_db_dependency:{cmd_file}:{db_list}")
+
+    # --- Check for multiple server files (common in LINE OA / Vibe Code projects) ---
+    # Look for patterns like server.js + local-server.js, or main.py + local-main.py
+    def find_files_recursive(base, ext, max_depth=3):
+        results = []
+        for root, dirs, fnames in os.walk(base):
+            depth = root.replace(base, "").count(os.sep)
+            if depth >= max_depth:
+                dirs.clear()
+                continue
+            for fn in fnames:
+                if fn.endswith(ext):
+                    results.append(os.path.relpath(os.path.join(root, fn), base))
+        return results
+
+    server_files = [f for f in find_files_recursive(source_path, ".js", 3)
+                    if "server" in f.lower() and "node_modules" not in f]
+    if len(server_files) > 1:
+        warnings.append(f"multiple_server_files:{','.join(server_files)}")
+
+    return warnings
+
+
 def _validate_zip_structure(source_path: str) -> dict:
     """Validate extracted zip structure and return validation result."""
     files = os.listdir(source_path)
@@ -73,6 +223,10 @@ def _validate_zip_structure(source_path: str) -> dict:
         warnings.append("venv_included")
     if ".git" in files:
         warnings.append("git_included")
+
+    # Check Dockerfile and DB dependencies (applies to all app types)
+    dockerfile_warnings = _check_dockerfile_and_db_deps(source_path, files)
+    warnings.extend(dockerfile_warnings)
 
     # Detect app type
     has_backend = os.path.isdir(os.path.join(source_path, "backend"))
