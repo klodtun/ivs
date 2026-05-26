@@ -1,0 +1,20 @@
+# ============================================
+# IVS CoreDNS Configuration
+# ============================================
+
+# Handle *.vibe.local domain resolution
+vibe.local {
+    hosts /etc/coredns/hosts {
+        fallthrough
+    }
+    log
+    errors
+}
+
+# Forward all other DNS queries to public DNS
+. {
+    forward . 1.1.1.1 8.8.8.8
+    cache 30
+    log
+    errors
+}

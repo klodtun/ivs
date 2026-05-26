@@ -1,0 +1,272 @@
+"""Resource monitoring, capacity analysis, and report generation."""
+import json
+import logging
+import subprocess
+import psutil
+from datetime import datetime, timezone, timedelta
+from sqlalchemy.orm import Session
+from app.models import App, AppStatus, ResourceMetric
+from app.services.docker_service import docker_service
+
+logger = logging.getLogger(__name__)
+
+# Capacity thresholds
+WARN_CPU = 70
+CRIT_CPU = 90
+WARN_MEM = 75
+CRIT_MEM = 90
+WARN_DISK = 80
+CRIT_DISK = 95
+ESTIMATED_APP_RAM_MB = 200  # average RAM per app for capacity estimation
+
+
+def _get_gpu_info() -> dict:
+    """Try to detect GPU memory via nvidia-smi or Apple Silicon."""
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+            timeout=5, stderr=subprocess.DEVNULL,
+        ).decode().strip()
+        parts = out.split(",")
+        return {"used_mb": int(parts[0].strip()), "total_mb": int(parts[1].strip()), "type": "nvidia"}
+    except Exception:
+        pass
+    # Apple Silicon — unified memory, report as shared with RAM
+    try:
+        out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], timeout=3, stderr=subprocess.DEVNULL)
+        total_mb = int(out.strip()) // (1024 * 1024)
+        mem = psutil.virtual_memory()
+        used_mb = mem.used // (1024 * 1024)
+        return {"used_mb": used_mb, "total_mb": total_mb, "type": "apple_silicon"}
+    except Exception:
+        return {"used_mb": None, "total_mb": None, "type": "none"}
+
+
+def _get_per_app_stats(db: Session) -> list[dict]:
+    """Get resource usage per running app from Docker."""
+    apps = db.query(App).filter(App.status == AppStatus.RUNNING, App.container_id.isnot(None)).all()
+    result = []
+    for app in apps:
+        stats = docker_service.get_container_stats(app.container_id)
+        result.append({
+            "slug": app.slug,
+            "name": app.name,
+            "app_type": app.app_type.value if hasattr(app.app_type, "value") else str(app.app_type),
+            "cpu_percent": stats.get("cpu_percent", 0),
+            "memory_mb": round(stats.get("memory_usage", 0) / (1024 * 1024), 1),
+            "memory_limit_mb": round(stats.get("memory_limit", 0) / (1024 * 1024), 1),
+            "port": app.port,
+        })
+    return result
+
+
+def collect_snapshot(db: Session):
+    """Collect a single resource snapshot and store it."""
+    cpu = psutil.cpu_percent(interval=1)
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    gpu = _get_gpu_info()
+    running, total = docker_service.get_running_app_count()
+    per_app = _get_per_app_stats(db)
+
+    metric = ResourceMetric(
+        cpu_percent=int(cpu),
+        memory_used_mb=int(mem.used / (1024 * 1024)),
+        memory_total_mb=int(mem.total / (1024 * 1024)),
+        disk_used_gb=int(disk.used / (1024 ** 3)),
+        disk_total_gb=int(disk.total / (1024 ** 3)),
+        gpu_memory_used_mb=gpu["used_mb"],
+        gpu_memory_total_mb=gpu["total_mb"],
+        apps_running=running,
+        apps_total=total,
+        per_app_json=json.dumps(per_app),
+    )
+    db.add(metric)
+    db.commit()
+
+    # Purge old data (keep 7 days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    db.query(ResourceMetric).filter(ResourceMetric.created_at < cutoff).delete()
+    db.commit()
+
+    return metric
+
+
+def get_current_resources(db: Session) -> dict:
+    """Get current system resources + per-app stats + capacity analysis."""
+    cpu = psutil.cpu_percent(interval=0.5)
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    gpu = _get_gpu_info()
+    running, total = docker_service.get_running_app_count()
+    per_app = _get_per_app_stats(db)
+
+    mem_used_mb = int(mem.used / (1024 * 1024))
+    mem_total_mb = int(mem.total / (1024 * 1024))
+    mem_free_mb = mem_total_mb - mem_used_mb
+    disk_used_gb = round(disk.used / (1024 ** 3), 1)
+    disk_total_gb = round(disk.total / (1024 ** 3), 1)
+
+    # Capacity estimation
+    apps_can_add = max(0, int(mem_free_mb * 0.7 / ESTIMATED_APP_RAM_MB))  # use 70% of free RAM
+
+    # Alerts
+    alerts = []
+    if cpu >= CRIT_CPU:
+        alerts.append({"level": "critical", "type": "cpu", "message": f"CPU {cpu:.0f}% (critical >{CRIT_CPU}%)"})
+    elif cpu >= WARN_CPU:
+        alerts.append({"level": "warning", "type": "cpu", "message": f"CPU {cpu:.0f}% (warning >{WARN_CPU}%)"})
+
+    if mem.percent >= CRIT_MEM:
+        alerts.append({"level": "critical", "type": "memory", "message": f"RAM {mem.percent:.0f}% (critical >{CRIT_MEM}%)"})
+    elif mem.percent >= WARN_MEM:
+        alerts.append({"level": "warning", "type": "memory", "message": f"RAM {mem.percent:.0f}% (warning >{WARN_MEM}%)"})
+
+    if disk.percent >= CRIT_DISK:
+        alerts.append({"level": "critical", "type": "disk", "message": f"Disk {disk.percent:.0f}% (critical >{CRIT_DISK}%)"})
+    elif disk.percent >= WARN_DISK:
+        alerts.append({"level": "warning", "type": "disk", "message": f"Disk {disk.percent:.0f}% (warning >{WARN_DISK}%)"})
+
+    if apps_can_add <= 1 and running > 0:
+        alerts.append({"level": "warning", "type": "capacity", "message": f"Near capacity — only ~{apps_can_add} more apps can run"})
+
+    return {
+        "system": {
+            "cpu_percent": round(cpu, 1),
+            "cpu_cores": psutil.cpu_count(),
+            "memory_used_mb": mem_used_mb,
+            "memory_total_mb": mem_total_mb,
+            "memory_percent": round(mem.percent, 1),
+            "disk_used_gb": disk_used_gb,
+            "disk_total_gb": disk_total_gb,
+            "disk_percent": round(disk.percent, 1),
+            "gpu_type": gpu["type"],
+            "gpu_used_mb": gpu["used_mb"],
+            "gpu_total_mb": gpu["total_mb"],
+        },
+        "capacity": {
+            "apps_running": running,
+            "apps_total": total,
+            "estimated_apps_can_add": apps_can_add,
+            "estimated_ram_per_app_mb": ESTIMATED_APP_RAM_MB,
+            "ram_free_mb": mem_free_mb,
+        },
+        "per_app": per_app,
+        "alerts": alerts,
+    }
+
+
+def get_history(db: Session, hours: int = 24) -> list[dict]:
+    """Get historical resource metrics."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    metrics = db.query(ResourceMetric).filter(
+        ResourceMetric.created_at >= cutoff
+    ).order_by(ResourceMetric.created_at.asc()).all()
+
+    return [{
+        "time": m.created_at.isoformat(),
+        "cpu": m.cpu_percent,
+        "mem_used": m.memory_used_mb,
+        "mem_total": m.memory_total_mb,
+        "disk_used": m.disk_used_gb,
+        "disk_total": m.disk_total_gb,
+        "gpu_used": m.gpu_memory_used_mb,
+        "gpu_total": m.gpu_memory_total_mb,
+        "apps_running": m.apps_running,
+        "per_app": json.loads(m.per_app_json) if m.per_app_json else [],
+    } for m in metrics]
+
+
+def generate_report(db: Session) -> str:
+    """Generate Markdown resource report for meetings."""
+    res = get_current_resources(db)
+    hist = get_history(db, hours=24)
+    sys = res["system"]
+    cap = res["capacity"]
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines = [
+        "# IVS Resource & Capacity Report",
+        "",
+        f"**Generated**: {now}",
+        "",
+        "---",
+        "",
+        "## System Hardware",
+        "",
+        f"| Resource | Used | Total | Usage |",
+        f"|----------|------|-------|-------|",
+        f"| CPU | {sys['cpu_percent']}% | {sys['cpu_cores']} cores | {'🔴' if sys['cpu_percent']>CRIT_CPU else '🟡' if sys['cpu_percent']>WARN_CPU else '🟢'} |",
+        f"| RAM | {sys['memory_used_mb']:,} MB | {sys['memory_total_mb']:,} MB | {'🔴' if sys['memory_percent']>CRIT_MEM else '🟡' if sys['memory_percent']>WARN_MEM else '🟢'} {sys['memory_percent']}% |",
+        f"| Storage | {sys['disk_used_gb']} GB | {sys['disk_total_gb']} GB | {'🔴' if sys['disk_percent']>CRIT_DISK else '🟡' if sys['disk_percent']>WARN_DISK else '🟢'} {sys['disk_percent']}% |",
+    ]
+
+    if sys["gpu_type"] != "none":
+        gpu_label = "GPU (Apple Silicon)" if sys["gpu_type"] == "apple_silicon" else "GPU (NVIDIA)"
+        lines.append(f"| {gpu_label} | {sys['gpu_used_mb'] or 'N/A'} MB | {sys['gpu_total_mb'] or 'N/A'} MB | - |")
+
+    lines += [
+        "",
+        "## Capacity Analysis",
+        "",
+        f"- **Running Apps**: {cap['apps_running']} / {cap['apps_total']}",
+        f"- **Free RAM**: {cap['ram_free_mb']:,} MB",
+        f"- **Estimated additional apps**: ~{cap['estimated_apps_can_add']} more (at ~{cap['estimated_ram_per_app_mb']} MB/app)",
+        "",
+    ]
+
+    # Alerts
+    if res["alerts"]:
+        lines += ["## Alerts", ""]
+        for a in res["alerts"]:
+            icon = "🔴" if a["level"] == "critical" else "🟡"
+            lines.append(f"- {icon} **{a['type'].upper()}**: {a['message']}")
+        lines.append("")
+
+    # Per-app usage
+    if res["per_app"]:
+        lines += [
+            "## Per-App Resource Usage",
+            "",
+            "| App | Type | CPU | RAM (MB) | Port |",
+            "|-----|------|-----|----------|------|",
+        ]
+        total_cpu = 0
+        total_mem = 0
+        for a in res["per_app"]:
+            lines.append(f"| {a['name']} | {a['app_type']} | {a['cpu_percent']}% | {a['memory_mb']} | {a['port']} |")
+            total_cpu += a["cpu_percent"]
+            total_mem += a["memory_mb"]
+        lines.append(f"| **Total** | | **{round(total_cpu,1)}%** | **{round(total_mem,1)}** | |")
+        lines.append("")
+
+    # 24h summary
+    if hist:
+        cpus = [h["cpu"] for h in hist]
+        mems = [h["mem_used"] for h in hist]
+        lines += [
+            "## 24-Hour Summary",
+            "",
+            f"- **CPU**: avg {sum(cpus)//len(cpus)}%, max {max(cpus)}%, min {min(cpus)}%",
+            f"- **RAM**: avg {sum(mems)//len(mems):,} MB, max {max(mems):,} MB, min {min(mems):,} MB",
+            f"- **Data Points**: {len(hist)}",
+            "",
+        ]
+
+    # Recommendations
+    lines += [
+        "## Recommendations",
+        "",
+    ]
+    if sys["memory_percent"] > WARN_MEM:
+        lines.append(f"- **Upgrade RAM**: Current usage {sys['memory_percent']}% — recommend adding more RAM")
+    if sys["disk_percent"] > WARN_DISK:
+        lines.append(f"- **Expand Storage**: Current usage {sys['disk_percent']}% — recommend larger disk or cleanup")
+    if cap["estimated_apps_can_add"] <= 2:
+        lines.append(f"- **Scale Resources**: Only ~{cap['estimated_apps_can_add']} apps can be added — consider hardware upgrade")
+    if not res["alerts"] and cap["estimated_apps_can_add"] > 5:
+        lines.append("- System resources are healthy. No immediate action required.")
+
+    lines += ["", "---", f"*Report generated by IVS v1.0.0*", ""]
+    return "\n".join(lines)

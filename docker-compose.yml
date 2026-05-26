@@ -1,0 +1,117 @@
+version: "3.8"
+
+services:
+  # ============================================
+  # IVS Backend API (FastAPI)
+  # ============================================
+  backend:
+    build: ./backend
+    container_name: ivs-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./deployed_apps:/app/deployed_apps
+      - ./uploads:/app/uploads
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./coredns:/etc/coredns
+    environment:
+      - DATABASE_URL=sqlite:///./data/ivs.db
+      - SECRET_KEY=${SECRET_KEY:-ivs-production-secret-key-change-me}
+      - VAULT_KEY=${VAULT_KEY:-ivs-vault-key-change-me-production}
+      - DOMAIN_SUFFIX=${DOMAIN_SUFFIX:-vibe.local}
+      - SERVER_IP=${SERVER_IP:-192.168.1.100}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - DOCKER_NETWORK=ivs-apps
+    networks:
+      - ivs-internal
+      - ivs-apps
+    depends_on:
+      - coredns
+
+  # ============================================
+  # IVS Frontend Dashboard (Next.js)
+  # ============================================
+  frontend:
+    build: ./frontend
+    container_name: ivs-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - ivs-internal
+    depends_on:
+      - backend
+
+  # ============================================
+  # Caddy Reverse Proxy
+  # ============================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: ivs-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - ivs-internal
+      - ivs-apps
+    depends_on:
+      - backend
+      - frontend
+
+  # ============================================
+  # CoreDNS (Local DNS Server)
+  # ============================================
+  coredns:
+    image: coredns/coredns:1.11.3
+    container_name: ivs-coredns
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./coredns:/etc/coredns
+    command: -conf /etc/coredns/Corefile
+    networks:
+      - ivs-internal
+
+  # ============================================
+  # Gitea (Internal Git Server)
+  # ============================================
+  gitea:
+    image: gitea/gitea:1.22-rootless
+    container_name: ivs-gitea
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+      - "2222:22"
+    volumes:
+      - gitea_data:/var/lib/gitea
+      - gitea_config:/etc/gitea
+    environment:
+      - GITEA__server__DOMAIN=${DOMAIN_SUFFIX:-vibe.local}
+      - GITEA__server__ROOT_URL=http://git.${DOMAIN_SUFFIX:-vibe.local}
+    networks:
+      - ivs-internal
+
+volumes:
+  caddy_data:
+  caddy_config:
+  gitea_data:
+  gitea_config:
+
+networks:
+  ivs-internal:
+    driver: bridge
+  ivs-apps:
+    driver: bridge
+    name: ivs-apps

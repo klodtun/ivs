@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8f9fc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --accent: #4c6ef5;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  font-size: 13px;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Noto Sans Thai", system-ui, -apple-system, sans-serif;
+}
+
+.status-running { color: var(--success); }
+.status-stopped { color: var(--muted); }
+.status-building { color: var(--warning); }
+.status-error { color: var(--danger); }

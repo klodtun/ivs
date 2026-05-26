@@ -1,0 +1,55 @@
+# ── Dependencies ──
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Build output ──
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+
+# ── Runtime data ──
+backend/data/
+backend/deployed_apps/
+backend/uploads/
+data/
+deployed_apps/
+uploads/
+
+# ── Environment & secrets ──
+.env
+.env.local
+.env.*.local
+
+# ── OS files ──
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ── IDE ──
+.vscode/
+.idea/
+*.code-workspace
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── CoreDNS dynamic hosts ──
+coredns/hosts
+
+# ── Docs build artifacts ──
+docs/node_modules/
+docs/build_*.js
+docs/package-lock.json
+
+# ── PDF specs (large binary) ──
+*.pdf
+
+# ── Exports ──
+backend/exports/
