@@ -313,6 +313,9 @@ const translations: Record<Locale, Record<string, string>> = {
     // Retention policy panel
     "retention.title": "นโยบายการเก็บข้อมูล (Data Retention)",
     "retention.subtitle": "กำหนดระยะเวลาเก็บ log แต่ละประเภท ระบบจะลบอัตโนมัติเมื่อเลยกำหนด",
+    "retention.subtitle_short": "ตั้งค่าระยะเวลาเก็บ log ตาม พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560",
+    "retention.click_to_expand": "คลิกเพื่อขยาย",
+    "retention.click_to_collapse": "คลิกเพื่อยุบ",
     "retention.legal_note": "พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2560 §26 — กำหนดเก็บข้อมูลจราจรทางคอมพิวเตอร์ขั้นต่ำ 90 วัน ทั่วไป 2 ปี (730 วัน) เจ้าพนักงานอาจสั่งให้เก็บนานกว่านี้",
     "retention.loading": "กำลังโหลด…",
     "retention.days": "วัน",
@@ -1081,6 +1084,9 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     // Retention policy panel
     "retention.title": "Data Retention Policy",
     "retention.subtitle": "Configure how long each log type is kept. Expired data is auto-deleted.",
+    "retention.subtitle_short": "Configure log retention per Thai Computer Crime Act B.E. 2560",
+    "retention.click_to_expand": "Click to expand",
+    "retention.click_to_collapse": "Click to collapse",
     "retention.legal_note": "Thai Computer Crime Act B.E. 2560 §26 — computer-traffic data must be retained for at least 90 days, typically 2 years (730 days), or longer if required by a competent officer.",
     "retention.loading": "Loading…",
     "retention.days": "days",

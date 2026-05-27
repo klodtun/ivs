@@ -3,6 +3,8 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 
+const COLLAPSED_KEY = "ivs.retention_panel.collapsed";
+
 type RetentionEntry = {
   days: number;
   default: number;
@@ -23,6 +25,31 @@ export function RetentionPolicyPanel() {
   const [purging, setPurging] = useState(false);
   const [purgeResult, setPurgeResult] = useState<Record<string, number> | null>(null);
   const [toast, setToast] = useState<string>("");
+  // Default to collapsed because the average admin touches this rarely.
+  // Persist the choice so a user who opens it stays open across page loads.
+  const [collapsed, setCollapsed] = useState(true);
+
+  // Restore collapse preference from localStorage on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem(COLLAPSED_KEY);
+    if (saved === "false") setCollapsed(false);
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(COLLAPSED_KEY, String(next));
+      } catch {}
+      // Load settings lazily — first time the user opens the panel,
+      // not at page mount, so collapsed users don't pay the request.
+      if (!next && !settings) {
+        load();
+      }
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     try {
@@ -37,14 +64,50 @@ export function RetentionPolicyPanel() {
     }
   }, []);
 
+  // Eager-load only if the user previously chose to keep the panel open
   useEffect(() => {
-    load();
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem(COLLAPSED_KEY) === "false") {
+      load();
+    }
   }, [load]);
 
-  if (!settings) {
+  // Compact header — used when collapsed AND when settings haven't loaded yet
+  if (collapsed || !settings) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 text-[10px] text-gray-400">
-        {t("retention.loading")}
+      <div className="bg-white rounded-lg border border-gray-200">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-lg group"
+          aria-expanded={!collapsed}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 text-brand-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="text-left min-w-0">
+              <h3 className="font-semibold text-gray-900 text-sm leading-tight">
+                {t("retention.title")}
+              </h3>
+              <p className="text-[10px] text-gray-500 mt-0.5 truncate">{t("retention.subtitle_short")}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="text-[9px] px-1.5 py-px rounded-full bg-gray-100 text-gray-500 font-medium hidden sm:inline">
+              {t("retention.click_to_expand")}
+            </span>
+            <svg
+              className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-transform"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
       </div>
     );
   }
@@ -85,17 +148,34 @@ export function RetentionPolicyPanel() {
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-      {/* Header */}
+      {/* Header — clickable title area toggles collapse */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
-            <svg className="w-4 h-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {t("retention.title")}
-          </h3>
-          <p className="text-[10px] text-gray-500 mt-0.5">{t("retention.subtitle")}</p>
-        </div>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className="flex items-start gap-2 text-left flex-1 min-w-0 hover:opacity-80 transition group"
+          aria-expanded={true}
+          title={t("retention.click_to_collapse")}
+        >
+          <svg className="w-4 h-4 text-brand-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+              {t("retention.title")}
+              <svg
+                className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
+            </h3>
+            <p className="text-[10px] text-gray-500 mt-0.5">{t("retention.subtitle")}</p>
+          </div>
+        </button>
         <button
           onClick={handlePurge}
           disabled={purging}
