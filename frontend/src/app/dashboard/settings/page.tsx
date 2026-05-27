@@ -187,6 +187,31 @@ export default function SettingsPage() {
     }
   };
 
+  const [pendingDelete, setPendingDelete] = useState<User | null>(null);
+  const handleDeleteConfirmed = async (password: string) => {
+    if (!pendingDelete) return;
+    try {
+      const res = await api.deleteUser(pendingDelete.id, password);
+      setPendingDelete(null);
+      await loadData();
+      if (res.reassigned_apps > 0) {
+        alert(`${res.message}\n${res.reassigned_apps} แอปถูกโอนสิทธิ์ไปที่ ${res.new_owner}`);
+      }
+    } catch (e: any) {
+      throw e;
+    }
+  };
+
+  const currentUserId: number | undefined = (() => {
+    if (typeof window === "undefined") return undefined;
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored).id : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+
   const changeRole = async (user: User, role: string) => {
     try { await api.updateUser(user.id, { role }); await loadData(); } catch (e: any) { alert(e.message); }
   };
@@ -506,9 +531,11 @@ export default function SettingsPage() {
             users={users}
             roleBadge={roleBadge}
             editAccessId={editAccess?.id}
+            currentUserId={currentUserId}
             onChangeRole={changeRole}
             onOpenAccess={openAccessPanel}
             onToggleActive={toggleActive}
+            onDelete={(u) => setPendingDelete(u)}
           />
         </div>
       )}
@@ -1628,6 +1655,23 @@ services:
           confirmLabel={t("user_disable.confirm")}
           onConfirm={handleDisableConfirmed}
           onCancel={() => setPendingDisable(null)}
+        />
+      )}
+
+      {pendingDelete && (
+        <PasswordConfirmModal
+          title={`${t("user_delete.title")} — ${pendingDelete.username}`}
+          description={`${t("user_delete.desc_prefix")} "${pendingDelete.username}" ${t("user_delete.desc_suffix")}`}
+          consequences={[
+            t("user_delete.consequence_1"),
+            t("user_delete.consequence_2"),
+            t("user_delete.consequence_3"),
+            t("user_delete.consequence_4"),
+          ]}
+          legalNote={t("user_delete.legal_note")}
+          confirmLabel={t("user_delete.confirm")}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setPendingDelete(null)}
         />
       )}
     </div>

@@ -85,6 +85,16 @@ export const api = {
       body: JSON.stringify({ password }),
     }),
 
+  deleteUser: (id: number, password: string) =>
+    request<{ message: string; reassigned_apps: number; new_owner: string }>(
+      `/auth/users/${id}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      }
+    ),
+
   getUserAccess: (id: number) =>
     request<{ user_id: number; app_ids: number[]; access_all: boolean }>(`/auth/users/${id}/access`),
 

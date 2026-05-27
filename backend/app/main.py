@@ -87,6 +87,30 @@ async def retention_purge_loop():
         await asyncio.sleep(86400)  # 24h
 
 
+def _reassign_orphan_owners():
+    from app.models import User, App, UserRole
+    db = SessionLocal()
+    try:
+        admin = (
+            db.query(User)
+            .filter(User.role == UserRole.ADMIN, User.is_active == True)
+            .order_by(User.id.asc())
+            .first()
+        )
+        if not admin:
+            return
+        valid_ids = {u.id for u in db.query(User.id).all()}
+        orphans = db.query(App).filter(~App.owner_id.in_(valid_ids)).all() if valid_ids else []
+        if not orphans:
+            return
+        for app in orphans:
+            app.owner_id = admin.id
+        db.commit()
+        logger.warning(f"Reassigned {len(orphans)} orphaned app(s) to admin {admin.username}")
+    finally:
+        db.close()
+
+
 def _apply_lightweight_migrations():
     """Idempotent ALTER TABLE for columns added after the initial schema.
 
@@ -120,6 +144,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     _seed_admin()
+    _reassign_orphan_owners()
     _sync_app_domains_to_current_ip()
     # Start NTP sync with Thai legal NTP servers
     ntp_service.start()

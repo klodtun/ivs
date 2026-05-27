@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, UserRole, AuditLog, UserAppAccess
+from app.models import User, UserRole, AuditLog, UserAppAccess, App, Tunnel, VaultKey, AppPdpa, AuditLogExport
 from app.schemas import (
     LoginRequest, Token, UserCreate, UserResponse, UserUpdate,
     UserAppAccessSet, UserAppAccessResponse,
@@ -156,6 +156,84 @@ async def update_user(
     db.commit()
     db.refresh(user)
     return _enrich_user_response(user, db)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role(UserRole.ADMIN)),
+):
+    password = (payload or {}).get("password", "")
+    if not password or not verify_password(password, admin.password_hash):
+        create_audit_log(
+            db, request, user=admin, action="delete_user_denied",
+            resource_type="user", resource_id=str(user_id),
+            details="Delete attempt denied — password re-authentication failed",
+            log_level="WARNING",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="Password verification failed. Deleting a user requires re-authentication.",
+        )
+
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if target.role == UserRole.ADMIN:
+        other_admins = (
+            db.query(User)
+            .filter(User.role == UserRole.ADMIN, User.id != user_id, User.is_active == True)
+            .count()
+        )
+        if other_admins == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete the last active admin.",
+            )
+
+    reassigned_apps = (
+        db.query(App).filter(App.owner_id == user_id).update(
+            {"owner_id": admin.id}, synchronize_session=False
+        )
+    )
+    db.query(Tunnel).filter(Tunnel.created_by == user_id).update(
+        {"created_by": admin.id}, synchronize_session=False
+    )
+    db.query(VaultKey).filter(VaultKey.created_by == user_id).update(
+        {"created_by": admin.id}, synchronize_session=False
+    )
+    db.query(AuditLogExport).filter(AuditLogExport.exported_by == user_id).update(
+        {"exported_by": admin.id}, synchronize_session=False
+    )
+    db.query(AppPdpa).filter(AppPdpa.updated_by == user_id).update(
+        {"updated_by": admin.id}, synchronize_session=False
+    )
+    db.query(UserAppAccess).filter(UserAppAccess.user_id == user_id).delete(
+        synchronize_session=False
+    )
+
+    target_username = target.username
+    db.delete(target)
+    create_audit_log(
+        db, request, user=admin, action="delete_user", resource_type="user",
+        resource_id=str(user_id),
+        details=f"Deleted user {target_username}; reassigned {reassigned_apps} app(s) to {admin.username}",
+        log_level="WARNING",
+    )
+    db.commit()
+    return {
+        "message": f"User {target_username} deleted",
+        "reassigned_apps": reassigned_apps,
+        "new_owner": admin.username,
+    }
 
 
 @router.post("/users/{user_id}/disable", response_model=UserResponse)

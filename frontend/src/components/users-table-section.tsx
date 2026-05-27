@@ -8,18 +8,22 @@ interface Props {
   users: User[];
   roleBadge: Record<string, string>;
   editAccessId?: number;
+  currentUserId?: number;
   onChangeRole: (user: User, role: string) => void;
   onOpenAccess: (user: User) => void;
   onToggleActive: (user: User) => void;
+  onDelete?: (user: User) => void;
 }
 
 export function UsersTableSection({
   users,
   roleBadge,
   editAccessId,
+  currentUserId,
   onChangeRole,
   onOpenAccess,
   onToggleActive,
+  onDelete,
 }: Props) {
   const { t } = useLang();
   const { paged, page, pageSize, setPage, setPageSize, total } = usePagination(users, 25);
@@ -107,6 +111,15 @@ export function UsersTableSection({
                 >
                   {u.is_active ? t("settings.disable") : t("settings.enable")}
                 </button>
+                {onDelete && u.id !== currentUserId && (
+                  <button
+                    onClick={() => onDelete(u)}
+                    className="text-[10px] font-medium text-red-700 hover:text-red-800 hover:bg-red-50 px-1.5 py-0.5 rounded"
+                    title={t("settings.delete_user_tooltip")}
+                  >
+                    {t("settings.delete_user")}
+                  </button>
+                )}
               </td>
             </tr>
           ))}
