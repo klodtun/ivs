@@ -122,6 +122,12 @@ export default function ResourcesPage() {
     }
   };
 
+  // IMPORTANT: hooks must be called in the same order on every render,
+  // so `usePagination` has to run BEFORE any conditional `return`. The
+  // first render has data=null; we feed it an empty array — the hook
+  // returns sensible empty defaults and we re-render once data arrives.
+  const perAppPagination = usePagination(data?.per_app ?? [], 10);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -142,9 +148,6 @@ export default function ResourcesPage() {
   const cpuHistory = history.map((h) => h.cpu);
   const ramHistory = history.map((h) => h.mem_used);
   const appsHistory = history.map((h) => h.apps_running);
-
-  // Per-app table pagination — total row keeps using data.per_app (full set)
-  const perAppPagination = usePagination(data.per_app, 10);
 
   return (
     <div className="space-y-4">
