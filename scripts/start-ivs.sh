@@ -2,10 +2,29 @@
 # ============================================
 #  IVS - Internal Vibe Server (Start)
 # ============================================
+#
+# Modes (selected by IVS_MODE env var, default: dev):
+#   dev   – hot reload for both backend and frontend (local development)
+#           Backend: uvicorn --reload     Frontend: next dev
+#   prod  – production mode (use on the NAS / deploy host)
+#           Backend: uvicorn (no reload)  Frontend: next start (pre-built)
+#
+# Example:
+#   bash scripts/start-ivs.sh              # dev (default)
+#   IVS_MODE=prod bash scripts/start-ivs.sh
+# ============================================
 clear
+
+IVS_MODE="${IVS_MODE:-dev}"
+if [ "$IVS_MODE" != "dev" ] && [ "$IVS_MODE" != "prod" ]; then
+  echo "[!] Invalid IVS_MODE='$IVS_MODE' (expected: dev|prod). Falling back to dev."
+  IVS_MODE="dev"
+fi
+
 echo "============================================"
 echo "  IVS - Internal Vibe Server"
 echo "  Enterprise Gateway for Vibe Code Apps"
+echo "  Mode: $IVS_MODE"
 echo "============================================"
 echo ""
 
@@ -25,8 +44,14 @@ mkdir -p data deployed_apps uploads
 SERVER_IP=$(python3 -c "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.connect(('8.8.8.8',80)); print(s.getsockname()[0]); s.close()" 2>/dev/null || echo "127.0.0.1")
 echo "[*] Server IP: $SERVER_IP"
 
+# Reload only in dev mode — production should not have file-watcher overhead
+UVICORN_FLAGS=""
+if [ "$IVS_MODE" = "dev" ]; then
+  UVICORN_FLAGS="--reload"
+fi
+
 UPLOAD_DIR=./uploads APPS_DIR=./deployed_apps COREDNS_CONFIG_PATH=../coredns SERVER_IP=$SERVER_IP \
-  uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+  uvicorn app.main:app --host 0.0.0.0 --port 8000 $UVICORN_FLAGS &
 BACKEND_PID=$!
 
 # ---- Wait for Backend ----
@@ -49,9 +74,21 @@ else
 fi
 
 # ---- Start Frontend ----
-echo "[*] Starting Frontend Dashboard (port 3000)..."
+echo "[*] Starting Frontend Dashboard (port 3000, mode=$IVS_MODE)..."
 cd /Users/klod/IVS/frontend
-BACKEND_URL=http://localhost:8000 npx next start -p 3000 &
+if [ "$IVS_MODE" = "dev" ]; then
+  # next dev: hot module reload, picks up file changes automatically.
+  # No pre-build required.
+  BACKEND_URL=http://localhost:8000 npx next dev -p 3000 &
+else
+  # next start: serves the pre-built .next/ directory. Build first if missing
+  # or stale, then start. Production: faster runtime, no file watcher.
+  if [ ! -d ".next" ] || [ ! -f ".next/BUILD_ID" ]; then
+    echo "[*] No build found — running 'npm run build' first..."
+    npm run build || { echo "[!] Build failed"; exit 1; }
+  fi
+  BACKEND_URL=http://localhost:8000 npx next start -p 3000 &
+fi
 FRONTEND_PID=$!
 
 # ---- Wait for Frontend ----
