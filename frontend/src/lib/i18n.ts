@@ -315,6 +315,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.export_chunk_unit": "records",
     "settings.export_chunk_tip": "ถ้า log เยอะ ระบบจะแบ่งเป็นหลายไฟล์ภายใน .zip เดียวเพื่อเปิดอ่านง่าย",
     "settings.export_chunk_note": "ระบบจะรวมทุกไฟล์ใน .zip เดียว และคำนวณ SHA-256 ของทั้ง bundle เพื่อตรวจสอบความสมบูรณ์",
+    "settings.export_history_count_suffix": "รายการในประวัติ",
 
     // Pagination
     "pagination.showing": "แสดง",
@@ -1171,6 +1172,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.export_chunk_unit": "records",
     "settings.export_chunk_tip": "If logs are large, they're split into multiple files inside a single .zip for easier viewing",
     "settings.export_chunk_note": "All chunks are bundled in one .zip with a single SHA-256 covering the whole archive — atomic download, no partial failures.",
+    "settings.export_history_count_suffix": "exports in history",
 
     // Pagination
     "pagination.showing": "Showing",
