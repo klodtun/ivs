@@ -373,6 +373,16 @@ const translations: Record<Locale, Record<string, string>> = {
     "password_confirm.working": "กำลังดำเนินการ…",
     "password_confirm.error_generic": "ไม่สามารถยืนยันได้ กรุณาลองใหม่",
     "password_confirm.forensic_note": "การพยายามยืนยันทุกครั้งจะถูกบันทึก audit log ระดับ WARNING — รวมถึงครั้งที่รหัสผ่านผิด",
+
+    // User disable confirmation
+    "user_disable.title": "ปิดใช้งานผู้ใช้",
+    "user_disable.desc_prefix": "ยืนยันปิดใช้งานบัญชี",
+    "user_disable.desc_suffix": "ผู้ใช้จะไม่สามารถเข้าใช้งาน IVS ได้จนกว่าจะถูกเปิดใช้งานอีกครั้ง กรุณาใส่รหัสผ่านของท่านเพื่อยืนยันตัวตน",
+    "user_disable.consequence_1": "ผู้ใช้จะถูก logout ในเซสชันถัดไป และไม่สามารถ login ใหม่ได้",
+    "user_disable.consequence_2": "แอปและทรัพยากรของผู้ใช้ยังคงอยู่ — ไม่ถูกลบ การเปิดใช้งานใหม่จะคืนสิทธิ์ทั้งหมด",
+    "user_disable.consequence_3": "บันทึก audit log ระดับ WARNING พร้อมระบุผู้กดและเวลา",
+    "user_disable.legal_note": "การจำกัดสิทธิ์เข้าใช้งานระบบสารสนเทศต้องมีการ audit trail ที่ตรวจสอบได้ — IVS จะเก็บบันทึกนี้ตาม policy retention",
+    "user_disable.confirm": "ยืนยันปิดใช้งาน",
     "retention.purge_result": "ผลการลบ (จำนวน records)",
     // Per-type labels
     "retention.type.audit_logs": "บันทึกเหตุการณ์ระบบ (Audit Logs)",
@@ -1185,6 +1195,16 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "password_confirm.working": "Working…",
     "password_confirm.error_generic": "Unable to verify. Please try again.",
     "password_confirm.forensic_note": "Every attempt is recorded as a WARNING-level audit log — including failed password attempts.",
+
+    // User disable confirmation
+    "user_disable.title": "Disable user",
+    "user_disable.desc_prefix": "Confirm disabling the account",
+    "user_disable.desc_suffix": "— the user will be locked out of IVS until re-enabled. Please re-enter your own password to confirm.",
+    "user_disable.consequence_1": "User is signed out on their next request and cannot log in again",
+    "user_disable.consequence_2": "Their apps and resources remain intact — re-enabling restores full access",
+    "user_disable.consequence_3": "Writes a WARNING-level audit log naming you and the timestamp",
+    "user_disable.legal_note": "Restricting access to an information system must be audit-traceable — IVS keeps this record per the configured retention policy.",
+    "user_disable.confirm": "Confirm disable",
     "retention.purge_result": "Purge result (record counts)",
     // Per-type labels
     "retention.type.audit_logs": "System Audit Logs",

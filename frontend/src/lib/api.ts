@@ -76,6 +76,15 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  // Dedicated disable endpoint — requires the admin's own password.
+  // Re-enabling goes through the regular updateUser({is_active: true}) call.
+  disableUser: (id: number, password: string) =>
+    request<any>(`/auth/users/${id}/disable`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    }),
+
   getUserAccess: (id: number) =>
     request<{ user_id: number; app_ids: number[]; access_all: boolean }>(`/auth/users/${id}/access`),
 

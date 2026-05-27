@@ -158,6 +158,69 @@ async def update_user(
     return _enrich_user_response(user, db)
 
 
+@router.post("/users/{user_id}/disable", response_model=UserResponse)
+async def disable_user(
+    user_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Disable a user account.
+
+    Disabling locks the user out completely; while the existing /users/{id}
+    PUT endpoint will accept is_active=false too, this dedicated path adds
+    two safety nets that misclicks on the UI shouldn't bypass:
+
+      1. The calling admin must re-enter their OWN password (proof that
+         the active session belongs to the person clicking, not someone
+         walking past an unlocked laptop).
+      2. You cannot disable yourself — too easy to lock everyone out of
+         an IVS install whose only admin clicks the wrong row.
+
+    Re-enabling (is_active=true) goes through the regular update_user
+    endpoint without the password challenge — restoring access is the
+    safer direction.
+    """
+    password = (payload or {}).get("password", "")
+    if not password or not verify_password(password, admin.password_hash):
+        create_audit_log(
+            db, request, user=admin, action="disable_user_denied",
+            resource_type="user", resource_id=str(user_id),
+            details="Disable attempt denied — password re-authentication failed",
+            log_level="WARNING",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="Password verification failed. Disabling a user requires re-authentication.",
+        )
+
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot disable your own account.",
+        )
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target.is_active:
+        # Idempotent: already disabled. Don't error — just return current state.
+        return _enrich_user_response(target, db)
+
+    target.is_active = False
+    create_audit_log(
+        db, request, user=admin, action="disable_user", resource_type="user",
+        resource_id=str(user_id),
+        details=f"Disabled user {target.username} (re-authenticated)",
+        log_level="WARNING",
+    )
+    db.commit()
+    db.refresh(target)
+    return _enrich_user_response(target, db)
+
+
 @router.get("/users/{user_id}/access", response_model=UserAppAccessResponse)
 async def get_user_app_access(
     user_id: int,

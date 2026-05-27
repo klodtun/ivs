@@ -6,6 +6,7 @@ import { cn, formatDateTimeSeconds, formatLegalTimestamp, timeAgo } from "@/lib/
 import { Pagination, usePagination } from "@/components/pagination";
 import { ExportHistoryTable } from "@/components/export-history-table";
 import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
 import { User, App, AuditLog, AuditLogExport } from "@/types";
@@ -155,8 +156,35 @@ export default function SettingsPage() {
     try { await api.createUser(form); setForm({ username: "", email: "", password: "", role: "viewer" }); setShowAdd(false); await loadData(); } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
 
+  // Disable requires re-auth (uses PasswordConfirmModal below).
+  // Re-enabling restores access and is the safer direction, so no challenge.
+  const [pendingDisable, setPendingDisable] = useState<User | null>(null);
+
   const toggleActive = async (user: User) => {
-    try { await api.updateUser(user.id, { is_active: !user.is_active }); await loadData(); } catch (e: any) { alert(e.message); }
+    if (user.is_active) {
+      // Disabling — open the password modal; actual call happens on confirm
+      setPendingDisable(user);
+      return;
+    }
+    // Enabling — straight through
+    try {
+      await api.updateUser(user.id, { is_active: true });
+      await loadData();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleDisableConfirmed = async (password: string) => {
+    if (!pendingDisable) return;
+    try {
+      await api.disableUser(pendingDisable.id, password);
+      setPendingDisable(null);
+      await loadData();
+    } catch (e: any) {
+      // Re-throw so PasswordConfirmModal keeps itself open and shows the error
+      throw e;
+    }
   };
 
   const changeRole = async (user: User, role: string) => {
@@ -1584,6 +1612,23 @@ services:
             </div>
           </div>
         </div>
+      )}
+
+      {/* Password re-auth before disabling a user (User Management) */}
+      {pendingDisable && (
+        <PasswordConfirmModal
+          title={`${t("user_disable.title")} — ${pendingDisable.username}`}
+          description={`${t("user_disable.desc_prefix")} "${pendingDisable.username}" ${t("user_disable.desc_suffix")}`}
+          consequences={[
+            t("user_disable.consequence_1"),
+            t("user_disable.consequence_2"),
+            t("user_disable.consequence_3"),
+          ]}
+          legalNote={t("user_disable.legal_note")}
+          confirmLabel={t("user_disable.confirm")}
+          onConfirm={handleDisableConfirmed}
+          onCancel={() => setPendingDisable(null)}
+        />
       )}
     </div>
   );
