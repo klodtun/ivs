@@ -1,7 +1,9 @@
 "use client";
+import { useState } from "react";
 import { useLang } from "@/components/lang-provider";
 import { cn, formatLegalTimestamp } from "@/lib/utils";
 import { Pagination, usePagination } from "@/components/pagination";
+import { AuditLogDetailModal } from "@/components/audit-log-detail-modal";
 import type { AuditLog, User } from "@/types";
 
 interface Props {
@@ -12,6 +14,7 @@ interface Props {
 export function AuditLogTable({ logs, users }: Props) {
   const { t } = useLang();
   const { paged, page, pageSize, setPage, setPageSize, total } = usePagination(logs, 25);
+  const [selected, setSelected] = useState<AuditLog | null>(null);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -93,11 +96,26 @@ export function AuditLogTable({ logs, users }: Props) {
                     {log.resource_type}
                     {log.resource_id && <span className="text-gray-400">#{log.resource_id}</span>}
                   </td>
+                  {/*
+                    Clickable details cell — opens a richer modal with the
+                    full record (User-Agent, NTP source, session id, etc.)
+                    without changing the visible row size. Keyboard-
+                    accessible via tabindex + Enter/Space.
+                  */}
                   <td
-                    className="px-3 py-2 text-gray-500 text-[9px] max-w-[200px] truncate"
-                    title={log.details}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelected(log)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelected(log);
+                      }
+                    }}
+                    className="px-3 py-2 text-gray-500 text-[9px] max-w-[200px] truncate cursor-pointer hover:text-brand-700 hover:underline focus:outline-none focus:ring-1 focus:ring-brand-400 rounded"
+                    title={t("settings.log.details_click")}
                   >
-                    {log.details}
+                    {log.details || <span className="text-gray-300 italic">{t("settings.log.no_detail")}</span>}
                   </td>
                   <td className="px-3 py-2 text-gray-400 text-[8px] font-mono">
                     {log.ip_address || "-"}
@@ -126,6 +144,15 @@ export function AuditLogTable({ logs, users }: Props) {
 
       {logs.length === 0 && (
         <div className="p-8 text-center text-gray-400 text-xs">{t("settings.no_logs")}</div>
+      )}
+
+      {/* Detail modal — full record on demand, table size unchanged */}
+      {selected && (
+        <AuditLogDetailModal
+          log={selected}
+          user={users.find((u) => u.id === selected.user_id)}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   );
