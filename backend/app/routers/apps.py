@@ -740,6 +740,208 @@ async def stream_build_logs(
     )
 
 
+EXPORTS_DIR = os.path.join(
+    os.path.dirname(settings.DATABASE_URL.replace("sqlite:///", "")),
+    "exports",
+    "apps",
+)
+
+
+def _human_size(n: int) -> str:
+    for unit in ["B", "KB", "MB", "GB"]:
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
+@router.post("/{app_id}/export")
+async def export_app(
+    app_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Export an app's source + runtime data + metadata as a single .zip bundle.
+
+    Bundle layout:
+        source/      ← the deployed_apps/<slug>/ directory (Dockerfile, code, configs)
+        data/        ← contents copied out of the running container's data paths
+        metadata.json
+        README.md
+
+    Use this BEFORE deleting an app you intend to redeploy, so user-generated
+    data inside the container isn't lost when the container is destroyed.
+    """
+    from datetime import datetime, timezone
+
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    if not _can_access_app(user, app, db):
+        raise HTTPException(status_code=403, detail="Access denied to this app")
+
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"{app.slug}_{timestamp}.zip"
+    zip_path = os.path.join(EXPORTS_DIR, filename)
+
+    source_path = os.path.join(settings.APPS_DIR, app.slug)
+    data_summary: dict = {"copied": [], "skipped": [], "errors": []}
+
+    with tempfile.TemporaryDirectory(prefix=f"ivs-export-{app.slug}-") as tmpdir:
+        # 1. Source files (Dockerfile, code, nginx-app.conf, etc.)
+        source_dest = os.path.join(tmpdir, "source")
+        if os.path.isdir(source_path):
+            shutil.copytree(source_path, source_dest, dirs_exist_ok=True)
+        else:
+            os.makedirs(source_dest, exist_ok=True)
+
+        # 2. Container data (data dirs, uploads, sqlite files, etc.)
+        data_dest = os.path.join(tmpdir, "data")
+        os.makedirs(data_dest, exist_ok=True)
+        if app.container_id:
+            try:
+                data_summary = docker_service.export_container_data(
+                    f"ivs-{app.slug}", data_dest
+                )
+            except Exception as e:
+                logger.warning(f"Could not export container data for {app.slug}: {e}")
+                data_summary["errors"].append(str(e))
+        else:
+            data_summary["errors"].append("App has no running container — data section is empty.")
+
+        # 3. Metadata
+        env_vars = {}
+        try:
+            env_vars = json.loads(app.env_vars_json) if app.env_vars_json else {}
+        except Exception:
+            pass
+
+        metadata = {
+            "ivs_export_version": 1,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_by": user.username,
+            "app": {
+                "id": app.id,
+                "name": app.name,
+                "slug": app.slug,
+                "description": app.description,
+                "app_type": app.app_type.value if hasattr(app.app_type, "value") else str(app.app_type),
+                "port": app.port,
+                "current_version": app.current_version,
+                "status_at_export": app.status.value if hasattr(app.status, "value") else str(app.status),
+                "created_at": app.created_at.isoformat() if app.created_at else None,
+                "env_vars": env_vars,
+            },
+            "data_export": data_summary,
+        }
+        with open(os.path.join(tmpdir, "metadata.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+        # 4. README — instructions for re-import
+        readme = f"""# IVS App Export — {app.name}
+
+**Exported:** {metadata['exported_at']}
+**By:** {user.username}
+**App slug:** `{app.slug}`
+**Type:** {metadata['app']['app_type']}
+**Port (original):** {app.port}
+
+## Bundle contents
+
+```
+source/         Original deployed source (Dockerfile, code, configs)
+data/           Files copied OUT of the running container at export time
+metadata.json   App config + env vars + export summary
+```
+
+## What was exported from the container
+
+"""
+        if data_summary["copied"]:
+            for item in data_summary["copied"]:
+                readme += f"- `{item['container_path']}` → `data/{item['name']}` ({_human_size(item['size_bytes'])})\n"
+        else:
+            readme += "_(No matching data paths found inside the container — the app may not store persistent data, or the container was not running at export time.)_\n"
+
+        if data_summary["errors"]:
+            readme += "\n### Warnings\n\n"
+            for err in data_summary["errors"]:
+                readme += f"- {err}\n"
+
+        readme += f"""
+
+## How to re-import this app
+
+1. Open IVS dashboard → **Deploy New App**
+2. Upload `source/` (zip it first), OR drop the original .zip you used.
+3. After deploy succeeds, copy the files from `data/` back into the new
+   container with: `docker cp data/<dir> ivs-{app.slug}:/app/backend/<dir>`
+4. Restart the app from the dashboard.
+
+## Environment variables at export time
+
+"""
+        if env_vars:
+            for k in env_vars.keys():
+                readme += f"- `{k}` (value redacted — set via IVS Vault on re-import)\n"
+        else:
+            readme += "_(none)_\n"
+
+        readme += "\n---\n_Generated by IVS — Internal Vibe Server._\n"
+        with open(os.path.join(tmpdir, "README.md"), "w", encoding="utf-8") as f:
+            f.write(readme)
+
+        # 5. Zip the whole bundle (deflate, fast enough; sources are small)
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+            for root, _dirs, files in os.walk(tmpdir):
+                for fname in files:
+                    fp = os.path.join(root, fname)
+                    arcname = os.path.relpath(fp, tmpdir)
+                    zf.write(fp, arcname)
+
+    size_bytes = os.path.getsize(zip_path)
+
+    create_audit_log(
+        db, request, user=user, action="export_app", resource_type="app",
+        resource_id=str(app_id),
+        details=f"Exported {app.name} ({_human_size(size_bytes)}, {len(data_summary['copied'])} data path(s))",
+    )
+    db.commit()
+
+    return {
+        "filename": filename,
+        "size_bytes": size_bytes,
+        "size_human": _human_size(size_bytes),
+        "data_paths_copied": len(data_summary["copied"]),
+        "data_paths_skipped": len(data_summary["skipped"]),
+        "errors": data_summary["errors"],
+        "download_url": f"/api/apps/exports/{filename}",
+    }
+
+
+@router.get("/exports/{filename}")
+async def download_app_export(
+    filename: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Download a previously created app export bundle."""
+    # Basic path-traversal guard
+    if "/" in filename or ".." in filename or not filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    filepath = os.path.join(EXPORTS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Export file not found")
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=filepath,
+        filename=filename,
+        media_type="application/zip",
+    )
+
+
 @router.delete("/{app_id}")
 async def delete_app(
     app_id: int,

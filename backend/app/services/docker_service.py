@@ -582,6 +582,63 @@ CMD ["/start-app.sh"]
         except Exception as e:
             logger.warning(f"Error restarting container {container_id}: {e}")
 
+    def export_container_data(self, container_name: str, dest_dir: str) -> dict:
+        """Copy common data paths out of a running container into dest_dir.
+
+        IVS v1.0 has no persistent volumes, so we extract whatever the app wrote
+        inside the container at known data locations. Returns a dict with the
+        paths actually copied and any errors.
+        """
+        import tarfile
+        import io
+
+        result: dict = {"copied": [], "skipped": [], "errors": []}
+        if not self._ensure_client():
+            result["errors"].append("Docker not available")
+            return result
+
+        try:
+            container = self.client.containers.get(container_name)
+        except Exception as e:
+            result["errors"].append(f"Container not found: {e}")
+            return result
+
+        # Common app data locations — tried in order; any that exist get copied.
+        candidate_paths = [
+            "/app/backend/data",
+            "/app/backend/uploads",
+            "/app/backend/db",
+            "/app/data",
+            "/app/uploads",
+            "/app/db",
+            "/data",
+            "/uploads",
+        ]
+
+        os.makedirs(dest_dir, exist_ok=True)
+        for src in candidate_paths:
+            try:
+                # get_archive returns (iterator-of-tar-bytes, stat-dict). It
+                # raises NotFound if the path doesn't exist in the container.
+                bits, stat = container.get_archive(src)
+            except Exception:
+                result["skipped"].append(src)
+                continue
+
+            try:
+                tar_bytes = b"".join(bits)
+                with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tf:
+                    tf.extractall(dest_dir)
+                result["copied"].append({
+                    "container_path": src,
+                    "size_bytes": stat.get("size", 0),
+                    "name": stat.get("name", os.path.basename(src)),
+                })
+            except Exception as e:
+                result["errors"].append(f"{src}: {e}")
+
+        return result
+
     def get_container_logs(self, container_id: str, tail: int = 100) -> str:
         if not self.client:
             return "Docker not available"

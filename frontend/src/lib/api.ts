@@ -145,6 +145,17 @@ export const api = {
   deleteApp: (id: number) =>
     request<any>(`/apps/${id}`, { method: "DELETE" }),
 
+  exportApp: (id: number) =>
+    request<{
+      filename: string;
+      size_bytes: number;
+      size_human: string;
+      data_paths_copied: number;
+      data_paths_skipped: number;
+      errors: string[];
+      download_url: string;
+    }>(`/apps/${id}/export`, { method: "POST" }),
+
   getAppLogs: (id: number) => request<{ logs: string }>(`/apps/${id}/logs`),
 
   streamBuildLogs: async (id: number, onLog: (data: any) => void): Promise<void> => {

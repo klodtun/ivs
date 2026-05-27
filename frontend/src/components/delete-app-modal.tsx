@@ -7,9 +7,11 @@ interface Props {
   app: App;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
+  /** Optional handler: switch user to the export flow before deleting. */
+  onExportFirst?: () => void;
 }
 
-export function DeleteAppModal({ app, onConfirm, onCancel }: Props) {
+export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Props) {
   const { t } = useLang();
   const [typedName, setTypedName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -124,6 +126,32 @@ export function DeleteAppModal({ app, onConfirm, onCancel }: Props) {
               </svg>
               <p className="text-[11px] text-amber-800">{t("delete.irreversible")}</p>
             </div>
+
+            {/* Export first suggestion */}
+            {onExportFirst && (
+              <div className="bg-brand-50 border border-brand-200 rounded-lg p-2.5">
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-brand-600 flex-shrink-0 mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-[11px] text-brand-900 font-medium">{t("delete.export_first_title")}</p>
+                    <p className="text-[10px] text-brand-700 mt-0.5">{t("delete.export_first_desc")}</p>
+                    <button
+                      type="button"
+                      onClick={onExportFirst}
+                      disabled={submitting}
+                      className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-brand-600 rounded hover:bg-brand-700 transition disabled:opacity-50"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      {t("delete.export_first_button")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Type-to-confirm */}
             <div>

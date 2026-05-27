@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useState } from "react";
 import PrivacyNoticePopup from "@/components/privacy-notice-popup";
 import { DeleteAppModal } from "@/components/delete-app-modal";
+import { ExportAppModal } from "@/components/export-app-modal";
 
 const typeColors: Record<string, string> = {
   nodejs: "bg-green-100 text-green-700",
@@ -28,6 +29,7 @@ export function AppCard({
   const [loading, setLoading] = useState("");
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const canManage = userRole === "admin" || userRole === "developer";
 
   const appUrl = app.port
@@ -119,6 +121,17 @@ export function AppCard({
             className="flex-1 text-[10px] py-1 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition disabled:opacity-50">
             {loading === "restart" ? "..." : t("app.restart")}
           </button>
+          <button
+            onClick={() => setShowExportModal(true)}
+            disabled={!!loading}
+            title={t("app.export_tooltip")}
+            className="inline-flex items-center text-[10px] py-1 px-2 bg-brand-50 text-brand-700 rounded-md hover:bg-brand-100 transition disabled:opacity-50"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span className="ml-1 hidden sm:inline">{t("app.export")}</span>
+          </button>
           {userRole === "admin" && (
             <button onClick={() => setShowDeleteModal(true)}
               disabled={!!loading}
@@ -148,7 +161,16 @@ export function AppCard({
             await action(() => api.deleteApp(app.id), "delete");
             setShowDeleteModal(false);
           }}
+          onExportFirst={() => {
+            setShowDeleteModal(false);
+            setShowExportModal(true);
+          }}
         />
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <ExportAppModal app={app} onClose={() => setShowExportModal(false)} />
       )}
     </div>
   );
