@@ -19,6 +19,7 @@ from app.services.docker_service import docker_service
 from app.services.audit_service import create_audit_log
 from app.services.ntp_service import ntp_service
 from app.services.resource_service import get_current_resources, get_history, generate_report, collect_snapshot
+from app.services.app_log_service import get_logs_for_export as get_app_logs_for_export
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
 from app.config import settings
 
@@ -216,9 +217,72 @@ async def export_audit_logs(
                 "sha256": chunk_sha,
             })
 
+        # Per-app container logs — written into apps/<slug>/app_log_part_NNN.md
+        # using the same date range and chunk size. Each app gets its own
+        # subfolder so the records stay separated by author/owner.
+        all_apps = db.query(App).order_by(App.slug.asc()).all()
+        app_summaries = []
+        total_app_log_records = 0
+        for app in all_apps:
+            app_logs = get_app_logs_for_export(db, app.id, body.start_date, body.end_date)
+            if not app_logs:
+                continue
+            total_app_log_records += len(app_logs)
+            app_chunks_total = max(1, (len(app_logs) + max_per_file - 1) // max_per_file)
+            app_chunk_records = []
+            for ci in range(app_chunks_total):
+                seg = app_logs[ci * max_per_file:(ci + 1) * max_per_file]
+                lines = [
+                    f"# Container Logs — {app.name} ({app.slug}) — Part {ci + 1} of {app_chunks_total}",
+                    "",
+                    "## Source",
+                    "",
+                    f"- **App**: {app.name} (`{app.slug}`, id={app.id})",
+                    f"- **Type**: {app.app_type.value if hasattr(app.app_type, 'value') else app.app_type}",
+                    f"- **Owner ID**: {app.owner_id}",
+                    f"- **Port**: {app.port}",
+                    f"- **Date Range**: "
+                    f"{body.start_date.isoformat() if body.start_date else 'beginning of time'} → "
+                    f"{body.end_date.isoformat() if body.end_date else 'now'}",
+                    f"- **This Chunk**: lines {ci * max_per_file + 1}–{ci * max_per_file + len(seg)}",
+                    f"- **Total Lines (this app)**: {len(app_logs)}",
+                    f"- **Retention Policy**: 90 days (พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560 §26)",
+                    "",
+                    "---",
+                    "",
+                    "| # | Timestamp (UTC) | Stream | Line |",
+                    "|---|-----------------|--------|------|",
+                ]
+                base_idx = ci * max_per_file
+                for j, entry in enumerate(seg, base_idx + 1):
+                    ts_str = entry.timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " UTC"
+                    safe_line = (entry.log_line or "").replace("|", "\\|").replace("\n", " ")
+                    lines.append(
+                        f"| {j} | {ts_str} | {entry.stream or 'stdout'} | {safe_line} |"
+                    )
+                md_app = "\n".join(lines)
+                app_sha = hashlib.sha256(md_app.encode("utf-8")).hexdigest()
+                app_chunk_name = f"apps/{app.slug}/app_log_part_{ci + 1:03d}.md"
+                md_app += f"\n\n---\n- **Chunk SHA-256**: `{app_sha}`\n- **Filename**: `{app_chunk_name}`\n"
+                zf.writestr(app_chunk_name, md_app)
+                app_chunk_records.append({
+                    "filename": app_chunk_name,
+                    "record_count": len(seg),
+                    "sha256": app_sha,
+                })
+            app_summaries.append({
+                "slug": app.slug,
+                "name": app.name,
+                "app_id": app.id,
+                "owner_id": app.owner_id,
+                "total_records": len(app_logs),
+                "file_count": app_chunks_total,
+                "chunks": app_chunk_records,
+            })
+
         # manifest.json
         manifest = {
-            "ivs_audit_export_version": 1,
+            "ivs_audit_export_version": 2,  # bumped: now includes per-app logs
             "exported_at": ntp_now.isoformat(),
             "exported_by": {"id": user.id, "username": user.username},
             "ntp_source": {
@@ -231,29 +295,45 @@ async def export_audit_logs(
                 "start": body.start_date.isoformat() if body.start_date else None,
                 "end": body.end_date.isoformat() if body.end_date else None,
             },
-            "total_records": total_records,
-            "file_count": total_chunks,
+            "audit_logs": {
+                "total_records": total_records,
+                "file_count": total_chunks,
+                "chunks": chunk_summary,
+            },
+            "app_logs": {
+                "total_records": total_app_log_records,
+                "app_count": len(app_summaries),
+                "apps": app_summaries,
+            },
             "max_records_per_file": max_per_file,
-            "chunks": chunk_summary,
-            "legal_basis": "พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2550",
+            "legal_basis": (
+                "พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2560 "
+                "(audit + 90-day container-log retention §26)"
+            ),
         }
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
 
         # README.txt
         readme = (
-            f"IVS Audit Log Export\n"
-            f"====================\n\n"
-            f"Exported:   {ntp_now.isoformat()}\n"
-            f"By:         {user.username}\n"
-            f"Range:      {body.start_date.isoformat() if body.start_date else 'beginning of time'}\n"
-            f"          → {body.end_date.isoformat() if body.end_date else 'now'}\n"
-            f"Records:    {total_records}\n"
-            f"Chunks:     {total_chunks} (max {max_per_file} records each)\n\n"
+            f"IVS Audit + App Log Export\n"
+            f"==========================\n\n"
+            f"Exported:        {ntp_now.isoformat()}\n"
+            f"By:              {user.username}\n"
+            f"Range:           {body.start_date.isoformat() if body.start_date else 'beginning of time'}\n"
+            f"               → {body.end_date.isoformat() if body.end_date else 'now'}\n"
+            f"Audit records:   {total_records} in {total_chunks} chunk(s)\n"
+            f"App log records: {total_app_log_records} across {len(app_summaries)} app(s)\n"
+            f"Chunk size:      max {max_per_file} records each\n\n"
+            f"Bundle layout:\n"
+            f"  audit_log_part_NNN.md      System events (login, deploy, delete, ...)\n"
+            f"  apps/<slug>/app_log_part_NNN.md  Container logs per app (90-day retention)\n"
+            f"  manifest.json              Machine-readable index + per-chunk SHA-256\n\n"
             f"How to verify integrity:\n"
             f"  1. Each .md file embeds its own SHA-256 at the bottom.\n"
             f"  2. manifest.json lists the expected SHA-256 of every chunk.\n"
             f"  3. The IVS database stores the SHA-256 of THIS .zip file.\n\n"
-            f"Open the chunks in any markdown viewer (they're plain text).\n"
+            f"Legal basis: พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2560\n"
+            f"  §26 — 90-day minimum retention of computer-traffic data.\n"
         )
         zf.writestr("README.txt", readme)
 
@@ -278,7 +358,8 @@ async def export_audit_logs(
     create_audit_log(
         db, request, user=user, action="export_audit_logs", resource_type="system",
         details=(
-            f"Exported {total_records} audit logs in {total_chunks} chunk(s), "
+            f"Exported {total_records} audit logs in {total_chunks} chunk(s) "
+            f"+ {total_app_log_records} app log line(s) across {len(app_summaries)} app(s), "
             f"range={range_label}, SHA-256: {sha256[:16]}..."
         ),
     )

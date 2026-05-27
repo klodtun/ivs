@@ -167,6 +167,31 @@ class AuditLog(Base):
     user = relationship("User", back_populates="audit_logs")
 
 
+class AppLogEntry(Base):
+    """Persistent storage of per-app container log lines.
+
+    Required by พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2560
+    (90-day minimum retention of computer-traffic data, §26).
+
+    These are intentionally separate from AuditLog so they don't pollute
+    the system-event view — but they ARE included when an admin exports
+    the audit bundle, one file per app, respecting the same date range
+    and chunk-size selection.
+    """
+    __tablename__ = "app_log_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    app_id = Column(Integer, ForeignKey("apps.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Timestamp from the container itself (docker --timestamps), UTC
+    timestamp = Column(DateTime, nullable=False, index=True)
+    # The raw log line content, truncated to 8KB if huge
+    log_line = Column(Text, nullable=False, default="")
+    # stdout / stderr — Docker doesn't distinguish in this API call, default stdout
+    stream = Column(String(10), default="stdout")
+    # When the collector inserted the row (for diagnostics / replication lag)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class AuditLogExport(Base):
     __tablename__ = "audit_log_exports"
 

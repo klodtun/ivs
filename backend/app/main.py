@@ -11,6 +11,11 @@ from app.routers import auth, apps, system, tunnels, vault, pdpa
 from app.services.tunnel_service import tunnel_service
 from app.services.ntp_service import ntp_service
 from app.services.resource_service import collect_snapshot
+from app.services.app_log_service import (
+    collect_one_pass as collect_app_logs,
+    purge_old_logs as purge_app_logs,
+    _bootstrap_checkpoints as bootstrap_app_log_checkpoints,
+)
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
 from app.models import App, SystemConfig
 
@@ -39,6 +44,43 @@ async def resource_collection_loop():
         except Exception as e:
             logger.error(f"Resource collection error: {e}")
         await asyncio.sleep(60)
+
+
+async def app_log_collection_loop():
+    """Mirror each running app's docker logs to the DB every 30 seconds.
+
+    Required for 90-day retention under พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560.
+    """
+    # Seed checkpoints from existing DB rows so a restart doesn't replay
+    db = SessionLocal()
+    try:
+        bootstrap_app_log_checkpoints(db)
+    except Exception as e:
+        logger.error(f"App log bootstrap error: {e}")
+    finally:
+        db.close()
+
+    while True:
+        try:
+            db = SessionLocal()
+            collect_app_logs(db)
+            db.close()
+        except Exception as e:
+            logger.error(f"App log collection error: {e}")
+        await asyncio.sleep(30)
+
+
+async def app_log_retention_loop():
+    """Daily purge of app log entries older than 90 days."""
+    # Run once at startup to clean any stale rows, then daily afterwards.
+    while True:
+        try:
+            db = SessionLocal()
+            purge_app_logs(db)
+            db.close()
+        except Exception as e:
+            logger.error(f"App log retention error: {e}")
+        await asyncio.sleep(86400)  # 24h
 
 
 def _apply_lightweight_migrations():
@@ -83,12 +125,16 @@ async def lifespan(app: FastAPI):
     _start_mdns()
     task = asyncio.create_task(tunnel_cleanup_loop())
     resource_task = asyncio.create_task(resource_collection_loop())
+    app_log_task = asyncio.create_task(app_log_collection_loop())
+    app_log_purge_task = asyncio.create_task(app_log_retention_loop())
     logger.info(f"IVS Backend started - {settings.APP_NAME} v{settings.APP_VERSION}")
     yield
     ntp_service.stop()
     mdns_service.stop()
     task.cancel()
     resource_task.cancel()
+    app_log_task.cancel()
+    app_log_purge_task.cancel()
 
 
 def _seed_admin():
