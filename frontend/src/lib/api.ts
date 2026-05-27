@@ -267,8 +267,12 @@ export const api = {
       body: JSON.stringify(values),
     }),
 
-  triggerRetentionPurge: () =>
-    request<Record<string, number>>("/system/retention/purge", { method: "POST" }),
+  triggerRetentionPurge: (password: string) =>
+    request<Record<string, number>>("/system/retention/purge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    }),
 
   downloadAuditLogExport: (id: number) =>
     `${API_BASE}/system/audit-logs/exports/${id}/download`,

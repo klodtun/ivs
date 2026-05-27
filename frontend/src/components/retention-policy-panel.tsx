@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 
 const COLLAPSED_KEY = "ivs.retention_panel.collapsed";
 
@@ -23,6 +24,7 @@ export function RetentionPolicyPanel() {
   const [edits, setEdits] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [purging, setPurging] = useState(false);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeResult, setPurgeResult] = useState<Record<string, number> | null>(null);
   const [toast, setToast] = useState<string>("");
   // Default to collapsed because the average admin touches this rarely.
@@ -131,16 +133,23 @@ export function RetentionPolicyPanel() {
     }
   };
 
-  const handlePurge = async () => {
-    if (!confirm(t("retention.purge_confirm"))) return;
+  // Open the password modal; the modal itself handles confirmation.
+  const handlePurge = () => setShowPurgeModal(true);
+
+  // Called by the modal after the user has typed their password.
+  // We throw on backend rejection so the modal can show the error inline
+  // (instead of closing and the user not knowing what happened).
+  const handlePurgeConfirmed = async (password: string) => {
     setPurging(true);
     try {
-      const result = await api.triggerRetentionPurge();
+      const result = await api.triggerRetentionPurge(password);
       setPurgeResult(result);
       setToast(t("retention.purge_done"));
       setTimeout(() => setToast(""), 5000);
+      setShowPurgeModal(false);
     } catch (e: any) {
-      alert(e.message);
+      // Re-throw so PasswordConfirmModal displays the message and keeps itself open
+      throw e;
     } finally {
       setPurging(false);
     }
@@ -278,6 +287,23 @@ export function RetentionPolicyPanel() {
           </button>
         </div>
       </div>
+
+      {/* Password-confirm modal for the destructive purge action */}
+      {showPurgeModal && (
+        <PasswordConfirmModal
+          title={t("retention.purge_modal_title")}
+          description={t("retention.purge_modal_desc")}
+          consequences={[
+            t("retention.purge_modal_consequence_1"),
+            t("retention.purge_modal_consequence_2"),
+            t("retention.purge_modal_consequence_3"),
+          ]}
+          legalNote={t("retention.purge_modal_legal")}
+          confirmLabel={t("retention.purge_modal_confirm")}
+          onConfirm={handlePurgeConfirmed}
+          onCancel={() => setShowPurgeModal(false)}
+        />
+      )}
 
       {/* Purge result detail */}
       {purgeResult && (

@@ -332,6 +332,27 @@ const translations: Record<Locale, Record<string, string>> = {
     "retention.purge_done": "✓ ลบข้อมูลเก่าสำเร็จ",
     "retention.purge_tooltip": "ปกติระบบลบให้อัตโนมัติทุกวัน คลิกถ้าต้องการลบทันที (เช่นหลังลดระยะเวลาเก็บ)",
     "retention.purge_confirm": "ยืนยันลบข้อมูลที่เกินกำหนดเก็บ? การกระทำนี้ย้อนกลับไม่ได้",
+
+    // Password-confirm modal for the manual purge
+    "retention.purge_modal_title": "ยืนยันการลบข้อมูล",
+    "retention.purge_modal_desc": "การลบข้อมูลทันทีเป็นการกระทำที่ย้อนกลับไม่ได้ และอาจขัดกับข้อกำหนดทางกฎหมายหากระยะเวลาเก็บปัจจุบันยังต่ำกว่าที่กฎหมายกำหนด กรุณาใส่รหัสผ่านของคุณเพื่อยืนยันตัวตนก่อนทำรายการ",
+    "retention.purge_modal_consequence_1": "ลบ records ที่เกินระยะเวลาเก็บจาก audit_logs, app_logs, resource_metrics และ exports ทันที",
+    "retention.purge_modal_consequence_2": "ลบไฟล์ .zip ของ exports ที่เกินกำหนดออกจาก disk จริง (ไม่อยู่ใน trash)",
+    "retention.purge_modal_consequence_3": "บันทึก audit log ระดับ WARNING พร้อมระบุ user, IP, และเวลาที่กดยืนยัน",
+    "retention.purge_modal_legal": "พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560 §26 บังคับให้เก็บข้อมูลจราจรอย่างน้อย 90 วัน หากท่านลดระยะเวลาเก็บต่ำกว่าค่าทางกฎหมาย และลบข้อมูลผ่านปุ่มนี้ ท่านอาจมีความรับผิดทางกฎหมาย",
+    "retention.purge_modal_confirm": "ยืนยันลบ",
+
+    // Generic password-confirm modal
+    "password_confirm.subtitle": "ต้องยืนยันตัวตนซ้ำก่อนทำรายการ",
+    "password_confirm.consequences": "ผลกระทบของการกระทำนี้",
+    "password_confirm.label": "รหัสผ่านของคุณ",
+    "password_confirm.placeholder": "ใส่รหัสผ่านปัจจุบัน",
+    "password_confirm.show": "แสดงรหัสผ่าน",
+    "password_confirm.hide": "ซ่อนรหัสผ่าน",
+    "password_confirm.cancel": "ยกเลิก",
+    "password_confirm.working": "กำลังดำเนินการ…",
+    "password_confirm.error_generic": "ไม่สามารถยืนยันได้ กรุณาลองใหม่",
+    "password_confirm.forensic_note": "การพยายามยืนยันทุกครั้งจะถูกบันทึก audit log ระดับ WARNING — รวมถึงครั้งที่รหัสผ่านผิด",
     "retention.purge_result": "ผลการลบ (จำนวน records)",
     // Per-type labels
     "retention.type.audit_logs": "บันทึกเหตุการณ์ระบบ (Audit Logs)",
@@ -1103,6 +1124,27 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "retention.purge_done": "✓ Purge complete",
     "retention.purge_tooltip": "Normally runs daily. Click to purge immediately (e.g. after lowering retention).",
     "retention.purge_confirm": "Confirm purge of expired data? This cannot be undone.",
+
+    // Password-confirm modal for the manual purge
+    "retention.purge_modal_title": "Confirm data purge",
+    "retention.purge_modal_desc": "An immediate purge is irreversible and may violate legal requirements if the current retention period is set below the statutory minimum. Please re-enter your password to confirm your identity before proceeding.",
+    "retention.purge_modal_consequence_1": "Immediately delete records past the retention window from audit_logs, app_logs, resource_metrics, and exports",
+    "retention.purge_modal_consequence_2": "Remove expired .zip export files from disk (not the OS trash)",
+    "retention.purge_modal_consequence_3": "Write a WARNING-level audit log capturing user, IP, and the exact time you confirmed",
+    "retention.purge_modal_legal": "Thai Computer Crime Act B.E. 2560 §26 mandates a 90-day minimum retention of computer-traffic data. If you have lowered the retention below the legal floor AND used this button to delete data, you may incur personal legal liability.",
+    "retention.purge_modal_confirm": "Confirm purge",
+
+    // Generic password-confirm modal
+    "password_confirm.subtitle": "Re-authentication required before proceeding",
+    "password_confirm.consequences": "What this will do",
+    "password_confirm.label": "Your password",
+    "password_confirm.placeholder": "Enter your current password",
+    "password_confirm.show": "Show password",
+    "password_confirm.hide": "Hide password",
+    "password_confirm.cancel": "Cancel",
+    "password_confirm.working": "Working…",
+    "password_confirm.error_generic": "Unable to verify. Please try again.",
+    "password_confirm.forensic_note": "Every attempt is recorded as a WARNING-level audit log — including failed password attempts.",
     "retention.purge_result": "Purge result (record counts)",
     // Per-type labels
     "retention.type.audit_logs": "System Audit Logs",

@@ -6,7 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from typing import Optional
 import psutil
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import asyncio
@@ -14,7 +14,7 @@ import json
 from app.database import get_db, SessionLocal
 from app.models import User, UserRole, App, AppStatus, AuditLog, AuditLogExport, SystemConfig
 from app.schemas import SystemHealth, AuditLogResponse, AuditLogExportResponse, AuditLogExportRequest, DNSConfigUpdate, DNSConfigResponse
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import get_current_user, require_role, verify_password
 from app.services.docker_service import docker_service
 from app.services.audit_service import create_audit_log
 from app.services.ntp_service import ntp_service
@@ -775,18 +775,39 @@ async def update_retention_settings(
 @router.post("/retention/purge")
 async def trigger_retention_purge(
     request: Request,
+    payload: dict,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Manually trigger the retention purge that normally runs daily.
 
-    Useful right after lowering a retention value, so the admin doesn't
-    have to wait 24h to see disk reclaimed.
+    Body: { "password": "<the caller's own password>" }
+
+    Manual purge is destructive and bypasses the daily safety cadence:
+    it could wipe records that the law requires to be kept. We re-prompt
+    for the caller's own login password (re-authentication) so a logged-in
+    session that's been left open can't be one-click-purged by a passerby.
+    Failed attempts are audit-logged at WARNING level for forensics.
     """
+    password = (payload or {}).get("password", "")
+    if not password or not verify_password(password, user.password_hash):
+        # Don't reveal whether the user exists or password is wrong — generic 403.
+        create_audit_log(
+            db, request, user=user, action="trigger_retention_purge_denied",
+            resource_type="system",
+            details="Purge attempt denied — password re-authentication failed",
+            log_level="WARNING",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="Password verification failed. Manual purge requires re-authentication.",
+        )
+
     result = retention_service.purge_all(db)
     create_audit_log(
         db, request, user=user, action="trigger_retention_purge", resource_type="system",
-        details=f"Manual purge: {result}",
+        details=f"Manual purge (re-authenticated): {result}",
         log_level="WARNING",
     )
     db.commit()
