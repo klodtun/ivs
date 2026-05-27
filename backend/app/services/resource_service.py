@@ -36,7 +36,8 @@ def _get_gpu_info() -> dict:
         out = subprocess.check_output(["sysctl", "-n", "hw.memsize"], timeout=3, stderr=subprocess.DEVNULL)
         total_mb = int(out.strip()) // (1024 * 1024)
         mem = psutil.virtual_memory()
-        used_mb = mem.used // (1024 * 1024)
+        # Use (total - available) so bytes match mem.percent on macOS
+        used_mb = (mem.total - mem.available) // (1024 * 1024)
         return {"used_mb": used_mb, "total_mb": total_mb, "type": "apple_silicon"}
     except Exception:
         return {"used_mb": None, "total_mb": None, "type": "none"}
@@ -71,12 +72,13 @@ def collect_snapshot(db: Session):
     running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
     per_app = _get_per_app_stats(db)
 
+    # Match the same accounting as get_current_resources() for chart consistency
     metric = ResourceMetric(
         cpu_percent=int(cpu),
-        memory_used_mb=int(mem.used / (1024 * 1024)),
+        memory_used_mb=int((mem.total - mem.available) / (1024 * 1024)),
         memory_total_mb=int(mem.total / (1024 * 1024)),
         disk_used_gb=int(disk.used / (1024 ** 3)),
-        disk_total_gb=int(disk.total / (1024 ** 3)),
+        disk_total_gb=int((disk.used + disk.free) / (1024 ** 3)),
         gpu_memory_used_mb=gpu["used_mb"],
         gpu_memory_total_mb=gpu["total_mb"],
         apps_running=running,
@@ -105,14 +107,24 @@ def get_current_resources(db: Session) -> dict:
     running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
     per_app = _get_per_app_stats(db)
 
-    mem_used_mb = int(mem.used / (1024 * 1024))
+    # Memory accounting — keep bytes, percent, and "free for new apps" consistent:
+    #   - memory_used_mb     uses (total - available), matches mem.percent
+    #     (otherwise on macOS inactive/cached pages cause bytes vs % mismatch).
+    #   - mem_available_mb   = psutil's "actually free for new processes"
+    #     used for capacity planning (apps_can_add).
     mem_total_mb = int(mem.total / (1024 * 1024))
-    mem_free_mb = mem_total_mb - mem_used_mb
-    disk_used_gb = round(disk.used / (1024 ** 3), 1)
-    disk_total_gb = round(disk.total / (1024 ** 3), 1)
+    mem_used_mb = int((mem.total - mem.available) / (1024 * 1024))
+    mem_available_mb = int(mem.available / (1024 * 1024))
 
-    # Capacity estimation
-    apps_can_add = max(0, int(mem_free_mb * 0.7 / ESTIMATED_APP_RAM_MB))  # use 70% of free RAM
+    # Disk accounting — on macOS APFS, disk.total includes purgeable space
+    # shared with other volumes (used + free ≠ total). psutil.disk.percent uses
+    # used / (used + free), so use that as the effective total to stay consistent.
+    disk_used_gb = round(disk.used / (1024 ** 3), 1)
+    disk_total_gb = round((disk.used + disk.free) / (1024 ** 3), 1)
+
+    # Capacity estimation — base on memory actually available for new allocations,
+    # not (total - used). Reserve 30% headroom for OS/system bursts.
+    apps_can_add = max(0, int(mem_available_mb * 0.7 / ESTIMATED_APP_RAM_MB))
 
     # Alerts
     alerts = []
@@ -153,7 +165,7 @@ def get_current_resources(db: Session) -> dict:
             "apps_total": total,
             "estimated_apps_can_add": apps_can_add,
             "estimated_ram_per_app_mb": ESTIMATED_APP_RAM_MB,
-            "ram_free_mb": mem_free_mb,
+            "ram_free_mb": mem_available_mb,
         },
         "per_app": per_app,
         "alerts": alerts,
