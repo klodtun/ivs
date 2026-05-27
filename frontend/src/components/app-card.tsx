@@ -31,6 +31,7 @@ export function AppCard({
   const { t } = useLang();
   const [loading, setLoading] = useState("");
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
+  const [showPrivacyReview, setShowPrivacyReview] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const canManage = userRole === "admin" || userRole === "developer";
@@ -95,13 +96,30 @@ export function AppCard({
       )}
 
       {appUrl && (
-        <a href={appUrl} onClick={handleOpenApp}
-          className="inline-flex items-center gap-1 text-[10px] text-brand-600 hover:text-brand-700 mb-2">
-          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          {typeof window !== "undefined" ? window.location.hostname : "localhost"}:{app.port}
-        </a>
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <a href={appUrl} onClick={handleOpenApp}
+            className="inline-flex items-center gap-1 text-[10px] text-brand-600 hover:text-brand-700">
+            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            {typeof window !== "undefined" ? window.location.hostname : "localhost"}:{app.port}
+          </a>
+          {/*
+            Privacy-notice review link — clicking opens the popup in
+            "review" mode so the user can see their current accept/decline
+            decision and switch it whenever they want (PDPA §19 — withdraw
+            must be as easy as consent).
+          */}
+          <button
+            type="button"
+            onClick={() => setShowPrivacyReview(true)}
+            title={t("app.privacy_review_tooltip")}
+            className="inline-flex items-center gap-0.5 text-[10px] text-gray-500 hover:text-purple-700 transition"
+          >
+            <span className="text-xs leading-none">🛡️</span>
+            <span className="hidden sm:inline">{t("app.privacy_review")}</span>
+          </button>
+        </div>
       )}
 
       <div className="flex items-center justify-between text-[9px] text-gray-400 mb-2">
@@ -165,13 +183,25 @@ export function AppCard({
         </div>
       )}
 
-      {/* Privacy Notice Popup */}
+      {/* Privacy Notice Popup — gate mode (blocks app entry) */}
       {showPrivacyNotice && (
         <PrivacyNoticePopup
           appId={app.id}
+          mode="gate"
           onAccept={handlePrivacyAccepted}
           onDecline={() => setShowPrivacyNotice(false)}
           onAlreadyAccepted={() => setShowPrivacyNotice(false)}
+        />
+      )}
+
+      {/* Privacy Notice Popup — review mode (user explicitly clicked
+          the 🛡️ link to view / change their decision) */}
+      {showPrivacyReview && (
+        <PrivacyNoticePopup
+          appId={app.id}
+          mode="review"
+          onAccept={() => setShowPrivacyReview(false)}
+          onClose={() => setShowPrivacyReview(false)}
         />
       )}
 

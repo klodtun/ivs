@@ -109,6 +109,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "app.export": "Export",
     "app.export_tooltip": "ดาวน์โหลดโปรแกรม + ข้อมูล เป็นไฟล์ .zip",
     "app.export_owner_only_tooltip": "เฉพาะผู้ Deploy แอปนี้เท่านั้นที่ Export ได้ (ป้องกันความละเมิดลิขสิทธิ์)",
+    "app.privacy_review": "ประกาศแจ้งเตือน",
+    "app.privacy_review_tooltip": "ดู / เปลี่ยนการยอมรับประกาศแจ้งเตือน PDPA ของแอปนี้",
 
     // Export Modal
     "export.title_working": "กำลังสร้างไฟล์ Export…",
@@ -936,6 +938,8 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "app.export": "Export",
     "app.export_tooltip": "Download program + data as a .zip backup",
     "app.export_owner_only_tooltip": "Only the original deployer of this app can export it (copyright protection)",
+    "app.privacy_review": "Privacy notice",
+    "app.privacy_review_tooltip": "View / change your PDPA consent for this app",
 
     // Export Modal
     "export.title_working": "Creating export bundle…",

@@ -9,9 +9,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
-from app.models import User, UserRole, App, AppPdpa, PdpaStatus
+from app.models import User, UserRole, App, AppPdpa, PdpaStatus, PdpaConsent
 from app.schemas import PdpaUpdate, PdpaResponse, PdpaScanResult, RopaExportResponse, PrivacyNoticeUpdate, PrivacyNoticeResponse
 from app.middleware.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
@@ -423,3 +424,155 @@ async def update_privacy_notice(
         privacy_policy_url=pdpa.privacy_policy_url or "",
         privacy_notice_url=pdpa.privacy_notice_url or "",
     )
+
+
+# ============================================================
+# PDPA Consent — per-user, per-app accept/decline tracking
+# ============================================================
+# §19 of the PDPA requires a record of consent (when, by whom, what was
+# accepted) AND that the user can withdraw consent as easily as they
+# granted it. We store each decision as its own row so the trail is
+# preserved; the latest row for a (user, app) is the active decision.
+# ============================================================
+
+
+def _notice_version_hash(pdpa: AppPdpa) -> str:
+    """Hash of the notice content the user actually saw — lets us tell later
+    whether the consented-to notice is still the live one."""
+    text = (
+        (pdpa.privacy_notice_title or "")
+        + "|"
+        + (pdpa.privacy_notice_detail or "")
+        + "|"
+        + (pdpa.privacy_policy_url or "")
+    )
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _client_ip(request: Request):
+    """Honor X-Forwarded-For if present (proxy / Caddy), otherwise direct."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+@router.post("/{app_id}/consent")
+async def record_consent(
+    app_id: int,
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Record an accept/decline decision for the current user on this app.
+
+    Body: { "decision": "accepted" | "declined" }
+
+    Each call inserts a new row, so changing one's mind later doesn't
+    overwrite the historical record — required for the §19 evidence
+    trail. The frontend treats the latest row as the active decision.
+    """
+    decision = (payload or {}).get("decision", "").strip().lower()
+    if decision not in ("accepted", "declined"):
+        raise HTTPException(
+            status_code=400,
+            detail="decision must be 'accepted' or 'declined'",
+        )
+
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    pdpa = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    notice_version = _notice_version_hash(pdpa) if pdpa else None
+
+    consent = PdpaConsent(
+        user_id=user.id,
+        app_id=app_id,
+        decision=decision,
+        ip_address=_client_ip(request),
+        user_agent=(request.headers.get("user-agent") or "")[:500],
+        notice_version=notice_version,
+    )
+    db.add(consent)
+    create_audit_log(
+        db, request, user=user, action=f"pdpa_consent_{decision}",
+        resource_type="app", resource_id=str(app_id),
+        details=f"PDPA consent {decision} for app {app.name} (notice v={notice_version})",
+        log_level="INFO",
+    )
+    db.commit()
+    db.refresh(consent)
+    return {
+        "id": consent.id,
+        "decision": consent.decision,
+        "app_id": app_id,
+        "notice_version": notice_version,
+        "created_at": consent.created_at.isoformat() if consent.created_at else None,
+    }
+
+
+@router.get("/{app_id}/consent")
+async def get_my_consent(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the current user's latest consent decision for one app.
+
+    Used to populate the "review" mode of the popup so the user sees
+    their current choice before changing it.
+    """
+    latest = (
+        db.query(PdpaConsent)
+        .filter(PdpaConsent.user_id == user.id, PdpaConsent.app_id == app_id)
+        .order_by(PdpaConsent.created_at.desc())
+        .first()
+    )
+    if not latest:
+        return {"decision": None, "created_at": None}
+    return {
+        "id": latest.id,
+        "decision": latest.decision,
+        "created_at": latest.created_at.isoformat() if latest.created_at else None,
+        "notice_version": latest.notice_version,
+    }
+
+
+@router.get("/consents/mine")
+async def list_my_consents(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List the current user's latest decision across every app that has
+    a Privacy Notice configured. Used for an "all my consents" view."""
+    # Latest consent per app
+    sub = (
+        db.query(
+            PdpaConsent.app_id.label("app_id"),
+            func.max(PdpaConsent.created_at).label("ts"),
+        )
+        .filter(PdpaConsent.user_id == user.id)
+        .group_by(PdpaConsent.app_id)
+        .subquery()
+    )
+    rows = (
+        db.query(PdpaConsent, App)
+        .join(sub, (PdpaConsent.app_id == sub.c.app_id) & (PdpaConsent.created_at == sub.c.ts))
+        .join(App, App.id == PdpaConsent.app_id)
+        .filter(PdpaConsent.user_id == user.id)
+        .order_by(PdpaConsent.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "app_id": app.id,
+            "app_name": app.name,
+            "app_slug": app.slug,
+            "decision": consent.decision,
+            "created_at": consent.created_at.isoformat() if consent.created_at else None,
+            "notice_version": consent.notice_version,
+        }
+        for consent, app in rows
+    ]

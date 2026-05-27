@@ -249,6 +249,36 @@ class AppPdpa(Base):
     app = relationship("App")
 
 
+class PdpaConsent(Base):
+    """
+    Per-user, per-app record of consent decisions for the PDPA Privacy
+    Notice popup.
+
+    PDPA §19 requires informed consent and the ability for the data
+    subject to withdraw consent as easily as they granted it. We keep
+    each decision as a discrete row so the history is preserved — the
+    "current" decision for a user/app is the most recent row.
+
+    A user can change their mind any time by clicking the privacy-notice
+    link on the AppCard; that creates a new row with the new decision
+    and the prior row is naturally superseded.
+    """
+    __tablename__ = "pdpa_consents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    app_id = Column(Integer, ForeignKey("apps.id", ondelete="CASCADE"),
+                    nullable=False, index=True)
+    decision = Column(String(20), nullable=False)  # "accepted" | "declined"
+    # Evidence captured at the moment of consent — required for §19 audit
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    # Optional reference to which version of the notice they saw
+    notice_version = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+
 class ResourceMetric(Base):
     """Historical resource usage snapshots — collected every 60 seconds."""
     __tablename__ = "resource_metrics"

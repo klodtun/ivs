@@ -407,6 +407,38 @@ export const api = {
       privacy_notice_url: string;
     }>(`/pdpa/privacy-notice/by-slug/${slug}`),
 
+  // PDPA Consent — accept/decline tracking per user, per app
+  recordPdpaConsent: (appId: number, decision: "accepted" | "declined") =>
+    request<{
+      id: number;
+      decision: string;
+      app_id: number;
+      notice_version: string | null;
+      created_at: string | null;
+    }>(`/pdpa/${appId}/consent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision }),
+    }),
+
+  getMyPdpaConsent: (appId: number) =>
+    request<{
+      id?: number;
+      decision: "accepted" | "declined" | null;
+      created_at: string | null;
+      notice_version?: string | null;
+    }>(`/pdpa/${appId}/consent`),
+
+  listMyPdpaConsents: () =>
+    request<Array<{
+      app_id: number;
+      app_name: string;
+      app_slug: string;
+      decision: "accepted" | "declined";
+      created_at: string | null;
+      notice_version: string | null;
+    }>>(`/pdpa/consents/mine`),
+
   updatePrivacyNotice: (appId: number, data: {
     privacy_notice_enabled?: boolean;
     privacy_notice_title?: string;
