@@ -35,10 +35,15 @@ async def get_system_health(db: Session = Depends(get_db), user: User = Depends(
     total = db.query(App).count()
     running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
 
+    # IMPORTANT: psutil.virtual_memory().percent uses (total - available) / total,
+    # which on macOS includes inactive/cached pages, while mem.used excludes them.
+    # Use (total - available) here so the displayed bytes match the percentage gauge.
+    memory_used = mem.total - mem.available
+
     return SystemHealth(
         cpu_percent=cpu,
         memory_total=mem.total,
-        memory_used=mem.used,
+        memory_used=memory_used,
         memory_percent=mem.percent,
         disk_total=disk.total,
         disk_used=disk.used,
@@ -517,7 +522,7 @@ async def ws_health(websocket: WebSocket):
             await websocket.send_json({
                 "cpu_percent": cpu,
                 "memory_percent": mem.percent,
-                "memory_used": mem.used,
+                "memory_used": mem.total - mem.available,  # Match percent calculation
                 "memory_total": mem.total,
                 "disk_percent": disk.percent,
                 "disk_used": disk.used,

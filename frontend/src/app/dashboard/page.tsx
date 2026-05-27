@@ -12,14 +12,23 @@ export default function DashboardPage() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [apps, setApps] = useState<App[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    setIsRefreshing(true);
+    setRefreshError(null);
     try {
       const [h, a] = await Promise.all([api.getSystemHealth(), api.getApps()]);
       setHealth(h);
       setApps(a);
+      setLastRefresh(new Date());
     } catch (e) {
       console.error("Failed to load dashboard data", e);
+      setRefreshError(e instanceof Error ? e.message : "Failed to refresh");
+    } finally {
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -40,6 +49,9 @@ export default function DashboardPage() {
 
   const canDeploy = user && (user.role === "admin" || user.role === "developer");
 
+  const formatTime = (d: Date) =>
+    d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -47,10 +59,34 @@ export default function DashboardPage() {
           <h1 className="text-lg font-bold text-gray-900">{t("dash.title")}</h1>
           <p className="text-gray-500 text-[10px] mt-0.5">{t("dash.subtitle")}</p>
         </div>
-        <button onClick={loadData}
-          className="px-3 py-1 text-[10px] bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition text-gray-600">
-          {t("dash.refresh")}
-        </button>
+        <div className="flex items-center gap-2">
+          {lastRefresh && !refreshError && (
+            <span className="text-[10px] text-gray-400">
+              {t("dash.last_updated")}: {formatTime(lastRefresh)}
+            </span>
+          )}
+          {refreshError && (
+            <span className="text-[10px] text-red-500" title={refreshError}>
+              ⚠ {t("dash.refresh_failed")}
+            </span>
+          )}
+          <button
+            onClick={loadData}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-1 px-3 py-1 text-[10px] bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition text-gray-600 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <svg
+              className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {isRefreshing ? t("dash.refreshing") : t("dash.refresh")}
+          </button>
+        </div>
       </div>
 
       <SystemHealthPanel health={health} />
