@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { cn, timeRemaining } from "@/lib/utils";
 import { Tunnel, App } from "@/types";
+import { Pagination, usePagination } from "@/components/pagination";
 
 const durationOptions = [
   { value: 1, labelKey: "tunnel.dur.1m" },
@@ -21,6 +22,14 @@ export default function TunnelsPage() {
   const [duration, setDuration] = useState(60);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const {
+    paged: pagedTunnels,
+    page: tunnelPage,
+    pageSize: tunnelPageSize,
+    setPage: setTunnelPage,
+    setPageSize: setTunnelPageSize,
+    total: tunnelTotal,
+  } = usePagination(tunnels, 25);
 
   const loadData = useCallback(async () => {
     try {
@@ -125,7 +134,7 @@ export default function TunnelsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {tunnels.map((tunnel) => {
+                {pagedTunnels.map((tunnel) => {
                   const effectiveStatus = getEffectiveStatus(tunnel);
                   const isActive = effectiveStatus === "active";
                   const remaining = isActive ? timeRemaining(tunnel.expires_at) : "-";
@@ -192,6 +201,14 @@ export default function TunnelsPage() {
                 })}
               </tbody>
             </table>
+            <Pagination
+              total={tunnelTotal}
+              page={tunnelPage}
+              pageSize={tunnelPageSize}
+              onPageChange={setTunnelPage}
+              onPageSizeChange={setTunnelPageSize}
+              itemLabel={t("tunnel.item_label")}
+            />
           </div>
         )}
       </div>

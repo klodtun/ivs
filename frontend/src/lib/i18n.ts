@@ -294,6 +294,22 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.export_chunk_tip": "ถ้า log เยอะ ระบบจะแบ่งเป็นหลายไฟล์ภายใน .zip เดียวเพื่อเปิดอ่านง่าย",
     "settings.export_chunk_note": "ระบบจะรวมทุกไฟล์ใน .zip เดียว และคำนวณ SHA-256 ของทั้ง bundle เพื่อตรวจสอบความสมบูรณ์",
 
+    // Pagination
+    "pagination.showing": "แสดง",
+    "pagination.of": "จาก",
+    "pagination.per_page": "ต่อหน้า",
+    "pagination.first": "หน้าแรก",
+    "pagination.prev": "หน้าก่อน",
+    "pagination.next": "หน้าถัดไป",
+    "pagination.last": "หน้าสุดท้าย",
+    "settings.export_date_tooltip": "วันที่และเวลาที่ Export ครั้งนี้ — รูปแบบ ISO พร้อม timezone offset เพื่อใช้อ้างอิงทางกฎหมาย",
+    "settings.export_history_item_label": "รายการ",
+    "settings.log.time_tooltip": "เวลาที่บันทึก (UTC offset แสดงเพื่อความน่าเชื่อถือทางกฎหมาย)",
+    "settings.log.item_label": "บันทึก",
+    "settings.users_item_label": "ผู้ใช้",
+    "tunnel.item_label": "tunnels",
+    "res.per_app_item_label": "แอป",
+
     // PDPA
     "settings.pdpa_title": "PDPA — บันทึกรายการกิจกรรม (ROPA)",
     "settings.pdpa_desc": "ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562",
@@ -1014,6 +1030,22 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.export_chunk_unit": "records",
     "settings.export_chunk_tip": "If logs are large, they're split into multiple files inside a single .zip for easier viewing",
     "settings.export_chunk_note": "All chunks are bundled in one .zip with a single SHA-256 covering the whole archive — atomic download, no partial failures.",
+
+    // Pagination
+    "pagination.showing": "Showing",
+    "pagination.of": "of",
+    "pagination.per_page": "Per page",
+    "pagination.first": "First page",
+    "pagination.prev": "Previous page",
+    "pagination.next": "Next page",
+    "pagination.last": "Last page",
+    "settings.export_date_tooltip": "Timestamp of this export — ISO format with timezone offset, for legal reference",
+    "settings.export_history_item_label": "exports",
+    "settings.log.time_tooltip": "Event timestamp (timezone offset shown for legal traceability)",
+    "settings.log.item_label": "events",
+    "settings.users_item_label": "users",
+    "tunnel.item_label": "tunnels",
+    "res.per_app_item_label": "apps",
 
     // PDPA
     "settings.pdpa_title": "PDPA — Record of Processing Activities (ROPA)",

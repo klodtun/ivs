@@ -2,7 +2,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
-import { cn, formatDateTimeSeconds, timeAgo } from "@/lib/utils";
+import { cn, formatDateTimeSeconds, formatLegalTimestamp, timeAgo } from "@/lib/utils";
+import { Pagination, usePagination } from "@/components/pagination";
+import { ExportHistoryTable } from "@/components/export-history-table";
+import { AuditLogTable } from "@/components/audit-log-table";
+import { UsersTableSection } from "@/components/users-table-section";
 import { User, App, AuditLog, AuditLogExport } from "@/types";
 
 type Tab = "users" | "logs" | "dns" | "network" | "pdpa" | "gitea" | "autostart";
@@ -469,67 +473,14 @@ export default function SettingsPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 text-gray-500 text-[9px] uppercase">
-                <tr>
-                  <th className="px-3 py-2 text-left">{t("settings.col.user")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.col.email")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.col.role")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.col.app_access")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.col.status")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.col.created")}</th>
-                  <th className="px-3 py-2 text-right">{t("settings.col.actions")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {users.map((u) => (
-                  <tr key={u.id} className={cn("hover:bg-gray-50", editAccess?.id === u.id && "bg-brand-50")}>
-                    <td className="px-3 py-2 font-medium text-gray-900">{u.username}</td>
-                    <td className="px-3 py-2 text-gray-600">{u.email}</td>
-                    <td className="px-3 py-2">
-                      <select value={u.role} onChange={(e) => changeRole(u, e.target.value)}
-                        className={cn("text-[9px] px-1.5 py-0.5 rounded-full font-medium border-0 cursor-pointer", roleBadge[u.role] || "bg-gray-100")}>
-                        <option value="viewer">{t("role.viewer")}</option>
-                        <option value="developer">{t("role.developer")}</option>
-                        <option value="admin">{t("role.admin")}</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      {u.role === "admin" ? (
-                        <span className="text-[9px] px-1.5 py-px rounded-full bg-red-50 text-red-600 font-medium">{t("settings.full_access")}</span>
-                      ) : u.access_all_apps ? (
-                        <span className="text-[9px] px-1.5 py-px rounded-full bg-green-100 text-green-700 font-medium">{t("settings.access_all")}</span>
-                      ) : (u.allowed_app_ids?.length || 0) > 0 ? (
-                        <span className="text-[9px] px-1.5 py-px rounded-full bg-blue-100 text-blue-700 font-medium">
-                          {u.allowed_app_ids?.length} {t("settings.apps_assigned")}
-                        </span>
-                      ) : (
-                        <span className="text-[9px] px-1.5 py-px rounded-full bg-gray-100 text-gray-500 font-medium">{t("settings.no_access")}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={cn("text-[9px] px-1.5 py-px rounded-full font-medium", u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600")}>
-                        {u.is_active ? t("settings.active") : t("settings.disabled")}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-400 text-[9px]">{timeAgo(u.created_at)}</td>
-                    <td className="px-3 py-2 text-right space-x-2">
-                      {u.role !== "admin" && (
-                        <button onClick={() => openAccessPanel(u)} className="text-[10px] text-brand-600 hover:text-brand-700 font-medium">
-                          {t("settings.set_access")}
-                        </button>
-                      )}
-                      <button onClick={() => toggleActive(u)}
-                        className={cn("text-[10px] font-medium", u.is_active ? "text-red-600 hover:text-red-700" : "text-green-600 hover:text-green-700")}>
-                        {u.is_active ? t("settings.disable") : t("settings.enable")}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UsersTableSection
+            users={users}
+            roleBadge={roleBadge}
+            editAccessId={editAccess?.id}
+            onChangeRole={changeRole}
+            onOpenAccess={openAccessPanel}
+            onToggleActive={toggleActive}
+          />
         </div>
       )}
 
@@ -644,116 +595,11 @@ export default function SettingsPage() {
               <p className="text-[9px] text-gray-400 leading-snug">{t("settings.export_chunk_note")}</p>
             </div>
 
-            {exports.length > 0 ? (
-              <div className="overflow-hidden rounded-md border border-gray-100">
-                <table className="w-full text-[10px]">
-                  <thead className="bg-gray-50 text-gray-500 text-[8px] uppercase">
-                    <tr>
-                      <th className="px-2 py-1.5 text-left">{t("settings.export_filename")}</th>
-                      <th className="px-2 py-1.5 text-left">{t("settings.export_range_col")}</th>
-                      <th className="px-2 py-1.5 text-center">{t("settings.export_records")}</th>
-                      <th className="px-2 py-1.5 text-center">{t("settings.export_files_col")}</th>
-                      <th className="px-2 py-1.5 text-left">{t("settings.export_hash")}</th>
-                      <th className="px-2 py-1.5 text-left">{t("settings.export_date")}</th>
-                      <th className="px-2 py-1.5 text-right"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {exports.map((exp) => {
-                      const fmt = (s: string | null) =>
-                        s ? new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) : "—";
-                      const rangeLabel =
-                        !exp.start_date && !exp.end_date
-                          ? t("settings.export_range_all_label")
-                          : `${fmt(exp.start_date)} → ${fmt(exp.end_date)}`;
-                      return (
-                      <tr key={exp.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-1.5 font-mono text-gray-700 max-w-[180px] truncate" title={exp.filename}>{exp.filename}</td>
-                        <td className="px-2 py-1.5 text-gray-600">{rangeLabel}</td>
-                        <td className="px-2 py-1.5 text-center text-gray-600">{exp.record_count.toLocaleString()}</td>
-                        <td className="px-2 py-1.5 text-center text-gray-600">{exp.file_count || 1}</td>
-                        <td className="px-2 py-1.5 font-mono text-gray-500 max-w-[140px] truncate" title={exp.sha256_hash}>{exp.sha256_hash.substring(0, 16)}…</td>
-                        <td className="px-2 py-1.5 text-gray-400">{timeAgo(exp.created_at)}</td>
-                        <td className="px-2 py-1.5 text-right">
-                          <button onClick={() => handleDownloadExport(exp.id)}
-                            className="text-brand-600 hover:text-brand-700 font-medium">
-                            {t("settings.export_download")}
-                          </button>
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-[10px] text-gray-400 text-center py-2">{t("settings.export_no_history")}</p>
-            )}
+            <ExportHistoryTable exports={exports} onDownload={handleDownloadExport} />
           </div>
 
-          {/* Audit log table — พ.ร.บ. คอมพิวเตอร์ compliant */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-              <p className="text-[9px] text-gray-500 font-medium uppercase">{t("settings.log.title_compliance")}</p>
-              <span className="text-[8px] px-1.5 py-px rounded bg-green-100 text-green-700 font-medium">{t("settings.log.compliance_badge")}</span>
-            </div>
-            <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 text-gray-500 text-[9px] uppercase">
-                <tr>
-                  <th className="px-3 py-2 text-left">{t("settings.log.time")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.log.level")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.log.user")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.log.action")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.log.resource")}</th>
-                  <th className="px-3 py-2 text-left">{t("settings.log.details")}</th>
-                  <th className="px-3 py-2 text-left">IP</th>
-                  <th className="px-3 py-2 text-left">{t("settings.log.request_id")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {logs.map((log) => {
-                  const logUser = users.find(u => u.id === log.user_id);
-                  const levelColor = log.log_level === "ERROR" ? "bg-red-100 text-red-700" :
-                    log.log_level === "WARNING" ? "bg-amber-100 text-amber-700" :
-                    log.log_level === "DEBUG" ? "bg-purple-100 text-purple-700" :
-                    "bg-blue-50 text-blue-700";
-                  const timeStr = formatDateTimeSeconds(log.created_at);
-                  return (
-                  <tr key={log.id} className={cn("hover:bg-gray-50",
-                    log.log_level === "ERROR" && "bg-red-50/50",
-                    log.log_level === "WARNING" && "bg-amber-50/30")}>
-                    <td className="px-3 py-2 text-gray-500 text-[8px] font-mono whitespace-nowrap" title={timeStr}>{timeStr}</td>
-                    <td className="px-3 py-2">
-                      <span className={cn("text-[8px] px-1.5 py-px rounded font-bold", levelColor)}>
-                        {log.log_level || "INFO"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={cn("text-[9px] px-1.5 py-px rounded-full font-medium",
-                        logUser?.role === "admin" ? "bg-red-100 text-red-700" :
-                        logUser?.role === "developer" ? "bg-blue-100 text-blue-700" :
-                        "bg-gray-100 text-gray-600")}>
-                        {log.username || logUser?.username || (log.user_id ? `#${log.user_id}` : "-")}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="text-[9px] px-1.5 py-px rounded bg-gray-100 text-gray-700 font-mono">{log.action}</span>
-                    </td>
-                    <td className="px-3 py-2 text-gray-600 text-[9px]">{log.resource_type}{log.resource_id && <span className="text-gray-400">#{log.resource_id}</span>}</td>
-                    <td className="px-3 py-2 text-gray-500 text-[9px] max-w-[200px] truncate" title={log.details}>{log.details}</td>
-                    <td className="px-3 py-2 text-gray-400 text-[8px] font-mono">{log.ip_address || "-"}</td>
-                    <td className="px-3 py-2 text-gray-400 text-[8px] font-mono" title={`Request: ${log.request_id || "-"}\nSession: ${log.session_id || "-"}\nUA: ${log.user_agent || "-"}`}>
-                      {log.request_id ? log.request_id.slice(0, 8) : "-"}
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-            {logs.length === 0 && <div className="p-8 text-center text-gray-400 text-xs">{t("settings.no_logs")}</div>}
-          </div>
+          {/* Audit log table — พ.ร.บ. คอมพิวเตอร์ compliant, paginated */}
+          <AuditLogTable logs={logs} users={users} />
         </div>
       )}
 

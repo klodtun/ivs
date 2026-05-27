@@ -60,6 +60,49 @@ export function formatDateTimeSeconds(date: string): string {
   return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
+/**
+ * Format a timestamp for legal / audit records.
+ *
+ * Output: `YYYY-MM-DD HH:mm:ss (UTC+TZ)` — unambiguous, ISO-style, with the
+ * absolute timezone offset spelled out so it can't be misread in a different
+ * locale. Use this anywhere the timestamp may end up in a compliance export,
+ * dispute, or printed audit document.
+ *
+ * Example: "2026-05-27 20:09:03 (UTC+07:00)"
+ *
+ * Backend stores UTC; we render in the browser's local timezone so the user
+ * sees real wall-clock time but the offset suffix makes it convertible.
+ */
+export function formatLegalTimestamp(date: string | null | undefined): string {
+  if (!date) return "—";
+  // Backend often returns naive UTC ("2026-05-27T13:09:03.387627" with no
+  // suffix). The browser would otherwise interpret it as local time and
+  // skew the result by the offset. Normalize to UTC explicitly.
+  const normalized =
+    typeof date === "string" && !date.endsWith("Z") && !date.includes("+") && !/-\d{2}:\d{2}$/.test(date)
+      ? date + "Z"
+      : date;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  const seconds = pad(d.getSeconds());
+
+  // Build the UTC offset suffix, e.g. "UTC+07:00"
+  const tzMin = -d.getTimezoneOffset(); // getTimezoneOffset is negated
+  const tzSign = tzMin >= 0 ? "+" : "-";
+  const tzAbs = Math.abs(tzMin);
+  const tzHours = pad(Math.floor(tzAbs / 60));
+  const tzMinutes = pad(tzAbs % 60);
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} (UTC${tzSign}${tzHours}:${tzMinutes})`;
+}
+
 export function timeRemaining(date: string): string {
   // Backend stores UTC — ensure browser interprets as UTC (append Z if no timezone)
   const utcDate = date.endsWith("Z") || date.includes("+") ? date : date + "Z";

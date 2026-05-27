@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { ResourceData, ResourceHistory } from "@/types";
+import { Pagination, usePagination } from "@/components/pagination";
 
 /* ─── SVG Mini-Chart (no external deps) ─── */
 function MiniChart({
@@ -141,6 +142,9 @@ export default function ResourcesPage() {
   const cpuHistory = history.map((h) => h.cpu);
   const ramHistory = history.map((h) => h.mem_used);
   const appsHistory = history.map((h) => h.apps_running);
+
+  // Per-app table pagination — total row keeps using data.per_app (full set)
+  const perAppPagination = usePagination(data.per_app, 10);
 
   return (
     <div className="space-y-4">
@@ -320,7 +324,7 @@ export default function ResourcesPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.per_app.map((app) => (
+                {perAppPagination.paged.map((app) => (
                   <tr key={app.slug} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-1.5 px-2 font-medium text-gray-900">{app.name}</td>
                     <td className="py-1.5 px-2">
@@ -340,7 +344,7 @@ export default function ResourcesPage() {
                     <td className="py-1.5 px-2 text-right text-gray-500">{app.port || "—"}</td>
                   </tr>
                 ))}
-                {/* Total row */}
+                {/* Total row — always reflects the FULL dataset, not just current page */}
                 <tr className="border-t border-gray-200 font-semibold">
                   <td className="py-1.5 px-2 text-gray-700" colSpan={2}>{t("res.total")}</td>
                   <td className="py-1.5 px-2 text-right text-gray-700">
@@ -353,6 +357,14 @@ export default function ResourcesPage() {
                 </tr>
               </tbody>
             </table>
+            <Pagination
+              total={perAppPagination.total}
+              page={perAppPagination.page}
+              pageSize={perAppPagination.pageSize}
+              onPageChange={perAppPagination.setPage}
+              onPageSizeChange={perAppPagination.setPageSize}
+              itemLabel={t("res.per_app_item_label")}
+            />
           </div>
         ) : (
           <p className="text-[10px] text-gray-400 text-center py-4">{t("res.no_apps")}</p>
