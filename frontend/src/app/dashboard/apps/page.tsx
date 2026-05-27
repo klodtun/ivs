@@ -70,7 +70,7 @@ export default function AppsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {filtered.map((app) => (
             <div key={app.id}>
-              <AppCard app={app} userRole={user?.role || "viewer"} onRefresh={loadApps} />
+              <AppCard app={app} userRole={user?.role || "viewer"} userId={user?.id} onRefresh={loadApps} />
               {canDeploy && (
                 <button onClick={() => selectedApp === app.id ? setSelectedApp(null) : loadLogs(app.id)}
                   className="w-full mt-0.5 text-[9px] text-gray-400 hover:text-gray-600 py-0.5">

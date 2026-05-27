@@ -112,7 +112,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {apps.map((app) => (
-              <AppCard key={app.id} app={app} userRole={user?.role || "viewer"} onRefresh={loadData} />
+              <AppCard key={app.id} app={app} userRole={user?.role || "viewer"} userId={user?.id} onRefresh={loadData} />
             ))}
           </div>
         )}

@@ -108,6 +108,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "app.delete_confirm": "ยืนยันลบ",
     "app.export": "Export",
     "app.export_tooltip": "ดาวน์โหลดโปรแกรม + ข้อมูล เป็นไฟล์ .zip",
+    "app.export_owner_only_tooltip": "เฉพาะผู้ Deploy แอปนี้เท่านั้นที่ Export ได้ (ป้องกันความละเมิดลิขสิทธิ์)",
 
     // Export Modal
     "export.title_working": "กำลังสร้างไฟล์ Export…",
@@ -817,6 +818,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "app.delete_confirm": "Delete",
     "app.export": "Export",
     "app.export_tooltip": "Download program + data as a .zip backup",
+    "app.export_owner_only_tooltip": "Only the original deployer of this app can export it (copyright protection)",
 
     // Export Modal
     "export.title_working": "Creating export bundle…",

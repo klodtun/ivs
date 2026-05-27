@@ -19,10 +19,13 @@ const typeColors: Record<string, string> = {
 export function AppCard({
   app,
   userRole,
+  userId,
   onRefresh,
 }: {
   app: App;
   userRole: string;
+  /** Current user's id — used to enforce the "only deployer can export" rule. */
+  userId?: number;
   onRefresh: () => void;
 }) {
   const { t } = useLang();
@@ -31,6 +34,9 @@ export function AppCard({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const canManage = userRole === "admin" || userRole === "developer";
+  // Copyright protection: only the original deployer of an app can export
+  // its source + data. Admins are deliberately not granted an override.
+  const canExport = userId !== undefined && app.owner_id === userId;
 
   const appUrl = app.port
     ? `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${app.port}`
@@ -121,17 +127,34 @@ export function AppCard({
             className="flex-1 text-[10px] py-1 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition disabled:opacity-50">
             {loading === "restart" ? "..." : t("app.restart")}
           </button>
-          <button
-            onClick={() => setShowExportModal(true)}
-            disabled={!!loading}
-            title={t("app.export_tooltip")}
-            className="inline-flex items-center text-[10px] py-1 px-2 bg-brand-50 text-brand-700 rounded-md hover:bg-brand-100 transition disabled:opacity-50"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            <span className="ml-1 hidden sm:inline">{t("app.export")}</span>
-          </button>
+          {canExport ? (
+            <button
+              onClick={() => setShowExportModal(true)}
+              disabled={!!loading}
+              title={t("app.export_tooltip")}
+              className="inline-flex items-center text-[10px] py-1 px-2 bg-brand-50 text-brand-700 rounded-md hover:bg-brand-100 transition disabled:opacity-50"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span className="ml-1 hidden sm:inline">{t("app.export")}</span>
+            </button>
+          ) : (
+            // Non-owners still see the affordance, but disabled with a
+            // tooltip explaining why — clearer than silently hiding it.
+            <button
+              type="button"
+              disabled
+              title={t("app.export_owner_only_tooltip")}
+              className="inline-flex items-center text-[10px] py-1 px-2 bg-gray-100 text-gray-400 rounded-md cursor-not-allowed"
+              aria-disabled="true"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <span className="ml-1 hidden sm:inline">{t("app.export")}</span>
+            </button>
+          )}
           {userRole === "admin" && (
             <button onClick={() => setShowDeleteModal(true)}
               disabled={!!loading}
@@ -161,10 +184,17 @@ export function AppCard({
             await action(() => api.deleteApp(app.id), "delete");
             setShowDeleteModal(false);
           }}
-          onExportFirst={() => {
-            setShowDeleteModal(false);
-            setShowExportModal(true);
-          }}
+          // Only suggest "Export first" if the user is allowed to export
+          // (i.e. they're the original deployer). Otherwise the button would
+          // dead-end at a 403.
+          onExportFirst={
+            canExport
+              ? () => {
+                  setShowDeleteModal(false);
+                  setShowExportModal(true);
+                }
+              : undefined
+          }
         />
       )}
 

@@ -772,14 +772,37 @@ async def export_app(
 
     Use this BEFORE deleting an app you intend to redeploy, so user-generated
     data inside the container isn't lost when the container is destroyed.
+
+    Copyright protection — only the original deployer (App.owner_id) may
+    export. Admins do not get an override here on purpose: the export
+    contains the full source code, and copying another developer's work is
+    exactly what we're trying to prevent. Denied attempts are audit-logged.
     """
     from datetime import datetime, timezone
 
     app = db.query(App).filter(App.id == app_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
-    if not _can_access_app(user, app, db):
-        raise HTTPException(status_code=403, detail="Access denied to this app")
+
+    # Strict ownership check (cannot be bypassed by role)
+    if app.owner_id != user.id:
+        owner = db.query(User).filter(User.id == app.owner_id).first()
+        owner_name = owner.username if owner else f"uid:{app.owner_id}"
+        create_audit_log(
+            db, request, user=user, action="export_app_denied", resource_type="app",
+            resource_id=str(app_id),
+            details=f"Denied export of '{app.name}' — not the deployer (owner: {owner_name})",
+            log_level="WARNING",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Only the original deployer of this app can export it "
+                f"(deployer: {owner_name}). This restriction prevents copying "
+                f"another developer's source code."
+            ),
+        )
 
     os.makedirs(EXPORTS_DIR, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
