@@ -5,6 +5,7 @@ import { App } from "@/types";
 import { api } from "@/lib/api";
 import { useState } from "react";
 import PrivacyNoticePopup from "@/components/privacy-notice-popup";
+import { DeleteAppModal } from "@/components/delete-app-modal";
 
 const typeColors: Record<string, string> = {
   nodejs: "bg-green-100 text-green-700",
@@ -26,6 +27,7 @@ export function AppCard({
   const { t } = useLang();
   const [loading, setLoading] = useState("");
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const canManage = userRole === "admin" || userRole === "developer";
 
   const appUrl = app.port
@@ -118,7 +120,7 @@ export function AppCard({
             {loading === "restart" ? "..." : t("app.restart")}
           </button>
           {userRole === "admin" && (
-            <button onClick={() => { if (confirm(`${t("app.delete_confirm")} ${app.name}?`)) action(() => api.deleteApp(app.id), "delete"); }}
+            <button onClick={() => setShowDeleteModal(true)}
               disabled={!!loading}
               className="text-[10px] py-1 px-2 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition disabled:opacity-50">
               {loading === "delete" ? "..." : t("app.delete")}
@@ -134,6 +136,18 @@ export function AppCard({
           onAccept={handlePrivacyAccepted}
           onDecline={() => setShowPrivacyNotice(false)}
           onAlreadyAccepted={() => setShowPrivacyNotice(false)}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <DeleteAppModal
+          app={app}
+          onCancel={() => setShowDeleteModal(false)}
+          onConfirm={async () => {
+            await action(() => api.deleteApp(app.id), "delete");
+            setShowDeleteModal(false);
+          }}
         />
       )}
     </div>
