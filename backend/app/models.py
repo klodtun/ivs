@@ -176,6 +176,13 @@ class AuditLogExport(Base):
     record_count = Column(Integer, default=0)
     exported_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=utcnow)
+    # NEW: date range used for the export (NULL = unbounded on that side).
+    # Used by the UI to label history rows like "01 Jan – 27 May".
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    # NEW: how many .md chunks live inside the bundle .zip
+    # (1 for legacy single-file .md exports).
+    file_count = Column(Integer, default=1)
 
 
 class SystemConfig(Base):

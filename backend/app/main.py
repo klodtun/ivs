@@ -41,9 +41,38 @@ async def resource_collection_loop():
         await asyncio.sleep(60)
 
 
+def _apply_lightweight_migrations():
+    """Idempotent ALTER TABLE for columns added after the initial schema.
+
+    SQLite doesn't support `ADD COLUMN IF NOT EXISTS` until v3.35, so we
+    introspect first via PRAGMA and only add what's missing. This keeps
+    existing on-disk databases working without a separate migration tool.
+    """
+    from sqlalchemy import text
+    additions = [
+        ("audit_log_exports", "start_date", "DATETIME"),
+        ("audit_log_exports", "end_date", "DATETIME"),
+        ("audit_log_exports", "file_count", "INTEGER DEFAULT 1"),
+    ]
+    with engine.begin() as conn:
+        for table, column, coldef in additions:
+            try:
+                existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            except Exception:
+                continue
+            if column in existing:
+                continue
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}"))
+                logger.info(f"Migration: added {table}.{column}")
+            except Exception as e:
+                logger.warning(f"Migration: could not add {table}.{column}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _apply_lightweight_migrations()
     _seed_admin()
     _sync_app_domains_to_current_ip()
     # Start NTP sync with Thai legal NTP servers

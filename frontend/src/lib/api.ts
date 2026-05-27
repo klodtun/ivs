@@ -234,9 +234,17 @@ export const api = {
     sync_count: number;
   }>("/ntp-status"),
 
-  // Audit Log Export
-  exportAuditLogs: () =>
-    request<any>("/system/audit-logs/export", { method: "POST" }),
+  // Audit Log Export — accepts optional date range and chunk size
+  exportAuditLogs: (opts?: {
+    start_date?: string | null;
+    end_date?: string | null;
+    max_records_per_file?: number;
+  }) =>
+    request<any>("/system/audit-logs/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts || {}),
+    }),
 
   getAuditLogExports: () => request<any[]>("/system/audit-logs/exports"),
 

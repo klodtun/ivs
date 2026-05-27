@@ -44,6 +44,11 @@ export default function SettingsPage() {
   // Audit Export
   const [exports, setExports] = useState<AuditLogExport[]>([]);
   const [exporting, setExporting] = useState(false);
+  // Date range filters for audit export
+  const [exportRange, setExportRange] = useState<"7d" | "30d" | "90d" | "all" | "custom">("all");
+  const [exportStart, setExportStart] = useState<string>("");
+  const [exportEnd, setExportEnd] = useState<string>("");
+  const [exportMaxPerFile, setExportMaxPerFile] = useState<number>(5000);
 
   // DNS Config
   const [dnsConfig, setDnsConfig] = useState({ domain_suffix: "", server_ip: "" });
@@ -173,10 +178,30 @@ export default function SettingsPage() {
     setSelectedAppIds(prev => prev.includes(appId) ? prev.filter(id => id !== appId) : [...prev, appId]);
   };
 
+  // Translate the preset selector into ISO start/end timestamps to send
+  // to the backend. "all" → no bounds; "custom" → use the date inputs.
+  const computeExportRange = (): { start_date: string | null; end_date: string | null } => {
+    if (exportRange === "all") return { start_date: null, end_date: null };
+    if (exportRange === "custom") {
+      return {
+        start_date: exportStart ? new Date(exportStart).toISOString() : null,
+        end_date: exportEnd ? new Date(exportEnd).toISOString() : null,
+      };
+    }
+    const days = exportRange === "7d" ? 7 : exportRange === "30d" ? 30 : 90;
+    const now = new Date();
+    const start = new Date(now.getTime() - days * 86_400_000);
+    return { start_date: start.toISOString(), end_date: now.toISOString() };
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
-      await api.exportAuditLogs();
+      const range = computeExportRange();
+      await api.exportAuditLogs({
+        ...range,
+        max_records_per_file: Math.max(100, Math.min(exportMaxPerFile, 100000)),
+      });
       await loadExports();
       await loadData();
     } catch (e: any) { alert(e.message); } finally { setExporting(false); }
@@ -544,18 +569,79 @@ export default function SettingsPage() {
 
           {/* Export button & history */}
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.export_history")}</h3>
                 <p className="text-[9px] text-gray-400 mt-0.5">{t("settings.export_hash_note")}</p>
               </div>
               <button onClick={handleExport} disabled={exporting}
-                className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-medium rounded-md hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-1">
+                className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-medium rounded-md hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-1 flex-shrink-0">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 {exporting ? t("settings.exporting") : t("settings.export_logs")}
               </button>
+            </div>
+
+            {/* Date range + chunk-size controls */}
+            <div className="bg-gray-50 border border-gray-100 rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-medium text-gray-600">{t("settings.export_range")}</label>
+                <div className="flex gap-1">
+                  {(["7d", "30d", "90d", "all", "custom"] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setExportRange(r)}
+                      className={`px-2 py-0.5 text-[10px] rounded-md transition ${
+                        exportRange === r
+                          ? "bg-brand-600 text-white"
+                          : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {t(`settings.export_range_${r}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {exportRange === "custom" && (
+                <div className="flex items-center gap-2 text-[10px]">
+                  <label className="text-gray-500">{t("settings.export_range_from")}</label>
+                  <input
+                    type="date"
+                    value={exportStart}
+                    onChange={(e) => setExportStart(e.target.value)}
+                    className="border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+                  />
+                  <label className="text-gray-500">{t("settings.export_range_to")}</label>
+                  <input
+                    type="date"
+                    value={exportEnd}
+                    onChange={(e) => setExportEnd(e.target.value)}
+                    className="border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-[10px]">
+                <label className="text-gray-500" title={t("settings.export_chunk_tip")}>
+                  {t("settings.export_chunk_label")}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={100}
+                    max={100000}
+                    step={1000}
+                    value={exportMaxPerFile}
+                    onChange={(e) => setExportMaxPerFile(parseInt(e.target.value) || 5000)}
+                    className="w-20 border border-gray-300 rounded px-1.5 py-0.5 text-[10px] text-right"
+                  />
+                  <span className="text-gray-400 text-[9px]">{t("settings.export_chunk_unit")}</span>
+                </div>
+              </div>
+              <p className="text-[9px] text-gray-400 leading-snug">{t("settings.export_chunk_note")}</p>
             </div>
 
             {exports.length > 0 ? (
@@ -564,18 +650,29 @@ export default function SettingsPage() {
                   <thead className="bg-gray-50 text-gray-500 text-[8px] uppercase">
                     <tr>
                       <th className="px-2 py-1.5 text-left">{t("settings.export_filename")}</th>
-                      <th className="px-2 py-1.5 text-left">{t("settings.export_hash")}</th>
+                      <th className="px-2 py-1.5 text-left">{t("settings.export_range_col")}</th>
                       <th className="px-2 py-1.5 text-center">{t("settings.export_records")}</th>
+                      <th className="px-2 py-1.5 text-center">{t("settings.export_files_col")}</th>
+                      <th className="px-2 py-1.5 text-left">{t("settings.export_hash")}</th>
                       <th className="px-2 py-1.5 text-left">{t("settings.export_date")}</th>
                       <th className="px-2 py-1.5 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {exports.map((exp) => (
+                    {exports.map((exp) => {
+                      const fmt = (s: string | null) =>
+                        s ? new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }) : "—";
+                      const rangeLabel =
+                        !exp.start_date && !exp.end_date
+                          ? t("settings.export_range_all_label")
+                          : `${fmt(exp.start_date)} → ${fmt(exp.end_date)}`;
+                      return (
                       <tr key={exp.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-1.5 font-mono text-gray-700">{exp.filename}</td>
-                        <td className="px-2 py-1.5 font-mono text-gray-500 max-w-[200px] truncate" title={exp.sha256_hash}>{exp.sha256_hash}</td>
-                        <td className="px-2 py-1.5 text-center text-gray-600">{exp.record_count}</td>
+                        <td className="px-2 py-1.5 font-mono text-gray-700 max-w-[180px] truncate" title={exp.filename}>{exp.filename}</td>
+                        <td className="px-2 py-1.5 text-gray-600">{rangeLabel}</td>
+                        <td className="px-2 py-1.5 text-center text-gray-600">{exp.record_count.toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-center text-gray-600">{exp.file_count || 1}</td>
+                        <td className="px-2 py-1.5 font-mono text-gray-500 max-w-[140px] truncate" title={exp.sha256_hash}>{exp.sha256_hash.substring(0, 16)}…</td>
                         <td className="px-2 py-1.5 text-gray-400">{timeAgo(exp.created_at)}</td>
                         <td className="px-2 py-1.5 text-right">
                           <button onClick={() => handleDownloadExport(exp.id)}
@@ -584,7 +681,8 @@ export default function SettingsPage() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

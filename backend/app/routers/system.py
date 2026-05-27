@@ -4,6 +4,7 @@ import socket
 import platform
 import subprocess
 from datetime import datetime, timezone
+from typing import Optional
 import psutil
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request, Query
 from fastapi.responses import FileResponse
@@ -12,7 +13,7 @@ import asyncio
 import json
 from app.database import get_db, SessionLocal
 from app.models import User, UserRole, App, AppStatus, AuditLog, AuditLogExport, SystemConfig
-from app.schemas import SystemHealth, AuditLogResponse, AuditLogExportResponse, DNSConfigUpdate, DNSConfigResponse
+from app.schemas import SystemHealth, AuditLogResponse, AuditLogExportResponse, AuditLogExportRequest, DNSConfigUpdate, DNSConfigResponse
 from app.middleware.auth import get_current_user, require_role
 from app.services.docker_service import docker_service
 from app.services.audit_service import create_audit_log
@@ -70,32 +71,36 @@ async def get_audit_logs(
     return db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).all()
 
 
-@router.post("/audit-logs/export", response_model=AuditLogExportResponse)
-async def export_audit_logs(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_role(UserRole.ADMIN)),
-):
-    """Export audit logs to .md file with SHA-256 hash for legal evidence."""
-    os.makedirs(EXPORTS_DIR, exist_ok=True)
+def _build_chunk_markdown(
+    chunk_logs: list,
+    chunk_idx: int,
+    total_chunks: int,
+    start_idx: int,
+    user: "User",
+    ntp_status: dict,
+    ntp_now: datetime,
+    total_records: int,
+    start_date: "datetime | None",
+    end_date: "datetime | None",
+) -> str:
+    """Render one chunk's records as a Markdown document.
 
-    logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).all()
-    now = datetime.now(timezone.utc)
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    filename = f"audit_log_{timestamp}.md"
-    filepath = os.path.join(EXPORTS_DIR, filename)
-
-    # Build Markdown content — พ.ร.บ. คอมพิวเตอร์ compliant
-    ntp_status = ntp_service.get_status()
-    ntp_now = ntp_service.now()
+    Each chunk is self-contained: it has the same legal/NTP header as the
+    legacy single-file export so an auditor can read any chunk standalone.
+    """
+    import zipfile  # noqa: F401  (silences unused-import warning above)
     lines = []
-    lines.append("# IVS Audit Log Export")
+    lines.append(f"# IVS Audit Log Export — Part {chunk_idx} of {total_chunks}")
     lines.append("")
     lines.append("## Export Information")
     lines.append("")
     lines.append(f"- **Export Date**: {ntp_now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]} UTC")
     lines.append(f"- **Exported By**: {user.username} (ID: {user.id})")
-    lines.append(f"- **Total Records**: {len(logs)}")
+    lines.append(f"- **Date Range**: "
+                 f"{start_date.isoformat() if start_date else 'beginning of time'} → "
+                 f"{end_date.isoformat() if end_date else 'now'}")
+    lines.append(f"- **This Chunk**: records {start_idx + 1}–{start_idx + len(chunk_logs)}")
+    lines.append(f"- **Total Records (all chunks)**: {total_records}")
     lines.append(f"- **System**: {settings.APP_NAME} v{settings.APP_VERSION}")
     lines.append("")
     lines.append("## NTP Time Source (แหล่งเวลาอ้างอิง)")
@@ -113,51 +118,169 @@ async def export_audit_logs(
     lines.append("| # | Timestamp (UTC) | Level | User | Action | Resource | Details | IP | Request ID |")
     lines.append("|---|-----------------|-------|------|--------|----------|---------|----|------------|")
 
-    for i, log in enumerate(logs, 1):
+    for i, log in enumerate(chunk_logs, start_idx + 1):
         time_str = log.created_at.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + " UTC" if log.created_at else "-"
         resource = f"{log.resource_type}"
         if log.resource_id:
             resource += f"#{log.resource_id}"
         details = (log.details or "").replace("|", "\\|").replace("\n", " ")
-        level = getattr(log, 'log_level', 'INFO') or 'INFO'
-        username = getattr(log, 'username', None) or f"uid:{log.user_id}" if log.user_id else "-"
-        req_id = (getattr(log, 'request_id', None) or "-")[:8]
-        lines.append(f"| {i} | {time_str} | {level} | {username} | `{log.action}` | {resource} | {details} | {log.ip_address or '-'} | {req_id} |")
+        level = getattr(log, "log_level", "INFO") or "INFO"
+        username = getattr(log, "username", None) or (f"uid:{log.user_id}" if log.user_id else "-")
+        req_id = (getattr(log, "request_id", None) or "-")[:8]
+        lines.append(
+            f"| {i} | {time_str} | {level} | {username} | `{log.action}` | "
+            f"{resource} | {details} | {log.ip_address or '-'} | {req_id} |"
+        )
 
     lines.append("")
-    lines.append("---")
-    lines.append("")
-    lines.append("## Integrity Verification")
-    lines.append("")
-    lines.append("This document was digitally fingerprinted at export time.")
-    lines.append("Use the SHA-256 hash stored in the IVS database to verify this file has not been tampered with.")
-    lines.append("")
+    return "\n".join(lines)
 
-    content = "\n".join(lines)
 
-    # Write file
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(content)
+@router.post("/audit-logs/export", response_model=AuditLogExportResponse)
+async def export_audit_logs(
+    request: Request,
+    body: AuditLogExportRequest = AuditLogExportRequest(),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Export audit logs as a SHA-256-fingerprinted .zip bundle.
 
-    # Compute SHA-256 hash
-    sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    Body (all optional):
+        start_date              ISO datetime; defaults to "no lower bound"
+        end_date                ISO datetime; defaults to "now"
+        max_records_per_file    int; defaults to 5000 records per .md chunk
 
-    # Append hash to file
-    with open(filepath, "a", encoding="utf-8") as f:
-        f.write(f"- **SHA-256 Hash**: `{sha256}`\n")
-        f.write(f"- **Filename**: `{filename}`\n")
+    Bundle layout (single .zip):
+        manifest.json           list of chunks + per-chunk SHA-256
+        README.txt              short human-readable overview
+        audit_log_part_001.md   chunk 1 (oldest first within range)
+        audit_log_part_002.md   chunk 2
+        ...
+    The DB record stores the SHA-256 of the .zip itself for integrity.
+    """
+    import zipfile
 
-    # Save export record
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+
+    # Build query with optional date filters
+    query = db.query(AuditLog)
+    if body.start_date:
+        query = query.filter(AuditLog.created_at >= body.start_date)
+    if body.end_date:
+        query = query.filter(AuditLog.created_at <= body.end_date)
+    logs = query.order_by(AuditLog.created_at.asc()).all()
+    total_records = len(logs)
+
+    max_per_file = max(100, min(body.max_records_per_file, 100000))
+    total_chunks = max(1, (total_records + max_per_file - 1) // max_per_file)
+
+    ntp_status = ntp_service.get_status()
+    ntp_now = ntp_service.now()
+
+    # Filename — encode the date range so the user can read it at a glance
+    def _stamp(d: Optional[datetime]) -> str:
+        return d.strftime("%Y%m%d") if d else "all"
+    range_label = f"{_stamp(body.start_date)}-to-{_stamp(body.end_date or now)}"
+    filename = f"audit_log_{range_label}_{timestamp}.zip"
+    zip_path = os.path.join(EXPORTS_DIR, filename)
+
+    # Write zip
+    chunk_summary = []
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for chunk_idx in range(total_chunks):
+            start = chunk_idx * max_per_file
+            chunk_logs = logs[start:start + max_per_file]
+            md_content = _build_chunk_markdown(
+                chunk_logs=chunk_logs,
+                chunk_idx=chunk_idx + 1,
+                total_chunks=total_chunks,
+                start_idx=start,
+                user=user,
+                ntp_status=ntp_status,
+                ntp_now=ntp_now,
+                total_records=total_records,
+                start_date=body.start_date,
+                end_date=body.end_date,
+            )
+            chunk_sha = hashlib.sha256(md_content.encode("utf-8")).hexdigest()
+            chunk_name = f"audit_log_part_{chunk_idx + 1:03d}.md"
+            # Re-append the chunk's own SHA at the bottom so a standalone
+            # reader can verify the chunk without the manifest.
+            md_content += f"\n\n---\n- **Chunk SHA-256**: `{chunk_sha}`\n- **Filename**: `{chunk_name}`\n"
+            zf.writestr(chunk_name, md_content)
+            chunk_summary.append({
+                "filename": chunk_name,
+                "record_count": len(chunk_logs),
+                "sha256": chunk_sha,
+            })
+
+        # manifest.json
+        manifest = {
+            "ivs_audit_export_version": 1,
+            "exported_at": ntp_now.isoformat(),
+            "exported_by": {"id": user.id, "username": user.username},
+            "ntp_source": {
+                "server": ntp_status.get("ntp_server"),
+                "authority": ntp_status.get("ntp_authority"),
+                "stratum": ntp_status.get("ntp_stratum"),
+                "offset_ms": ntp_status.get("offset_ms"),
+            },
+            "date_range": {
+                "start": body.start_date.isoformat() if body.start_date else None,
+                "end": body.end_date.isoformat() if body.end_date else None,
+            },
+            "total_records": total_records,
+            "file_count": total_chunks,
+            "max_records_per_file": max_per_file,
+            "chunks": chunk_summary,
+            "legal_basis": "พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2550",
+        }
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+
+        # README.txt
+        readme = (
+            f"IVS Audit Log Export\n"
+            f"====================\n\n"
+            f"Exported:   {ntp_now.isoformat()}\n"
+            f"By:         {user.username}\n"
+            f"Range:      {body.start_date.isoformat() if body.start_date else 'beginning of time'}\n"
+            f"          → {body.end_date.isoformat() if body.end_date else 'now'}\n"
+            f"Records:    {total_records}\n"
+            f"Chunks:     {total_chunks} (max {max_per_file} records each)\n\n"
+            f"How to verify integrity:\n"
+            f"  1. Each .md file embeds its own SHA-256 at the bottom.\n"
+            f"  2. manifest.json lists the expected SHA-256 of every chunk.\n"
+            f"  3. The IVS database stores the SHA-256 of THIS .zip file.\n\n"
+            f"Open the chunks in any markdown viewer (they're plain text).\n"
+        )
+        zf.writestr("README.txt", readme)
+
+    # Compute SHA-256 of the resulting zip
+    h = hashlib.sha256()
+    with open(zip_path, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    sha256 = h.hexdigest()
+
+    # Save export record (with new date-range / file-count columns)
     export = AuditLogExport(
         filename=filename,
         sha256_hash=sha256,
-        record_count=len(logs),
+        record_count=total_records,
         exported_by=user.id,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        file_count=total_chunks,
     )
     db.add(export)
     create_audit_log(
         db, request, user=user, action="export_audit_logs", resource_type="system",
-        details=f"Exported {len(logs)} audit logs, SHA-256: {sha256[:16]}...",
+        details=(
+            f"Exported {total_records} audit logs in {total_chunks} chunk(s), "
+            f"range={range_label}, SHA-256: {sha256[:16]}..."
+        ),
     )
     db.commit()
     db.refresh(export)
@@ -188,10 +311,12 @@ async def download_audit_log_export(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Export file not found on disk")
 
+    # New exports are .zip bundles; legacy ones are single .md files.
+    media_type = "application/zip" if export.filename.endswith(".zip") else "text/markdown"
     return FileResponse(
         path=filepath,
         filename=export.filename,
-        media_type="text/markdown",
+        media_type=media_type,
     )
 
 

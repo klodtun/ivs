@@ -189,9 +189,23 @@ class AuditLogExportResponse(BaseModel):
     record_count: int
     exported_by: int
     created_at: datetime
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    file_count: int = 1
 
     class Config:
         from_attributes = True
+
+
+class AuditLogExportRequest(BaseModel):
+    """Optional filters for /api/system/audit-logs/export.
+
+    All fields are optional. Defaults: export all records, single file,
+    chunk at 5000 records (keeps each .md file readable in editors).
+    """
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    max_records_per_file: int = 5000
 
 
 class DNSConfigUpdate(BaseModel):

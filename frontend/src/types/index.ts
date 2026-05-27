@@ -89,6 +89,9 @@ export interface AuditLogExport {
   record_count: number;
   exported_by: number;
   created_at: string;
+  start_date: string | null;
+  end_date: string | null;
+  file_count: number;
 }
 
 export interface ResourceSystem {
