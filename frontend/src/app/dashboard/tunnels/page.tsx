@@ -5,6 +5,8 @@ import { useLang } from "@/components/lang-provider";
 import { cn, timeRemaining } from "@/lib/utils";
 import { Tunnel, App } from "@/types";
 import { Pagination, usePagination } from "@/components/pagination";
+import PrivacyNoticePopup from "@/components/privacy-notice-popup";
+import { TunnelShareModal } from "@/components/tunnel-share-modal";
 
 const durationOptions = [
   { value: 1, labelKey: "tunnel.dur.1m" },
@@ -22,6 +24,9 @@ export default function TunnelsPage() {
   const [duration, setDuration] = useState(60);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  // PDPA — privacy notice review + tunnel-share-by-email modals
+  const [privacyAppId, setPrivacyAppId] = useState<number | null>(null);
+  const [shareTunnel, setShareTunnel] = useState<Tunnel | null>(null);
   const {
     paged: pagedTunnels,
     page: tunnelPage,
@@ -190,10 +195,38 @@ export default function TunnelsPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {isActive && (
-                          <button onClick={() => handleRevoke(tunnel.id)}
-                            className="text-[10px] text-red-600 hover:text-red-700 font-medium hover:bg-red-50 px-2 py-0.5 rounded transition">
-                            {t("tunnel.revoke")}
-                          </button>
+                          <div className="inline-flex items-center gap-1">
+                            {/* 🛡️ Privacy notice — opens the same review popup
+                                used by AppCard so the recipient (and sender)
+                                can revisit their PDPA consent at any time. */}
+                            <button
+                              onClick={() => setPrivacyAppId(tunnel.app_id)}
+                              title={t("tunnel.privacy_tooltip")}
+                              className="text-[10px] text-gray-500 hover:text-purple-700 hover:bg-purple-50 px-1.5 py-0.5 rounded transition inline-flex items-center gap-0.5"
+                            >
+                              <span className="text-xs leading-none">🛡️</span>
+                              <span className="hidden sm:inline">{t("tunnel.privacy")}</span>
+                            </button>
+                            {/* 📧 Share via email — opens TunnelShareModal
+                                that pre-builds a PDPA-compliant message
+                                (notice + URL + usage instructions + risk
+                                warning) and hands it to the user's mail
+                                client via mailto:. */}
+                            <button
+                              onClick={() => setShareTunnel(tunnel)}
+                              title={t("tunnel.share_tooltip")}
+                              className="text-[10px] text-gray-500 hover:text-brand-700 hover:bg-brand-50 px-1.5 py-0.5 rounded transition inline-flex items-center gap-0.5"
+                            >
+                              <span className="text-xs leading-none">📧</span>
+                              <span className="hidden sm:inline">{t("tunnel.share")}</span>
+                            </button>
+                            <button
+                              onClick={() => handleRevoke(tunnel.id)}
+                              className="text-[10px] text-red-600 hover:text-red-700 font-medium hover:bg-red-50 px-2 py-0.5 rounded transition"
+                            >
+                              {t("tunnel.revoke")}
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -212,6 +245,33 @@ export default function TunnelsPage() {
           </div>
         )}
       </div>
+
+      {/* 🛡️ Privacy Notice — review mode for the underlying app.
+          Reuses the same popup AppCard uses, so consent flows through
+          the same /api/pdpa/{id}/consent endpoint and the audit log. */}
+      {privacyAppId !== null && (
+        <PrivacyNoticePopup
+          appId={privacyAppId}
+          mode="review"
+          onAccept={() => setPrivacyAppId(null)}
+          onClose={() => setPrivacyAppId(null)}
+        />
+      )}
+
+      {/* 📧 Share tunnel by email — composes the PDPA-compliant message
+          and hands it to the user's mail client via mailto:. */}
+      {shareTunnel && shareTunnel.public_url && (
+        <TunnelShareModal
+          tunnel={{
+            id: shareTunnel.id,
+            public_url: shareTunnel.public_url,
+            expires_at: shareTunnel.expires_at,
+            app_id: shareTunnel.app_id,
+          }}
+          appName={getAppName(shareTunnel.app_id)}
+          onClose={() => setShareTunnel(null)}
+        />
+      )}
     </div>
   );
 }
