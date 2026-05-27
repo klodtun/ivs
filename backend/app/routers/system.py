@@ -40,12 +40,18 @@ async def get_system_health(db: Session = Depends(get_db), user: User = Depends(
     # Use (total - available) here so the displayed bytes match the percentage gauge.
     memory_used = mem.total - mem.available
 
+    # Disk: on macOS APFS, disk.total can include "purgeable" space shared with
+    # other volumes — used + free ≠ total. psutil.disk.percent already uses
+    # used / (used + free) which matches `df` capacity. Use (used + free) as the
+    # displayed total so bytes and percentage stay consistent on every OS.
+    disk_total_effective = disk.used + disk.free
+
     return SystemHealth(
         cpu_percent=cpu,
         memory_total=mem.total,
         memory_used=memory_used,
         memory_percent=mem.percent,
-        disk_total=disk.total,
+        disk_total=disk_total_effective,
         disk_used=disk.used,
         disk_percent=disk.percent,
         docker_running=docker_service.is_available(),
@@ -526,7 +532,7 @@ async def ws_health(websocket: WebSocket):
                 "memory_total": mem.total,
                 "disk_percent": disk.percent,
                 "disk_used": disk.used,
-                "disk_total": disk.total,
+                "disk_total": disk.used + disk.free,  # Effective total (excludes APFS purgeable)
                 "apps_running": running,
                 "apps_total": total,
             })

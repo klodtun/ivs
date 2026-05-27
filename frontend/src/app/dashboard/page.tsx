@@ -71,7 +71,11 @@ export default function DashboardPage() {
             </span>
           )}
           <button
-            onClick={loadData}
+            onClick={() => {
+              setIsRefreshing(true);
+              // Full page reload — fetches latest data AND picks up any deployed front-end changes
+              window.location.reload();
+            }}
             disabled={isRefreshing}
             className="inline-flex items-center gap-1 px-3 py-1 text-[10px] bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition text-gray-600 disabled:opacity-60 disabled:cursor-not-allowed"
           >
