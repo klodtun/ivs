@@ -301,6 +301,9 @@ class DockerService:
         has_dist = os.path.isdir(frontend_dist) and any(os.scandir(frontend_dist))
 
         # Nginx config — strip /api prefix so /api/foo -> backend /foo
+        # Cache strategy:
+        #   - index.html: NEVER cache (so users always get the latest deploy immediately)
+        #   - /assets/*:  cache for 1 year (Vite/webpack hashes filenames, so safe)
         nginx_conf = f"""server {{
     listen {port};
     root /usr/share/nginx/html;
@@ -315,7 +318,22 @@ class DockerService:
         client_max_body_size 200m;
     }}
 
+    # Hashed bundles — safe to cache aggressively
+    location /assets/ {{
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }}
+
+    # SPA entry — must always re-fetch so deploys take effect immediately
+    location = /index.html {{
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        expires off;
+    }}
+
     location / {{
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        expires off;
         try_files $uri $uri/ /index.html;
     }}
 }}
