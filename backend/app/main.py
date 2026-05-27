@@ -13,9 +13,9 @@ from app.services.ntp_service import ntp_service
 from app.services.resource_service import collect_snapshot
 from app.services.app_log_service import (
     collect_one_pass as collect_app_logs,
-    purge_old_logs as purge_app_logs,
     _bootstrap_checkpoints as bootstrap_app_log_checkpoints,
 )
+from app.services.retention_service import purge_all as purge_all_retention
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
 from app.models import App, SystemConfig
 
@@ -70,16 +70,20 @@ async def app_log_collection_loop():
         await asyncio.sleep(30)
 
 
-async def app_log_retention_loop():
-    """Daily purge of app log entries older than 90 days."""
-    # Run once at startup to clean any stale rows, then daily afterwards.
+async def retention_purge_loop():
+    """Daily purge across ALL log tables, using per-type retention configured
+    in SystemConfig (audit logs, app logs, resource metrics, export files).
+
+    Reference: พ.ร.บ. ว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2560 §26
+    — minimum 90 days, default 2 years, extendable by competent officer.
+    """
     while True:
         try:
             db = SessionLocal()
-            purge_app_logs(db)
+            purge_all_retention(db)
             db.close()
         except Exception as e:
-            logger.error(f"App log retention error: {e}")
+            logger.error(f"Retention purge error: {e}")
         await asyncio.sleep(86400)  # 24h
 
 
@@ -126,7 +130,7 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(tunnel_cleanup_loop())
     resource_task = asyncio.create_task(resource_collection_loop())
     app_log_task = asyncio.create_task(app_log_collection_loop())
-    app_log_purge_task = asyncio.create_task(app_log_retention_loop())
+    app_log_purge_task = asyncio.create_task(retention_purge_loop())
     logger.info(f"IVS Backend started - {settings.APP_NAME} v{settings.APP_VERSION}")
     yield
     ntp_service.stop()

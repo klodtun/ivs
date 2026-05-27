@@ -20,6 +20,7 @@ from app.services.audit_service import create_audit_log
 from app.services.ntp_service import ntp_service
 from app.services.resource_service import get_current_resources, get_history, generate_report, collect_snapshot
 from app.services.app_log_service import get_logs_for_export as get_app_logs_for_export
+from app.services import retention_service
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
 from app.config import settings
 
@@ -713,6 +714,83 @@ async def get_network_info(
         "mdns_service": mdns_service,
         "platform": platform.system(),
     }
+
+
+@router.get("/retention")
+async def get_retention_settings(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Read current retention policy for every log type.
+
+    Returns a dict like:
+        {
+          "audit_logs":       {"days": 730, "default": 730, "min": 90, ...},
+          "app_logs":         {"days": 90,  "default": 90,  "min": 90, ...},
+          "resource_metrics": {"days": 30,  ...},
+          "exports":          {"days": 365, ...},
+        }
+    """
+    return retention_service.get_all_settings(db)
+
+
+@router.put("/retention")
+async def update_retention_settings(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Update one or more retention values.
+
+    Body shape (all keys optional, integer days):
+        {"audit_logs": 730, "app_logs": 90, "resource_metrics": 30, "exports": 365}
+
+    Each value is clamped to its per-type minimum (90 days for audit and
+    app logs per §26) and to MAX_ALLOWED (10 years) to prevent typos
+    pinning data forever.
+    """
+    changes = []
+    for log_type, days in payload.items():
+        if log_type not in retention_service.DEFAULT_RETENTION_DAYS:
+            continue
+        try:
+            days_int = int(days)
+        except (TypeError, ValueError):
+            continue
+        clamped = retention_service.set_retention_days(db, log_type, days_int)
+        changes.append(f"{log_type}={clamped}d")
+
+    if changes:
+        create_audit_log(
+            db, request, user=user, action="update_retention", resource_type="system",
+            details=f"Updated retention policy: {', '.join(changes)}",
+            log_level="WARNING",
+        )
+        db.commit()
+
+    return retention_service.get_all_settings(db)
+
+
+@router.post("/retention/purge")
+async def trigger_retention_purge(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Manually trigger the retention purge that normally runs daily.
+
+    Useful right after lowering a retention value, so the admin doesn't
+    have to wait 24h to see disk reclaimed.
+    """
+    result = retention_service.purge_all(db)
+    create_audit_log(
+        db, request, user=user, action="trigger_retention_purge", resource_type="system",
+        details=f"Manual purge: {result}",
+        log_level="WARNING",
+    )
+    db.commit()
+    return result
 
 
 @router.websocket("/ws/health")

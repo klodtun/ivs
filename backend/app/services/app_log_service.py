@@ -157,17 +157,16 @@ def collect_one_pass(db: Session) -> int:
 
 
 def purge_old_logs(db: Session) -> int:
-    """Delete app log entries older than RETENTION_DAYS. Returns rows deleted."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
-    deleted = (
-        db.query(AppLogEntry)
-        .filter(AppLogEntry.timestamp < cutoff)
-        .delete(synchronize_session=False)
-    )
-    if deleted:
-        db.commit()
-        logger.info(f"App-log retention: purged {deleted} entries older than {RETENTION_DAYS} days")
-    return deleted
+    """DEPRECATED — kept as a thin wrapper so older callers don't break.
+
+    The single source of truth for retention is now
+    `services.retention_service.purge_all()`, which reads the configured
+    retention from SystemConfig (default 90 days, can be raised by an
+    admin up to 10 years per §26 officer-order rules).
+    """
+    from app.services import retention_service
+    result = retention_service.purge_all(db)
+    return result.get("app_logs", 0)
 
 
 def get_logs_for_export(

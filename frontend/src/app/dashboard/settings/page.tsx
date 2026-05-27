@@ -5,6 +5,7 @@ import { useLang } from "@/components/lang-provider";
 import { cn, formatDateTimeSeconds, formatLegalTimestamp, timeAgo } from "@/lib/utils";
 import { Pagination, usePagination } from "@/components/pagination";
 import { ExportHistoryTable } from "@/components/export-history-table";
+import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
 import { User, App, AuditLog, AuditLogExport } from "@/types";
@@ -487,6 +488,9 @@ export default function SettingsPage() {
       {/* ===== TAB: AUDIT LOGS ===== */}
       {tab === "logs" && (
         <div className="space-y-3">
+          {/* Retention Policy (พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560 §26) */}
+          <RetentionPolicyPanel />
+
           {/* NTP Status */}
           {ntpStatus && (
             <div className={cn("rounded-lg border p-3 flex items-center gap-3",

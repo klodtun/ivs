@@ -88,10 +88,10 @@ def collect_snapshot(db: Session):
     db.add(metric)
     db.commit()
 
-    # Purge old data (keep 7 days)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-    db.query(ResourceMetric).filter(ResourceMetric.created_at < cutoff).delete()
-    db.commit()
+    # Retention purge moved out of the hot path — centralized in
+    # services.retention_service.purge_all() and run once a day by the
+    # retention_purge_loop in main.py. This keeps collect_snapshot fast
+    # and means the retention window is configurable per-deploy.
 
     return metric
 

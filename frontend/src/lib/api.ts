@@ -248,6 +248,28 @@ export const api = {
 
   getAuditLogExports: () => request<any[]>("/system/audit-logs/exports"),
 
+  // Retention policy (per พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560 §26)
+  getRetentionSettings: () =>
+    request<{
+      [logType: string]: {
+        days: number;
+        default: number;
+        min: number;
+        max_recommended: number;
+        max_allowed: number;
+      };
+    }>("/system/retention"),
+
+  updateRetentionSettings: (values: Record<string, number>) =>
+    request<any>("/system/retention", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    }),
+
+  triggerRetentionPurge: () =>
+    request<Record<string, number>>("/system/retention/purge", { method: "POST" }),
+
   downloadAuditLogExport: (id: number) =>
     `${API_BASE}/system/audit-logs/exports/${id}/download`,
 
