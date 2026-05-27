@@ -579,7 +579,9 @@ Deploy: zip ทั้ง root (ต้องมี dist/ พร้อม)`,
 \`\`\`
 backend/main.py        → FastAPI app
 backend/requirements.txt
-frontend/dist/         → Pre-built (npm run build)
+frontend/package.json  → Required (build script)
+frontend/src/          → Source code
+frontend/dist/         → Optional (IVS auto-builds if missing)
 \`\`\`
 
 ## Environment Variables
@@ -1235,7 +1237,9 @@ Deploy: zip root folder (must include dist/)`,
 \`\`\`
 backend/main.py        → FastAPI app
 backend/requirements.txt
-frontend/dist/         → Pre-built (npm run build)
+frontend/package.json  → Required (build script)
+frontend/src/          → Source code
+frontend/dist/         → Optional (IVS auto-builds if missing)
 \`\`\`
 
 ## Environment Variables

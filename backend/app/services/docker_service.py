@@ -295,9 +295,10 @@ class DockerService:
     def _generate_fullstack_files(self, source_path: str, port: int) -> str:
         """Generate Dockerfile + nginx.conf + start.sh for fullstack apps."""
 
-        # Check if frontend has pre-built dist/
+        # Check if frontend has a NON-EMPTY pre-built dist/
+        # (an empty dist/ directory triggers the nginx welcome-page bug — IVS-#fullstack-empty-dist)
         frontend_dist = os.path.join(source_path, "frontend", "dist")
-        has_dist = os.path.isdir(frontend_dist)
+        has_dist = os.path.isdir(frontend_dist) and any(os.scandir(frontend_dist))
 
         # Nginx config — strip /api prefix so /api/foo -> backend /foo
         nginx_conf = f"""server {{
@@ -332,20 +333,29 @@ nginx -g 'daemon off;'
         with open(os.path.join(source_path, "start-app.sh"), "w") as f:
             f.write(start_sh)
 
-        # Build Dockerfile
+        # Build Dockerfile — use multi-stage build for fullstack apps.
+        # - If pre-built dist/ exists (non-empty): use fast path, copy dist/ directly.
+        # - Otherwise: spin up a Node.js builder stage to run `npm run build`.
+        # Both paths avoid installing Node in the runtime image (keeps image small).
         if has_dist:
+            # Fast path: user already ran `npm run build` locally
+            builder_stage = ""
             frontend_copy = "COPY frontend/dist/ /usr/share/nginx/html/"
         else:
-            frontend_copy = """# Build frontend
-RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists/*
-WORKDIR /app/frontend
+            # Auto-build path: multi-stage build runs `npm run build` in node:20-alpine
+            builder_stage = """# ===== Stage 1: Build frontend (Vite/React/etc.) =====
+FROM node:20-alpine AS frontend-builder
+WORKDIR /build
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
 RUN npm run build
-RUN cp -r dist/* /usr/share/nginx/html/"""
 
-        dockerfile = f"""FROM python:3.12-slim
+# ===== Stage 2: Production runtime =====
+"""
+            frontend_copy = "COPY --from=frontend-builder /build/dist/ /usr/share/nginx/html/"
+
+        dockerfile = f"""{builder_stage}FROM python:3.12-slim
 
 # Install nginx
 RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
@@ -358,6 +368,9 @@ COPY backend/ ./
 
 # Frontend setup
 {frontend_copy}
+
+# Remove nginx default welcome page (prevents fallback if frontend files miss)
+RUN rm -f /usr/share/nginx/html/index.nginx-debian.html
 
 # Nginx config
 COPY nginx-app.conf /etc/nginx/sites-available/default
@@ -378,7 +391,7 @@ CMD ["/start-app.sh"]
         with open(os.path.join(source_path, ".dockerignore"), "w") as f:
             f.write(dockerignore)
 
-        logger.info(f"Generated fullstack Dockerfile (dist={'yes' if has_dist else 'build'})")
+        logger.info(f"Generated fullstack Dockerfile (multi-stage, dist={'pre-built' if has_dist else 'auto-build'})")
         return dockerfile_path
 
     def get_build_logs(self, app_slug: str) -> list[str]:
