@@ -11,11 +11,14 @@ interface Props {
   onClose: () => void;
 }
 
-const API_BASE =
-  (typeof window !== "undefined" && (window as any).NEXT_PUBLIC_API_URL) ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:8000/api";
-
+// Use the same relative API_BASE as lib/api.ts so the Next.js proxy
+// handles localhost-vs-LAN-IP routing for us. The backend's response
+// `download_url` already includes the `/api/...` prefix, so we use it
+// as-is — prepending another `/api` would produce `/api/api/...` and 404.
+//
+// (This was the bug behind the "Download failed" alert: the export modal
+// previously had its own `http://localhost:8000/api` constant which it
+// concatenated with download_url, doubling the prefix.)
 export function ExportAppModal({ app, onClose }: Props) {
   const { t } = useLang();
   const [status, setStatus] = useState<"working" | "done" | "error">("working");
@@ -49,28 +52,36 @@ export function ExportAppModal({ app, onClose }: Props) {
     };
   }, [app.id]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!result) return;
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    // Use fetch + blob so we can attach the bearer token, then trigger a save.
-    fetch(`${API_BASE.replace(/\/$/, "")}${result.download_url}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Download failed");
-        return res.blob();
-      })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = result.filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      })
-      .catch((e) => alert(e.message));
+    try {
+      // result.download_url already contains the full `/api/...` path from the
+      // backend, so we fetch it directly — no prefix concatenation.
+      const res = await fetch(result.download_url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        // Try to surface the backend's error JSON if any (e.g. {"detail": "..."}).
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) detail = body.detail;
+        } catch {}
+        throw new Error(detail);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e?.message || "Download failed");
+    }
   };
 
   return (
