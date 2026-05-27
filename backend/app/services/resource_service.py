@@ -122,9 +122,17 @@ def get_current_resources(db: Session) -> dict:
     disk_used_gb = round(disk.used / (1024 ** 3), 1)
     disk_total_gb = round((disk.used + disk.free) / (1024 ** 3), 1)
 
-    # Capacity estimation — base on memory actually available for new allocations,
-    # not (total - used). Reserve 30% headroom for OS/system bursts.
-    apps_can_add = max(0, int(mem_available_mb * 0.7 / ESTIMATED_APP_RAM_MB))
+    # Capacity estimation — goal is "how many more apps can we add while keeping
+    # RAM usage below the WARN_MEM threshold (75%)?"
+    #
+    # If we used the full available memory we'd just be telling the user to fill
+    # the box until it crashes, which contradicts the warning that fires at 75%.
+    # Instead, compute the headroom from current usage up to the warning line.
+    # If we're already over the line, capacity is 0 (the user must reduce load,
+    # not add more).
+    target_used_mb = int(mem_total_mb * WARN_MEM / 100)
+    headroom_mb = max(0, target_used_mb - mem_used_mb)
+    apps_can_add = headroom_mb // ESTIMATED_APP_RAM_MB
 
     # Alerts
     alerts = []
@@ -143,8 +151,23 @@ def get_current_resources(db: Session) -> dict:
     elif disk.percent >= WARN_DISK:
         alerts.append({"level": "warning", "type": "disk", "message": f"Disk {disk.percent:.0f}% (warning >{WARN_DISK}%)"})
 
-    if apps_can_add <= 1 and running > 0:
-        alerts.append({"level": "warning", "type": "capacity", "message": f"Near capacity — only ~{apps_can_add} more apps can run"})
+    # Capacity guidance — phrased so it can't contradict the RAM warning.
+    # If RAM is already past the warning line, capacity is 0 by construction
+    # (see headroom calc above), so we tell the user to free resources instead
+    # of suggesting they can still add apps.
+    if running > 0:
+        if apps_can_add == 0 and mem.percent >= WARN_MEM:
+            alerts.append({
+                "level": "warning",
+                "type": "capacity",
+                "message": f"At capacity — RAM at {mem.percent:.0f}% (target ≤{WARN_MEM}%). Stop or scale down apps before deploying more.",
+            })
+        elif apps_can_add <= 1:
+            alerts.append({
+                "level": "warning",
+                "type": "capacity",
+                "message": f"Near capacity — only ~{apps_can_add} more app(s) can run while keeping RAM ≤{WARN_MEM}%",
+            })
 
     return {
         "system": {
@@ -276,11 +299,21 @@ def generate_report(db: Session) -> str:
         "",
     ]
     if sys["memory_percent"] > WARN_MEM:
-        lines.append(f"- **Upgrade RAM**: Current usage {sys['memory_percent']}% — recommend adding more RAM")
+        lines.append(
+            f"- **Reduce RAM load**: Current usage {sys['memory_percent']}% exceeds the {WARN_MEM}% target. "
+            f"Stop unused apps or upgrade RAM before deploying more."
+        )
     if sys["disk_percent"] > WARN_DISK:
         lines.append(f"- **Expand Storage**: Current usage {sys['disk_percent']}% — recommend larger disk or cleanup")
-    if cap["estimated_apps_can_add"] <= 2:
-        lines.append(f"- **Scale Resources**: Only ~{cap['estimated_apps_can_add']} apps can be added — consider hardware upgrade")
+    if cap["estimated_apps_can_add"] == 0:
+        lines.append(
+            f"- **At capacity**: No new apps can be added while keeping RAM ≤{WARN_MEM}%. "
+            f"Free resources or scale the host first."
+        )
+    elif cap["estimated_apps_can_add"] <= 2:
+        lines.append(
+            f"- **Scale Resources**: Only ~{cap['estimated_apps_can_add']} more app(s) fit under the {WARN_MEM}% RAM target — consider hardware upgrade soon."
+        )
     if not res["alerts"] and cap["estimated_apps_can_add"] > 5:
         lines.append("- System resources are healthy. No immediate action required.")
 
