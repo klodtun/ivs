@@ -1827,6 +1827,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
   "en-EU": {
     "lang.en-EU": "English (EU)",
     "settings.tab.logs": "Audit Logs (GDPR Art. 30)",
+    "settings.tab.pdpa": "GDPR (ROPA)",
     "settings.ntp.title": "NTP Time Reference (GDPR Art. 32 integrity)",
     "settings.log.title_compliance": "Audit Log (GDPR Art. 30)",
     "settings.log.compliance_badge": "GDPR Compliant",
@@ -1882,6 +1883,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 
     // Audit logs — APPI Art. 26 (records of processing) equivalent
     "settings.tab.logs": "監査ログ (APPI)",
+    "settings.tab.pdpa": "APPI 取扱記録",
     "settings.ntp.title": "NTP時刻参照 (APPI 安全管理措置)",
     "settings.log.title_compliance": "監査ログ — 個人情報保護法対応",
     "settings.log.compliance_badge": "APPI準拠",
