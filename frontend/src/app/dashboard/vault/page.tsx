@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { cn, timeAgo } from "@/lib/utils";
 import { VaultKey, User } from "@/types";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 
 const providerIcons: Record<string, string> = { openai: "AI", claude: "CL", anthropic: "AN", google: "GG", default: "KY" };
 const categories = ["general", "ai", "maps", "weather", "finance", "other"];
@@ -31,9 +32,21 @@ export default function VaultPage() {
     try { await api.createVaultKey(form); setForm({ name: "", provider: "", category: "general", value: "", description: "" }); setShowAdd(false); await loadKeys(); } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`${t("vault.delete_confirm")} "${name}"?`)) return;
-    try { await api.deleteVaultKey(id); await loadKeys(); } catch (e: any) { alert(e.message); }
+  const [pendingDeleteKey, setPendingDeleteKey] = useState<VaultKey | null>(null);
+
+  const handleDelete = (key: VaultKey) => {
+    setPendingDeleteKey(key);
+  };
+
+  const handleDeleteConfirmed = async (password: string) => {
+    if (!pendingDeleteKey) return;
+    try {
+      await api.deleteVaultKey(pendingDeleteKey.id, password);
+      setPendingDeleteKey(null);
+      await loadKeys();
+    } catch (e: any) {
+      throw e;
+    }
   };
 
   // Reveal-and-copy: backend audit-logs the reveal at WARNING level.
@@ -140,13 +153,29 @@ export default function VaultPage() {
                       </svg>
                       {copiedKeyId === key.id ? t("vault.copied") : copyError === key.id ? t("vault.copy_failed") : t("vault.copy")}
                     </button>
-                    {isAdmin && (<button onClick={() => handleDelete(key.id, key.name)} className="text-red-500 hover:text-red-700">{t("app.delete")}</button>)}
+                    {isAdmin && (<button onClick={() => handleDelete(key)} className="text-red-500 hover:text-red-700">{t("app.delete")}</button>)}
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {pendingDeleteKey && (
+        <PasswordConfirmModal
+          title={`${t("vault.delete_modal.title")} — ${pendingDeleteKey.name}`}
+          description={`${t("vault.delete_modal.desc_prefix")} "${pendingDeleteKey.name}" (${pendingDeleteKey.provider}). ${t("vault.delete_modal.desc_suffix")}`}
+          consequences={[
+            t("vault.delete_modal.consequence_1"),
+            t("vault.delete_modal.consequence_2"),
+            t("vault.delete_modal.consequence_3"),
+          ]}
+          legalNote={t("vault.delete_modal.legal_note")}
+          confirmLabel={t("vault.delete_modal.confirm")}
+          onConfirm={handleDeleteConfirmed}
+          onCancel={() => setPendingDeleteKey(null)}
+        />
       )}
     </div>
   );

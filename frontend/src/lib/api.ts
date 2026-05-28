@@ -237,8 +237,12 @@ export const api = {
   }) =>
     request<any>("/vault", { method: "POST", body: JSON.stringify(data) }),
 
-  deleteVaultKey: (id: number) =>
-    request<any>(`/vault/${id}`, { method: "DELETE" }),
+  deleteVaultKey: (id: number, password: string) =>
+    request<any>(`/vault/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    }),
 
   revealVaultKey: (id: number) =>
     request<{ id: number; name: string; value: string }>(

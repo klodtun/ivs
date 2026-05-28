@@ -241,6 +241,16 @@ const translations: Record<Locale, Record<string, string>> = {
     "vault.copied": "คัดลอกแล้ว",
     "vault.copy_failed": "ผิดพลาด",
     "vault.copy_tooltip": "ถอดรหัส + คัดลอก API key เข้า clipboard (บันทึก audit log)",
+
+    // Vault delete confirmation
+    "vault.delete_modal.title": "ลบ API Key",
+    "vault.delete_modal.desc_prefix": "ยืนยันลบ key",
+    "vault.delete_modal.desc_suffix": "การกระทำนี้ย้อนกลับไม่ได้ กรุณาใส่รหัสผ่านของท่านเพื่อยืนยัน",
+    "vault.delete_modal.consequence_1": "Key encrypted value จะถูกลบจากฐานข้อมูลถาวร — ไม่สามารถกู้คืน",
+    "vault.delete_modal.consequence_2": "แอปที่ inject key นี้จะใช้งานไม่ได้จนกว่าจะ deploy ใหม่ด้วย key ใหม่",
+    "vault.delete_modal.consequence_3": "บันทึก audit log ระดับ WARNING พร้อมชื่อ key และเวลาที่กดยืนยัน",
+    "vault.delete_modal.legal_note": "API key เป็นข้อมูลความลับที่อาจมีต้นทุนทางการเงิน — การลบต้องมีหลักฐานยืนยันตัวตน",
+    "vault.delete_modal.confirm": "ยืนยันลบ",
     "vault.delete_confirm": "ยืนยันลบ key",
 
     // Settings
@@ -1131,6 +1141,16 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "vault.copied": "Copied",
     "vault.copy_failed": "Failed",
     "vault.copy_tooltip": "Decrypt + copy API key to clipboard (audit-logged)",
+
+    // Vault delete confirmation
+    "vault.delete_modal.title": "Delete API Key",
+    "vault.delete_modal.desc_prefix": "Confirm deleting key",
+    "vault.delete_modal.desc_suffix": "This is irreversible. Please re-enter your password to confirm.",
+    "vault.delete_modal.consequence_1": "Key's encrypted value is permanently removed from the database — no recovery",
+    "vault.delete_modal.consequence_2": "Apps that inject this key will fail until redeployed with a new key",
+    "vault.delete_modal.consequence_3": "Writes a WARNING-level audit log with the key name and confirmation timestamp",
+    "vault.delete_modal.legal_note": "API keys are sensitive credentials that may carry financial cost — deletion requires identity verification.",
+    "vault.delete_modal.confirm": "Confirm delete",
     "vault.delete_confirm": "Delete key",
 
     "settings.title": "Settings",

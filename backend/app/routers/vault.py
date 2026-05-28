@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, UserRole, VaultKey, AuditLog
 from app.schemas import VaultKeyCreate, VaultKeyResponse, VaultKeyDetailResponse
-from app.middleware.auth import get_current_user, require_role
+from app.middleware.auth import get_current_user, require_role, verify_password
 from app.services.vault_service import vault_service
 from app.services.audit_service import create_audit_log
 
@@ -100,17 +100,34 @@ async def create_vault_key(
 @router.delete("/{key_id}")
 async def delete_vault_key(
     key_id: int,
+    payload: dict,
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ):
+    """Delete a vault key. Requires admin's own password (re-auth)."""
+    password = (payload or {}).get("password", "")
+    if not password or not verify_password(password, user.password_hash):
+        create_audit_log(
+            db, request, user=user, action="delete_key_denied", resource_type="vault",
+            resource_id=str(key_id),
+            details="Vault delete denied — password re-authentication failed",
+            log_level="WARNING",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="Password verification failed. Deleting a vault key requires re-authentication.",
+        )
+
     vk = db.query(VaultKey).filter(VaultKey.id == key_id).first()
     if not vk:
         raise HTTPException(status_code=404, detail="Key not found")
 
     create_audit_log(
         db, request, user=user, action="delete_key", resource_type="vault",
-        resource_id=str(key_id), details=f"Deleted key: {vk.name}",
+        resource_id=str(key_id),
+        details=f"Deleted key (re-authenticated): {vk.name} ({vk.provider})",
         log_level="WARNING",
     )
     db.delete(vk)
