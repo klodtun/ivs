@@ -212,6 +212,30 @@ use the relative `timeAgo()` helper for anything law-adjacent.
 - Don't bypass `_can_access_app` checks. Developers see their own apps
   plus apps assigned to them via `UserAppAccess`. Admins see all.
 
+### v1.0 scope — feature flags (`frontend/src/lib/features.ts`)
+
+These features have working backend code but their UI is hidden in
+v1.0. Flip the flag to true to re-expose:
+
+| Flag | Hides | Plan |
+|------|-------|------|
+| `api_catalog` | sidebar "คลัง API สาธารณะ" | v1.2 |
+| `dns_tab` | settings DNS & Domain tab | v1.1 |
+| `network_tab` | settings Network tab | v1.1 |
+| `gitea_tab` | settings Gitea tab | v1.2 (optional plugin) |
+
+Backend routes for these stay live — only sidebar + tab list filter
+them out via `isEnabled(...)`. Re-enabling = single boolean flip.
+
+### Vault reveal-for-copy
+
+`POST /api/vault/{id}/reveal` returns the decrypted plaintext for
+one-shot clipboard copy. Admin + Developer roles. Every call is
+audit-logged as `reveal_key` at WARNING level — that's the primary
+forensic signal if a key gets leaked. The Vault page's per-card
+"คัดลอก" button uses this endpoint; plaintext never enters React
+state, the toast clears after 2s.
+
 ## Quick reference — recent commits worth knowing
 
 ```

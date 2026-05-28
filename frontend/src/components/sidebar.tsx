@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/components/lang-provider";
 import { LangToggle } from "@/components/lang-toggle";
 import { User } from "@/types";
+import { isEnabled } from "@/lib/features";
 
 const navItems = [
   {
@@ -41,6 +42,7 @@ const navItems = [
     href: "/dashboard/api-catalog",
     icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
     roles: ["admin", "developer", "viewer"],
+    featureFlag: "api_catalog" as const,
   },
   {
     labelKey: "nav.settings",
@@ -56,7 +58,11 @@ export function Sidebar({ user }: { user: User | null }) {
   const { t } = useLang();
 
   const filteredNav = navItems.filter(
-    (item) => user && item.roles.includes(user.role)
+    (item) =>
+      user &&
+      item.roles.includes(user.role) &&
+      // Hide entries gated behind a feature flag that's off in this release
+      (!("featureFlag" in item) || isEnabled(item.featureFlag as any))
   );
 
   const handleLogout = () => {

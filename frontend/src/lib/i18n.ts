@@ -237,6 +237,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "vault.search": "ค้นหา key...",
     "vault.no_keys": "ยังไม่มี API Key",
     "vault.encrypted": "เข้ารหัสแล้ว",
+    "vault.copy": "คัดลอก",
+    "vault.copied": "คัดลอกแล้ว",
+    "vault.copy_failed": "ผิดพลาด",
+    "vault.copy_tooltip": "ถอดรหัส + คัดลอก API key เข้า clipboard (บันทึก audit log)",
     "vault.delete_confirm": "ยืนยันลบ key",
 
     // Settings
@@ -1123,6 +1127,10 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "vault.search": "Search keys...",
     "vault.no_keys": "No API keys stored yet",
     "vault.encrypted": "Encrypted",
+    "vault.copy": "Copy",
+    "vault.copied": "Copied",
+    "vault.copy_failed": "Failed",
+    "vault.copy_tooltip": "Decrypt + copy API key to clipboard (audit-logged)",
     "vault.delete_confirm": "Delete key",
 
     "settings.title": "Settings",

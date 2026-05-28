@@ -7,6 +7,7 @@ import { Pagination, usePagination } from "@/components/pagination";
 import { ExportHistoryTable } from "@/components/export-history-table";
 import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
 import { GiteaCredentialsCard } from "@/components/gitea-credentials-card";
+import { isEnabled } from "@/lib/features";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
@@ -430,10 +431,10 @@ export default function SettingsPage() {
   const tabs: { key: Tab; labelKey: string }[] = [
     { key: "users", labelKey: "settings.tab.users" },
     { key: "logs", labelKey: "settings.tab.logs" },
-    { key: "dns", labelKey: "settings.tab.dns" },
-    { key: "network", labelKey: "settings.tab.network" },
+    ...(isEnabled("dns_tab") ? [{ key: "dns" as Tab, labelKey: "settings.tab.dns" }] : []),
+    ...(isEnabled("network_tab") ? [{ key: "network" as Tab, labelKey: "settings.tab.network" }] : []),
     { key: "pdpa", labelKey: "settings.tab.pdpa" },
-    { key: "gitea", labelKey: "settings.tab.gitea" },
+    ...(isEnabled("gitea_tab") ? [{ key: "gitea" as Tab, labelKey: "settings.tab.gitea" }] : []),
     { key: "autostart", labelKey: "settings.tab.autostart" },
   ];
 

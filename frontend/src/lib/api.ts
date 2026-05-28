@@ -240,6 +240,12 @@ export const api = {
   deleteVaultKey: (id: number) =>
     request<any>(`/vault/${id}`, { method: "DELETE" }),
 
+  revealVaultKey: (id: number) =>
+    request<{ id: number; name: string; value: string }>(
+      `/vault/${id}/reveal`,
+      { method: "POST" }
+    ),
+
   healthCheck: () => request<{ status: string }>("/health"),
 
   getNtpStatus: () => request<{

@@ -36,6 +36,24 @@ export default function VaultPage() {
     try { await api.deleteVaultKey(id); await loadKeys(); } catch (e: any) { alert(e.message); }
   };
 
+  // Reveal-and-copy: backend audit-logs the reveal at WARNING level.
+  // The plaintext stays out of React state (one-shot copy then forgotten)
+  // and the "Copied ✓" indicator clears after 2s.
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
+  const [copyError, setCopyError] = useState<number | null>(null);
+  const handleCopy = async (id: number) => {
+    setCopyError(null);
+    try {
+      const { value } = await api.revealVaultKey(id);
+      await navigator.clipboard.writeText(value);
+      setCopiedKeyId(id);
+      setTimeout(() => setCopiedKeyId((curr) => (curr === id ? null : curr)), 2000);
+    } catch (e: any) {
+      setCopyError(id);
+      setTimeout(() => setCopyError((curr) => (curr === id ? null : curr)), 3000);
+    }
+  };
+
   const filtered = keys.filter((k) => k.name.toLowerCase().includes(search.toLowerCase()) || k.provider.toLowerCase().includes(search.toLowerCase()));
   const isAdmin = user?.role === "admin";
 
@@ -103,8 +121,25 @@ export default function VaultPage() {
                 {key.description && <p className="text-[9px] text-gray-500 mb-2">{key.description}</p>}
                 <div className="flex items-center justify-between text-[9px] text-gray-400 pt-2 border-t border-gray-100">
                   <span>{timeAgo(key.created_at)}</span>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <span className="text-green-600 font-medium">{t("vault.encrypted")}</span>
+                    <button
+                      onClick={() => handleCopy(key.id)}
+                      title={t("vault.copy_tooltip")}
+                      className={cn(
+                        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded transition font-medium",
+                        copiedKeyId === key.id
+                          ? "bg-green-100 text-green-700"
+                          : copyError === key.id
+                          ? "bg-red-100 text-red-700"
+                          : "bg-brand-50 text-brand-700 hover:bg-brand-100"
+                      )}
+                    >
+                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      {copiedKeyId === key.id ? t("vault.copied") : copyError === key.id ? t("vault.copy_failed") : t("vault.copy")}
+                    </button>
                     {isAdmin && (<button onClick={() => handleDelete(key.id, key.name)} className="text-red-500 hover:text-red-700">{t("app.delete")}</button>)}
                   </div>
                 </div>

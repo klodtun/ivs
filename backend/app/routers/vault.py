@@ -43,6 +43,33 @@ async def get_vault_key(
     )
 
 
+@router.post("/{key_id}/reveal")
+async def reveal_vault_key(
+    key_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Return the decrypted value for one-shot Copy-to-clipboard use.
+
+    Audit-logged at WARNING — reveal events are the primary forensic
+    signal for leaked-key investigations.
+    """
+    vk = db.query(VaultKey).filter(VaultKey.id == key_id).first()
+    if not vk:
+        raise HTTPException(status_code=404, detail="Key not found")
+
+    decrypted = vault_service.decrypt(vk.encrypted_value)
+    create_audit_log(
+        db, request, user=user, action="reveal_key", resource_type="vault",
+        resource_id=str(key_id),
+        details=f"Revealed key for copy: {vk.name} ({vk.provider})",
+        log_level="WARNING",
+    )
+    db.commit()
+    return {"id": vk.id, "name": vk.name, "value": decrypted}
+
+
 @router.post("", response_model=VaultKeyResponse)
 async def create_vault_key(
     req: VaultKeyCreate,
