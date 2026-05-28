@@ -8,6 +8,7 @@ import { ExportHistoryTable } from "@/components/export-history-table";
 import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
 import { GiteaCredentialsCard } from "@/components/gitea-credentials-card";
 import { isEnabled } from "@/lib/features";
+import { LocalizedDateInput } from "@/components/localized-date-input";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
@@ -685,19 +686,9 @@ export default function SettingsPage() {
               {exportRange === "custom" && (
                 <div className="flex items-center gap-2 text-[10px]">
                   <label className="text-gray-500">{t("settings.export_range_from")}</label>
-                  <input
-                    type="date"
-                    value={exportStart}
-                    onChange={(e) => setExportStart(e.target.value)}
-                    className="border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
-                  />
+                  <LocalizedDateInput value={exportStart} onChange={setExportStart} />
                   <label className="text-gray-500">{t("settings.export_range_to")}</label>
-                  <input
-                    type="date"
-                    value={exportEnd}
-                    onChange={(e) => setExportEnd(e.target.value)}
-                    className="border border-gray-300 rounded px-1.5 py-0.5 text-[10px]"
-                  />
+                  <LocalizedDateInput value={exportEnd} onChange={setExportEnd} />
                 </div>
               )}
 

@@ -321,6 +321,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.pn_preview_placeholder": "รายละเอียดจะแสดงที่นี่...",
     "deploy.auto_sanitize_note": "Auto-Sanitize จะลบไฟล์ขยะอัตโนมัติ",
     "deploy.close": "ปิด",
+    "datepicker.clear": "ล้าง",
+    "datepicker.today": "วันนี้",
 
     // Vault delete confirmation
     "vault.delete_modal.title": "ลบ API Key",
@@ -1290,6 +1292,8 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.pn_preview_placeholder": "Details will appear here...",
     "deploy.auto_sanitize_note": "Auto-Sanitize will strip junk files automatically",
     "deploy.close": "Close",
+    "datepicker.clear": "Clear",
+    "datepicker.today": "Today",
 
     // Vault delete confirmation
     "vault.delete_modal.title": "Delete API Key",
@@ -2156,6 +2160,8 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.pn_preview_placeholder": "詳細はここに表示されます...",
     "deploy.auto_sanitize_note": "Auto-Sanitize により不要ファイルが自動削除されます",
     "deploy.close": "閉じる",
+    "datepicker.clear": "クリア",
+    "datepicker.today": "今日",
   },
 };
 
