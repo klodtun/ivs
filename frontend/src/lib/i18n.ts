@@ -1,5 +1,16 @@
-export type Locale = "th" | "en";
+export type Locale = "th" | "en" | "en-EU" | "ja";
 
+/**
+ * `th` and `en` are full dictionaries. `en-EU` and `ja` are OVERLAYS
+ * that contain only regulator-specific compliance strings (GDPR, APPI);
+ * everything else falls back to `en` via t().
+ *
+ * Regulatory mapping:
+ *   th     — PDPA (พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562)
+ *   en     — generic English, refers to PDPA by default
+ *   en-EU  — GDPR (Regulation (EU) 2016/679, Privacy by Design Art. 25)
+ *   ja     — APPI (個人情報の保護に関する法律, 2003 + 2022 amendments)
+ */
 const translations: Record<Locale, Record<string, string>> = {
   th: {
     // Sidebar
@@ -1805,11 +1816,120 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 
     "lang.th": "ไทย",
     "lang.en": "English",
+    "lang.en-EU": "English (EU)",
+    "lang.ja": "日本語",
+  },
+
+  // ───────────────────────────────────────────────────────────
+  // GDPR overlay — overrides only compliance-sensitive strings.
+  // Falls back to `en` for everything else.
+  // ───────────────────────────────────────────────────────────
+  "en-EU": {
+    "lang.en-EU": "English (EU)",
+    "settings.tab.logs": "Audit Logs (GDPR Art. 30)",
+
+    // Privacy notice — GDPR Art. 13/14 information notice
+    "settings.pdpa_title": "Records of Processing Activities (GDPR Art. 30)",
+    "settings.pdpa_desc": "EU GDPR Regulation 2016/679 compliance",
+
+    // Retention — GDPR Storage Limitation principle (Art. 5(1)(e))
+    "retention.legal_note": "GDPR Art. 5(1)(e) Storage Limitation — personal data shall be kept no longer than necessary for the stated purpose. The controller defines retention; the supervisory authority may require extension under Art. 17(3).",
+    "retention.over_recommended": "Long retention — must justify under purpose limitation",
+
+    // Delete confirmations
+    "delete.irreversible": "Irreversible. Personal data deletion under GDPR Art. 17 (Right to Erasure) is final — export the data first if you need it.",
+
+    // Audit detail
+    "audit_detail.subtitle": "Complete record per GDPR Art. 30 (Records of Processing) and Art. 32 (Security of Processing)",
+    "audit_detail.legal_note": "Timestamps verified via NTP — required under GDPR Art. 32 integrity controls",
+
+    // App log retention reference
+    "retention.desc.app_logs": "Container stdout/stderr — anonymized at ingestion (Privacy by Design, Art. 25)",
+  },
+
+  // ───────────────────────────────────────────────────────────
+  // APPI overlay (個人情報の保護に関する法律). Japanese UI for core
+  // compliance + minimal nav strings; rest falls back to `en`.
+  // ───────────────────────────────────────────────────────────
+  ja: {
+    "lang.ja": "日本語",
+
+    // Sidebar
+    "nav.dashboard": "ダッシュボード",
+    "nav.apps": "アプリ",
+    "nav.tunnels": "トンネル",
+    "nav.vault": "APIキー保管庫",
+    "nav.resources": "システムリソース",
+    "nav.settings": "設定",
+    "nav.signout": "ログアウト",
+
+    // Login
+    "login.title": "Internal Vibe Server",
+    "login.username": "ユーザー名",
+    "login.password": "パスワード",
+    "login.submit": "ログイン",
+
+    // Dashboard
+    "dash.title": "ダッシュボード",
+    "dash.refresh": "更新",
+    "dash.last_updated": "最終更新",
+
+    // Audit logs — APPI Art. 26 (records of processing) equivalent
+    "settings.tab.logs": "監査ログ (APPI)",
+    "settings.log.title_compliance": "監査ログ — 個人情報保護法対応",
+    "settings.log.compliance_badge": "APPI準拠",
+
+    // PDPA tab is shown but worded for APPI
+    "settings.pdpa_title": "個人情報取扱記録 (APPI)",
+    "settings.pdpa_desc": "個人情報の保護に関する法律 (2003年制定, 2022年改正) 対応",
+
+    // Retention — APPI doesn't specify a minimum, but PIPC guidance
+    // recommends keeping security logs for an appropriate period.
+    "retention.title": "データ保存ポリシー",
+    "retention.subtitle": "各ログ種別の保存期間を設定。期限切れデータは自動削除されます",
+    "retention.legal_note": "個人情報保護法 第19条 (適正な取得) 及び 第23条 (安全管理措置)。委員会の指示によりさらに長期保存を求められる場合があります。",
+    "retention.days": "日",
+    "retention.default": "デフォルト",
+    "retention.save": "保存",
+    "retention.cancel": "キャンセル",
+
+    // Delete confirmations
+    "delete.irreversible": "取り消せません。APPI 第30条 (利用停止・消去等) に基づく個人情報の削除は最終的なものです。必要に応じて事前にエクスポートしてください。",
+
+    // Audit detail
+    "audit_detail.title": "イベント詳細",
+    "audit_detail.subtitle": "個人情報保護法に基づく完全な記録",
+    "audit_detail.user": "ユーザー",
+    "audit_detail.resource": "リソース",
+    "audit_detail.details": "詳細",
+    "audit_detail.close": "閉じる",
+    "audit_detail.legal_note": "NTPによりタイムスタンプ検証済み — APPI 安全管理措置の要件",
+
+    // App log retention reference
+    "retention.desc.app_logs": "コンテナ stdout/stderr — 取得時に匿名化 (Privacy by Design)",
+
+    // Roles
+    "role.admin": "管理者",
+    "role.developer": "開発者",
+    "role.viewer": "閲覧者",
+
+    // Pagination
+    "pagination.showing": "表示中",
+    "pagination.of": "/",
+    "pagination.per_page": "ページごと",
   },
 };
 
+/**
+ * Resolution order: requested locale → en → key itself.
+ * EU and JA are overlays — missing strings fall back to en.
+ */
 export function t(key: string, locale: Locale): string {
-  return translations[locale]?.[key] || translations.en[key] || key;
+  return (
+    translations[locale]?.[key] ||
+    translations.en[key] ||
+    key
+  );
 }
 
 export function getStoredLocale(): Locale {

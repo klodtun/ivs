@@ -19,6 +19,7 @@ from sqlalchemy import func
 
 from app.models import App, AppStatus, AppLogEntry
 from app.services.docker_service import docker_service
+from app.services.pii_anonymizer import anonymize as anonymize_pii
 
 logger = logging.getLogger(__name__)
 
@@ -136,11 +137,14 @@ def collect_one_pass(db: Session) -> int:
             # already stored in the previous pass.
             if ts <= since:
                 continue
+            # Level 0 → Level 1 boundary: scrub PII before persisting.
+            # The raw line never touches the database in identifiable form.
+            anonymized = anonymize_pii(text)
             db.add(
                 AppLogEntry(
                     app_id=app.id,
                     timestamp=ts,
-                    log_line=text[:MAX_LINE_LENGTH],
+                    log_line=anonymized[:MAX_LINE_LENGTH],
                     stream="stdout",
                 )
             )

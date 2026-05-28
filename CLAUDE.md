@@ -227,6 +227,64 @@ v1.0. Flip the flag to true to re-expose:
 Backend routes for these stay live — only sidebar + tab list filter
 them out via `isEnabled(...)`. Re-enabling = single boolean flip.
 
+### 3-Tier Privacy-Compliant Logging Architecture
+
+This is the model behind every log table in IVS — PDPA/GDPR/APPI all
+demand the same idea: PII never persists in identifiable form.
+
+```
+  Level 0 — Raw Data (PII intact)
+  ┌──────────────────────────────────────────────────────────┐
+  │  Source: docker logs, FastAPI request handlers           │
+  │  Lifetime: process memory only — NEVER written to DB     │
+  │  Access:  root / live debug only                         │
+  └──────────────────────────────────────────────────────────┘
+                          │
+                          │  services/pii_anonymizer.anonymize()
+                          ▼
+  Level 1 — System Storage (anonymized, durable)
+  ┌──────────────────────────────────────────────────────────┐
+  │  Tables: app_log_entries, audit_logs                     │
+  │  Email     → u#<hash>@<domain>                           │
+  │  Public IP → <network>.[ANON_<hash>] (private IPs kept)  │
+  │  Thai ID/CC/JWT/Bearer → [REDACTED:TYPE]                 │
+  │  Right-to-be-Forgotten: no-op — no PII exists to delete  │
+  └──────────────────────────────────────────────────────────┘
+                          │
+                          │  routers/system.export_audit_logs()
+                          ▼
+  Level 2 — Export (tamper-evident)
+  ┌──────────────────────────────────────────────────────────┐
+  │  Per-chunk SHA-256 embedded in .md                       │
+  │  manifest.json with all chunk hashes                     │
+  │  Outer .zip SHA-256 stored in audit_log_exports          │
+  └──────────────────────────────────────────────────────────┘
+```
+
+**Where the boundary lives:** `app_log_service.collect_one_pass()`
+runs `anonymize_pii(text)` BEFORE the `db.add(AppLogEntry(...))` call.
+Never store raw container output. The "View Logs" button on AppCard
+goes straight to `docker logs` (Level 0) — that's fine because it's
+ephemeral and only admin-visible.
+
+**HMAC stability:** the anonymizer uses HMAC-SHA256 keyed off
+`settings.SECRET_KEY` so the same email always maps to the same
+opaque token — ops can correlate without re-identifying.
+
+### i18n & regulatory mapping
+
+Four locales (`lib/i18n.ts`):
+
+| Locale | Flag | Regulator | Note |
+|--------|------|-----------|------|
+| `th` | 🇹🇭 | PDPA (2562/2019) | Full dictionary |
+| `en` | 🇬🇧 | Generic English | Full dictionary, default fallback |
+| `en-EU` | 🇪🇺 | GDPR (2016/679) | Overlay — only Art. 5/13/17/25/30/32-specific strings; rest falls back to `en` |
+| `ja` | 🇯🇵 | APPI (2003 + 2022 amendments) | Overlay — core nav + compliance strings; rest falls back to `en` |
+
+Add new compliance-sensitive strings to the en-EU and ja overlays when
+the wording differs by regulator. UI-only strings can stay en-only.
+
 ### Vault reveal-for-copy
 
 `POST /api/vault/{id}/reveal` returns the decrypted plaintext for
