@@ -287,7 +287,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
               <p className="text-[10px] text-gray-500 mt-0.5">
                 {fileSizeMB} MB
                 {parseFloat(fileSizeMB) > FILE_SIZE_WARN_MB && (
-                  <span className="text-amber-600 ml-1">⚠️ Auto-Sanitize จะลบไฟล์ขยะอัตโนมัติ</span>
+                  <span className="text-amber-600 ml-1">⚠️ {t("deploy.auto_sanitize_note")}</span>
                 )}
               </p>
             </div>
@@ -475,7 +475,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
               {buildStatus === "timeout" && <span className="text-amber-500 text-xs">⏱</span>}
             </div>
             <button onClick={() => setShowBuildLog(false)} className="text-[10px] text-gray-400 hover:text-gray-600">
-              ✕ ปิด
+              ✕ {t("deploy.close")}
             </button>
           </div>
           <div className="bg-gray-900 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-[10px] leading-relaxed">

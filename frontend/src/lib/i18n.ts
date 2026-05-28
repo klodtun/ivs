@@ -296,6 +296,32 @@ const translations: Record<Locale, Record<string, string>> = {
     "tunnel.share.body.section_note": "💬  หมายเหตุจากผู้ส่ง",
     "tunnel.share.body.signoff": "ส่งจาก IVS — Internal Vibe Server",
 
+    // PII suggestion checklist (Settings → PDPA tab)
+    "pii.full_name": "ชื่อ-นามสกุล",
+    "pii.email": "อีเมล",
+    "pii.phone": "เบอร์โทรศัพท์",
+    "pii.address": "ที่อยู่",
+    "pii.national_id": "บัตรประชาชน/Passport",
+    "pii.dob": "วันเกิด/อายุ",
+    "pii.line_id": "LINE ID",
+    "pii.photo_bio": "รูปภาพ/ไบโอเมตริก",
+    "pii.bank_account": "บัญชีธนาคาร/การเงิน",
+    "pii.tax_id": "เลขประจำตัวผู้เสียภาษี",
+    "pii.org_info": "ข้อมูลบริษัท/องค์กร",
+
+    // Misc inline strings
+    "user_delete.reassigned_suffix": "แอปถูกโอนสิทธิ์ไปที่",
+    "settings.export_success": "Export สำเร็จ",
+    "settings.activities_count": "กิจกรรม",
+    "settings.pn_saved": "บันทึก Privacy Notice สำเร็จ",
+    "settings.pdpa.found": "พบ",
+    "settings.pdpa.not_found": "ไม่พบ",
+    "settings.pdpa.add_all_detected": "เพิ่มทั้งหมดที่ตรวจพบ",
+    "settings.pn_detail_placeholder": "แอปพลิเคชันนี้มีการเก็บรวบรวม ใช้ หรือเปิดเผยข้อมูลส่วนบุคคลของท่าน เพื่อวัตถุประสงค์ในการให้บริการ...",
+    "settings.pn_preview_placeholder": "รายละเอียดจะแสดงที่นี่...",
+    "deploy.auto_sanitize_note": "Auto-Sanitize จะลบไฟล์ขยะอัตโนมัติ",
+    "deploy.close": "ปิด",
+
     // Vault delete confirmation
     "vault.delete_modal.title": "ลบ API Key",
     "vault.delete_modal.desc_prefix": "ยืนยันลบ key",
@@ -1239,6 +1265,32 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "tunnel.share.body.section_note": "💬  Note from the sender",
     "tunnel.share.body.signoff": "Sent from IVS — Internal Vibe Server",
 
+    // PII suggestion checklist (Settings → PDPA tab)
+    "pii.full_name": "Full name",
+    "pii.email": "Email",
+    "pii.phone": "Phone",
+    "pii.address": "Address",
+    "pii.national_id": "National ID / Passport",
+    "pii.dob": "Date of birth / Age",
+    "pii.line_id": "Social ID (LINE/etc.)",
+    "pii.photo_bio": "Photo / Biometrics",
+    "pii.bank_account": "Bank account / Financial",
+    "pii.tax_id": "Tax ID",
+    "pii.org_info": "Organization info",
+
+    // Misc inline strings
+    "user_delete.reassigned_suffix": "app(s) reassigned to",
+    "settings.export_success": "Export succeeded",
+    "settings.activities_count": "events",
+    "settings.pn_saved": "Privacy Notice saved",
+    "settings.pdpa.found": "found",
+    "settings.pdpa.not_found": "not found",
+    "settings.pdpa.add_all_detected": "Add all detected",
+    "settings.pn_detail_placeholder": "This application collects, uses, or discloses your personal data for the purpose of providing the service...",
+    "settings.pn_preview_placeholder": "Details will appear here...",
+    "deploy.auto_sanitize_note": "Auto-Sanitize will strip junk files automatically",
+    "deploy.close": "Close",
+
     // Vault delete confirmation
     "vault.delete_modal.title": "Delete API Key",
     "vault.delete_modal.desc_prefix": "Confirm deleting key",
@@ -1952,6 +2004,15 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "tunnel.share.body.howto_3": "3. Your consent will be recorded per GDPR Art. 7 — lawful basis and withdrawal rights apply",
     "tunnel.share.body.section_security": "🔒  Security Warning (GDPR Art. 32)",
     "tunnel.share.body.security_3": "• Use within your organization's policy and the GDPR principles of lawfulness, fairness, and transparency",
+
+    // PII suggestions — GDPR Art. 4(1) "personal data" examples
+    "pii.national_id": "National ID / Passport (Art. 9 if applicable)",
+    "pii.dob": "Date of birth",
+    "pii.line_id": "Online identifier (Art. 4(1))",
+    "pii.photo_bio": "Photo / Biometric data (Art. 9 special category)",
+    "pii.bank_account": "Financial account",
+    "pii.tax_id": "Tax / national identifier",
+    "pii.org_info": "Organization affiliation",
   },
 
   // ───────────────────────────────────────────────────────────
@@ -2069,6 +2130,32 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "tunnel.share.body.security_4": "• 異常を検知した場合は速やかに管理者へご連絡ください",
     "tunnel.share.body.section_note": "💬  送信者からの追記",
     "tunnel.share.body.signoff": "IVS — Internal Vibe Server より送信",
+
+    // PII suggestion checklist — APPI Art. 2 "個人情報" examples
+    "pii.full_name": "氏名",
+    "pii.email": "メールアドレス",
+    "pii.phone": "電話番号",
+    "pii.address": "住所",
+    "pii.national_id": "マイナンバー / パスポート",
+    "pii.dob": "生年月日 / 年齢",
+    "pii.line_id": "SNS ID (LINE等)",
+    "pii.photo_bio": "顔写真 / 生体情報",
+    "pii.bank_account": "金融口座情報",
+    "pii.tax_id": "納税者番号",
+    "pii.org_info": "所属組織情報",
+
+    // Misc inline strings
+    "user_delete.reassigned_suffix": "アプリの所有権を移譲しました:",
+    "settings.export_success": "エクスポート完了",
+    "settings.activities_count": "件",
+    "settings.pn_saved": "通知を保存しました",
+    "settings.pdpa.found": "検出",
+    "settings.pdpa.not_found": "未検出",
+    "settings.pdpa.add_all_detected": "検出されたすべてを追加",
+    "settings.pn_detail_placeholder": "本アプリケーションは、サービス提供の目的のために個人情報を収集・利用・開示します...",
+    "settings.pn_preview_placeholder": "詳細はここに表示されます...",
+    "deploy.auto_sanitize_note": "Auto-Sanitize により不要ファイルが自動削除されます",
+    "deploy.close": "閉じる",
   },
 };
 

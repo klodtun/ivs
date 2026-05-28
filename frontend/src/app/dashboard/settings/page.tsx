@@ -211,7 +211,7 @@ export default function SettingsPage() {
       setPendingDelete(null);
       await loadData();
       if (res.reassigned_apps > 0) {
-        alert(`${res.message}\n${res.reassigned_apps} แอปถูกโอนสิทธิ์ไปที่ ${res.new_owner}`);
+        alert(`${res.message}\n${res.reassigned_apps} ${t("user_delete.reassigned_suffix")} ${res.new_owner}`);
       }
     } catch (e: any) {
       throw e;
@@ -343,7 +343,7 @@ export default function SettingsPage() {
       a.download = result.filename;
       a.click();
       URL.revokeObjectURL(blobUrl);
-      setToastMsg(`✅ Export สำเร็จ — ${result.filename} (${result.record_count} กิจกรรม, SHA-256: ${result.sha256_hash.substring(0, 16)}...)`);
+      setToastMsg(`✅ ${t("settings.export_success")} — ${result.filename} (${result.record_count} ${t("settings.activities_count")}, SHA-256: ${result.sha256_hash.substring(0, 16)}...)`);
       setTimeout(() => setToastMsg(null), 8000);
     } catch (e: any) { alert(e.message); } finally { setExportingRopa(false); }
   };
@@ -406,17 +406,19 @@ export default function SettingsPage() {
       await api.updatePrivacyNotice(editPN.app_id, pnForm);
       await loadPdpa();
       setEditPN(null);
-      setToastMsg(`✅ บันทึก Privacy Notice สำเร็จ — ${editPN.app_name}`);
+      setToastMsg(`✅ ${t("settings.pn_saved")} — ${editPN.app_name}`);
       setTimeout(() => setToastMsg(null), 5000);
     } catch (e: any) { alert(e.message); } finally { setSavingPN(false); }
   };
 
+  // PII field suggestions — keys looked up per locale so EU/JA see
+  // jurisdiction-appropriate field names (e.g. National ID vs Passport).
   const PII_CHECKLIST = [
-    "ชื่อ-นามสกุล", "อีเมล", "เบอร์โทรศัพท์", "ที่อยู่",
-    "บัตรประชาชน/Passport", "วันเกิด/อายุ", "LINE ID",
+    t("pii.full_name"), t("pii.email"), t("pii.phone"), t("pii.address"),
+    t("pii.national_id"), t("pii.dob"), t("pii.line_id"),
     "IP Address", "Cookie/Session", "Username/Password",
-    "GPS/Location", "รูปภาพ/ไบโอเมตริก", "บัญชีธนาคาร/การเงิน",
-    "MAC Address", "เลขประจำตัวผู้เสียภาษี", "ข้อมูลบริษัท/องค์กร",
+    "GPS/Location", t("pii.photo_bio"), t("pii.bank_account"),
+    "MAC Address", t("pii.tax_id"), t("pii.org_info"),
   ];
 
   const pdpaStatusBadge: Record<string, string> = {
@@ -1185,9 +1187,9 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                         <td className="px-3 py-2 text-gray-600">{r.retention_period || <span className="text-gray-300">—</span>}</td>
                         <td className="px-3 py-2">
                           {r.has_masking ? (
-                            <span className="px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-[9px]">✓ พบ</span>
+                            <span className="px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-[9px]">✓ {t("settings.pdpa.found")}</span>
                           ) : (
-                            <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[9px]">✗ ไม่พบ</span>
+                            <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded text-[9px]">✗ {t("settings.pdpa.not_found")}</span>
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -1337,7 +1339,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                         </div>
                         <button onClick={() => addAutoDetectedPii(editPdpa.pii_auto_detected)}
                           className="text-[9px] text-blue-600 hover:text-blue-800 underline">
-                          เพิ่มทั้งหมดที่ตรวจพบ
+                          {t("settings.pdpa.add_all_detected")}
                         </button>
                       </div>
                     )}
@@ -1456,7 +1458,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                           value={pnForm.privacy_notice_title}
                           onChange={e => setPnForm(prev => ({ ...prev, privacy_notice_title: e.target.value }))}
                           className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="ประกาศแจ้งเตือนการเก็บรวบรวมข้อมูลส่วนบุคคล"
+                          placeholder={t("pn.default_title")}
                         />
                       </div>
 
@@ -1469,7 +1471,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                           onChange={e => setPnForm(prev => ({ ...prev, privacy_notice_detail: e.target.value }))}
                           rows={4}
                           className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="แอปพลิเคชันนี้มีการเก็บรวบรวม ใช้ หรือเปิดเผยข้อมูลส่วนบุคคลของท่าน เพื่อวัตถุประสงค์ในการให้บริการ..."
+                          placeholder={t("settings.pn_detail_placeholder")}
                         />
                       </div>
 
@@ -1503,15 +1505,15 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                         <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-lg">🛡️</span>
-                            <h4 className="text-xs font-bold text-gray-900">{pnForm.privacy_notice_title || "ประกาศแจ้งเตือน"}</h4>
+                            <h4 className="text-xs font-bold text-gray-900">{pnForm.privacy_notice_title || t("pn.default_title")}</h4>
                           </div>
-                          <p className="text-[10px] text-gray-600 mb-2 whitespace-pre-wrap">{pnForm.privacy_notice_detail || "รายละเอียดจะแสดงที่นี่..."}</p>
+                          <p className="text-[10px] text-gray-600 mb-2 whitespace-pre-wrap">{pnForm.privacy_notice_detail || t("settings.pn_preview_placeholder")}</p>
                           <div className="flex gap-2 text-[9px]">
                             {pnForm.privacy_policy_url && <span className="text-blue-600 underline">Privacy Policy ↗</span>}
-                            {pnForm.privacy_notice_url && <span className="text-blue-600 underline">รายละเอียดเพิ่มเติม ↗</span>}
+                            {pnForm.privacy_notice_url && <span className="text-blue-600 underline">{t("pn.link_full_notice")} ↗</span>}
                           </div>
                           <div className="mt-3 flex justify-end">
-                            <span className="px-3 py-1 bg-purple-600 text-white text-[10px] rounded">ยอมรับและเข้าใช้งาน</span>
+                            <span className="px-3 py-1 bg-purple-600 text-white text-[10px] rounded">{t("pn.accept_and_enter")}</span>
                           </div>
                         </div>
                       </div>
