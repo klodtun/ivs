@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { formatLegalTimestamp } from "@/lib/utils";
+import { useLang } from "@/components/lang-provider";
 
 interface PrivacyNoticeData {
   app_id: number;
@@ -80,6 +81,7 @@ export default function PrivacyNoticePopup({
   onAlreadyAccepted,
   onClose,
 }: Props) {
+  const { t } = useLang();
   const [notice, setNotice] = useState<PrivacyNoticeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [show, setShow] = useState(false);
@@ -242,12 +244,12 @@ export default function PrivacyNoticePopup({
             <span className="text-2xl">🛡️</span>
           </div>
           <h2 className="text-base font-bold text-gray-900">
-            {notice.privacy_notice_title || "ประกาศแจ้งเตือนการเก็บรวบรวมข้อมูลส่วนบุคคล"}
+            {notice.privacy_notice_title || t("pn.default_title")}
           </h2>
           <p className="text-[10px] text-gray-400 mt-1">{notice.app_name}</p>
           {isReview && (
             <span className="inline-block mt-2 text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">
-              ดู / เปลี่ยนการยอมรับ
+              {t("pn.review_badge")}
             </span>
           )}
         </div>
@@ -255,7 +257,7 @@ export default function PrivacyNoticePopup({
         {/* Notice disabled banner (only shown in review mode if the admin turned it off) */}
         {noticeDisabled && (
           <div className="mx-6 mb-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-[11px] text-gray-600">
-            แอปนี้ปิดใช้งานประกาศแจ้งเตือน — ไม่มีการขอความยินยอมสำหรับการเข้าใช้งานครั้งต่อไป
+            {t("pn.disabled_banner")}
           </div>
         )}
 
@@ -271,11 +273,11 @@ export default function PrivacyNoticePopup({
             <p className={`text-[11px] font-semibold ${
               currentDecision === "accepted" ? "text-green-800" : "text-red-800"
             }`}>
-              สถานะปัจจุบัน: {currentDecision === "accepted" ? "✓ ยอมรับแล้ว" : "✗ ปฏิเสธ"}
+              {t("pn.current_status")}: {currentDecision === "accepted" ? t("pn.status_accepted") : t("pn.status_declined")}
             </p>
             {decisionAt && (
               <p className="text-[10px] text-gray-500 mt-0.5 font-mono">
-                บันทึกเมื่อ: {formatLegalTimestamp(decisionAt)}
+                {t("pn.recorded_at")}: {formatLegalTimestamp(decisionAt)}
               </p>
             )}
           </div>
@@ -284,7 +286,7 @@ export default function PrivacyNoticePopup({
         {/* Body */}
         <div className="px-6 py-3">
           <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
-            {notice.privacy_notice_detail || "แอปพลิเคชันนี้มีการเก็บรวบรวม ใช้ หรือเปิดเผยข้อมูลส่วนบุคคลของท่าน"}
+            {notice.privacy_notice_detail || t("pn.default_detail")}
           </div>
 
           {(notice.privacy_policy_url || notice.privacy_notice_url) && (
@@ -296,7 +298,7 @@ export default function PrivacyNoticePopup({
                   rel="noopener noreferrer"
                   className="text-[11px] text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
                 >
-                  📄 นโยบายคุ้มครองข้อมูลส่วนบุคคล (Privacy Policy)
+                  📄 {t("pn.link_policy")}
                   <span className="text-[9px]">↗</span>
                 </a>
               )}
@@ -307,7 +309,7 @@ export default function PrivacyNoticePopup({
                   rel="noopener noreferrer"
                   className="text-[11px] text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
                 >
-                  📋 ประกาศแจ้งเตือนฉบับเต็ม
+                  📋 {t("pn.link_full_notice")}
                   <span className="text-[9px]">↗</span>
                 </a>
               )}
@@ -325,20 +327,20 @@ export default function PrivacyNoticePopup({
                 disabled={submitting || currentDecision === "accepted"}
                 className="w-full py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                {currentDecision === "accepted" ? "✓ ยอมรับแล้ว (สถานะปัจจุบัน)" : "เปลี่ยนเป็น: ยอมรับ"}
+                {currentDecision === "accepted" ? t("pn.accept_current") : t("pn.switch_to_accept")}
               </button>
               <button
                 onClick={handleDecline}
                 disabled={submitting || currentDecision === "declined"}
                 className="w-full py-2 mt-2 bg-red-50 text-red-700 border border-red-200 text-sm font-medium rounded-lg hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {currentDecision === "declined" ? "✗ ปฏิเสธแล้ว (สถานะปัจจุบัน)" : "เปลี่ยนเป็น: ปฏิเสธ"}
+                {currentDecision === "declined" ? t("pn.decline_current") : t("pn.switch_to_decline")}
               </button>
               <button
                 onClick={handleClose}
                 className="w-full py-2 mt-2 text-xs text-gray-500 hover:text-gray-700 rounded-lg transition"
               >
-                ปิด
+                {t("pn.close")}
               </button>
             </>
           ) : (
@@ -348,19 +350,19 @@ export default function PrivacyNoticePopup({
                 disabled={submitting}
                 className="w-full py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition shadow-md disabled:opacity-50"
               >
-                {submitting ? "กำลังบันทึก…" : "ยอมรับและเข้าใช้งาน"}
+                {submitting ? t("pn.saving") : t("pn.accept_and_enter")}
               </button>
               <button
                 onClick={handleDecline}
                 disabled={submitting}
                 className="w-full py-2 mt-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
               >
-                ปฏิเสธ
+                {t("pn.decline")}
               </button>
             </>
           )}
           <p className="text-[9px] text-gray-400 text-center mt-2">
-            ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA) §19 — ท่านสามารถเปลี่ยนการยินยอมได้ทุกเมื่อ
+            {t("pn.legal_footer")}
           </p>
         </div>
       </div>

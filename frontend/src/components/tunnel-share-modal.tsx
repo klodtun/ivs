@@ -80,19 +80,20 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
   // clients render whatever they get as monospace anyway. We use
   // unicode box-drawing characters for section separators because they
   // survive every mail client we care about.
+  const SEP = "═══════════════════════════════════════════";
   const body = (() => {
     const lines: string[] = [];
-    lines.push("สวัสดีครับ/ค่ะ,");
+    lines.push(t("tunnel.share.body.greeting"));
     lines.push("");
-    lines.push(`ขอเรียนเชิญใช้งานแอปพลิเคชัน "${appName}" ผ่านลิงก์อุโมงค์ชั่วคราว`);
-    lines.push("กรุณาอ่านประกาศแจ้งเตือนการเก็บรวบรวมข้อมูลส่วนบุคคล (PDPA) ก่อนเข้าใช้งาน");
+    lines.push(t("tunnel.share.body.intro_l1").replace("{app}", appName));
+    lines.push(t("tunnel.share.body.intro_l2"));
     lines.push("");
 
     // 1) Privacy notice
     if (notice && notice.privacy_notice_enabled) {
-      lines.push("═══════════════════════════════════════════");
-      lines.push("⚠️  ประกาศแจ้งเตือนการเก็บรวบรวมข้อมูลส่วนบุคคล");
-      lines.push("═══════════════════════════════════════════");
+      lines.push(SEP);
+      lines.push(t("tunnel.share.body.section_notice"));
+      lines.push(SEP);
       if (notice.privacy_notice_title) {
         lines.push(notice.privacy_notice_title);
         lines.push("");
@@ -102,60 +103,60 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
         lines.push("");
       }
       if (notice.privacy_policy_url) {
-        lines.push(`📄 นโยบายคุ้มครองข้อมูลส่วนบุคคล: ${notice.privacy_policy_url}`);
+        lines.push(`📄 ${t("pn.link_policy")}: ${notice.privacy_policy_url}`);
       }
       if (notice.privacy_notice_url) {
-        lines.push(`📋 ประกาศแจ้งเตือนฉบับเต็ม: ${notice.privacy_notice_url}`);
+        lines.push(`📋 ${t("pn.link_full_notice")}: ${notice.privacy_notice_url}`);
       }
       lines.push("");
     } else {
-      lines.push("(แอปนี้ยังไม่ได้ตั้งค่าประกาศแจ้งเตือน PDPA — แนะนำให้ผู้ดูแลตั้งค่าก่อนเปิดให้บุคคลภายนอก)");
+      lines.push(t("tunnel.share.body.no_notice"));
       lines.push("");
     }
 
     // 2) Tunnel link + expiry
-    lines.push("═══════════════════════════════════════════");
-    lines.push("🔗  ลิงก์เข้าใช้งาน (Tunnel)");
-    lines.push("═══════════════════════════════════════════");
+    lines.push(SEP);
+    lines.push(t("tunnel.share.body.section_link"));
+    lines.push(SEP);
     lines.push(tunnel.public_url);
     lines.push("");
-    lines.push(`⏱  ลิงก์นี้จะหมดอายุ: ${formatLegalTimestamp(tunnel.expires_at)}`);
+    lines.push(`⏱  ${t("tunnel.share.body.expires_at")}: ${formatLegalTimestamp(tunnel.expires_at)}`);
     lines.push("");
 
     // 3) Usage instructions
-    lines.push("═══════════════════════════════════════════");
-    lines.push("📖  วิธีใช้งาน");
-    lines.push("═══════════════════════════════════════════");
-    lines.push("1. คลิกลิงก์ข้างต้นเพื่อเปิดแอป");
-    lines.push("2. หากแอปแสดงประกาศแจ้งเตือน PDPA — กรุณาอ่านและพิจารณาก่อนกดยอมรับ");
-    lines.push("3. การยอมรับ/ปฏิเสธของท่านจะถูกบันทึกในระบบตาม PDPA §19");
-    lines.push("4. ท่านสามารถเปลี่ยนการยอมรับได้ทุกเมื่อโดยกลับมาที่ลิงก์นี้");
+    lines.push(SEP);
+    lines.push(t("tunnel.share.body.section_howto"));
+    lines.push(SEP);
+    lines.push(t("tunnel.share.body.howto_1"));
+    lines.push(t("tunnel.share.body.howto_2"));
+    lines.push(t("tunnel.share.body.howto_3"));
+    lines.push(t("tunnel.share.body.howto_4"));
     lines.push("");
 
     // 4) Risk / policy warning
-    lines.push("═══════════════════════════════════════════");
-    lines.push("🔒  ข้อควรระวังด้านความปลอดภัย");
-    lines.push("═══════════════════════════════════════════");
-    lines.push("• ลิงก์นี้เป็นการเข้าถึงระบบภายในผ่านเครือข่ายภายนอก");
-    lines.push("• มีความเสี่ยงที่ข้อมูลอาจรั่วไหลหากใช้งานไม่เหมาะสม");
-    lines.push("• กรุณาใช้งานตามนโยบายของหน่วยงานท่าน");
-    lines.push("• หากพบพฤติกรรมผิดปกติ กรุณาแจ้งผู้ดูแลระบบทันที");
+    lines.push(SEP);
+    lines.push(t("tunnel.share.body.section_security"));
+    lines.push(SEP);
+    lines.push(t("tunnel.share.body.security_1"));
+    lines.push(t("tunnel.share.body.security_2"));
+    lines.push(t("tunnel.share.body.security_3"));
+    lines.push(t("tunnel.share.body.security_4"));
     lines.push("");
 
     if (extraNote.trim()) {
-      lines.push("═══════════════════════════════════════════");
-      lines.push("💬  หมายเหตุจากผู้ส่ง");
-      lines.push("═══════════════════════════════════════════");
+      lines.push(SEP);
+      lines.push(t("tunnel.share.body.section_note"));
+      lines.push(SEP);
       lines.push(extraNote);
       lines.push("");
     }
 
     lines.push("───────────────────────────────────────────");
-    lines.push(`ส่งจาก IVS — Internal Vibe Server`);
+    lines.push(t("tunnel.share.body.signoff"));
     return lines.join("\r\n");
   })();
 
-  const subject = `[IVS Tunnel] ${appName} — ลิงก์เข้าใช้งานพร้อมประกาศ PDPA`;
+  const subject = `[IVS Tunnel] ${appName} — ${t("tunnel.share.subject_suffix")}`;
 
   const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
