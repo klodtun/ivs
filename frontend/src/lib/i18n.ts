@@ -1186,11 +1186,11 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.disabled": "Disabled",
     "settings.disable": "Disable",
     "settings.enable": "Enable",
-    "settings.ntp.title": "NTP Time Reference (Computer Crime Act)",
+    "settings.ntp.title": "NTP Time Reference (legally traceable timestamp)",
     "settings.ntp.authority": "Authority",
     "settings.ntp.synced": "Synced",
-    "settings.log.title_compliance": "Audit Log (Computer Crime Act)",
-    "settings.log.compliance_badge": "CCA Compliant",
+    "settings.log.title_compliance": "Audit Log (Compliance)",
+    "settings.log.compliance_badge": "Compliant",
     "settings.log.time": "Time",
     "settings.log.level": "Level",
     "settings.log.user": "User",
@@ -1280,7 +1280,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     // Retention policy panel
     "retention.title": "Data Retention Policy",
     "retention.subtitle": "Configure how long each log type is kept. Expired data is auto-deleted.",
-    "retention.subtitle_short": "Configure log retention per Thai Computer Crime Act B.E. 2560",
+    "retention.subtitle_short": "Configure log retention per applicable data-protection law (default: PDPA)",
     "retention.click_to_expand": "Click to expand",
     "retention.click_to_collapse": "Click to collapse",
     "retention.legal_note": "Thai Computer Crime Act B.E. 2560 §26 — computer-traffic data must be retained for at least 90 days, typically 2 years (730 days), or longer if required by a competent officer.",
@@ -1827,12 +1827,18 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
   "en-EU": {
     "lang.en-EU": "English (EU)",
     "settings.tab.logs": "Audit Logs (GDPR Art. 30)",
+    "settings.ntp.title": "NTP Time Reference (GDPR Art. 32 integrity)",
+    "settings.log.title_compliance": "Audit Log (GDPR Art. 30)",
+    "settings.log.compliance_badge": "GDPR Compliant",
 
     // Privacy notice — GDPR Art. 13/14 information notice
     "settings.pdpa_title": "Records of Processing Activities (GDPR Art. 30)",
     "settings.pdpa_desc": "EU GDPR Regulation 2016/679 compliance",
 
     // Retention — GDPR Storage Limitation principle (Art. 5(1)(e))
+    "retention.title": "Data Retention Policy (GDPR)",
+    "retention.subtitle": "Set retention per log type. Expired data is auto-deleted under the Storage Limitation principle.",
+    "retention.subtitle_short": "Configure log retention per GDPR Art. 5(1)(e) — Storage Limitation",
     "retention.legal_note": "GDPR Art. 5(1)(e) Storage Limitation — personal data shall be kept no longer than necessary for the stated purpose. The controller defines retention; the supervisory authority may require extension under Art. 17(3).",
     "retention.over_recommended": "Long retention — must justify under purpose limitation",
 
@@ -1876,6 +1882,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 
     // Audit logs — APPI Art. 26 (records of processing) equivalent
     "settings.tab.logs": "監査ログ (APPI)",
+    "settings.ntp.title": "NTP時刻参照 (APPI 安全管理措置)",
     "settings.log.title_compliance": "監査ログ — 個人情報保護法対応",
     "settings.log.compliance_badge": "APPI準拠",
 
@@ -1885,8 +1892,9 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 
     // Retention — APPI doesn't specify a minimum, but PIPC guidance
     // recommends keeping security logs for an appropriate period.
-    "retention.title": "データ保存ポリシー",
+    "retention.title": "データ保存ポリシー (APPI)",
     "retention.subtitle": "各ログ種別の保存期間を設定。期限切れデータは自動削除されます",
+    "retention.subtitle_short": "個人情報保護法 (APPI) に基づきログ保存期間を設定",
     "retention.legal_note": "個人情報保護法 第19条 (適正な取得) 及び 第23条 (安全管理措置)。委員会の指示によりさらに長期保存を求められる場合があります。",
     "retention.days": "日",
     "retention.default": "デフォルト",
