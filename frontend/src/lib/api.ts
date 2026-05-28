@@ -286,6 +286,21 @@ export const api = {
       body: JSON.stringify(values),
     }),
 
+  getGiteaCredentials: () =>
+    request<{ username: string; password: string; is_default: boolean }>(
+      "/system/gitea-credentials"
+    ),
+
+  updateGiteaCredentials: (username: string, password: string) =>
+    request<{ username: string; password: string; is_default: boolean }>(
+      "/system/gitea-credentials",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      }
+    ),
+
   triggerRetentionPurge: (password: string) =>
     request<Record<string, number>>("/system/retention/purge", {
       method: "POST",

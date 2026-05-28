@@ -6,6 +6,7 @@ import { cn, formatDateTimeSeconds, formatLegalTimestamp, timeAgo } from "@/lib/
 import { Pagination, usePagination } from "@/components/pagination";
 import { ExportHistoryTable } from "@/components/export-history-table";
 import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
+import { GiteaCredentialsCard } from "@/components/gitea-credentials-card";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
@@ -1562,6 +1563,32 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                 </svg>
                 {t("settings.gitea_open")}
               </a>
+            </div>
+
+            {/* Initial credentials (editable by admin) */}
+            <GiteaCredentialsCard />
+
+            {/* How to use — step-by-step */}
+            <div>
+              <h4 className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                📖 {t("settings.gitea_howto_title")}
+              </h4>
+              <ol className="space-y-2 text-[11px] text-gray-700">
+                {[
+                  "gitea_howto_step1",
+                  "gitea_howto_step2",
+                  "gitea_howto_step3",
+                  "gitea_howto_step4",
+                  "gitea_howto_step5",
+                ].map((key, idx) => (
+                  <li key={key} className="flex gap-2.5 items-start">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold flex items-center justify-center mt-px">
+                      {idx + 1}
+                    </span>
+                    <p className="text-[11px] text-gray-700 leading-relaxed">{t(`settings.${key}`)}</p>
+                  </li>
+                ))}
+              </ol>
             </div>
 
             {/* Features */}

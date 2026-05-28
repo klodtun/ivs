@@ -486,6 +486,62 @@ async def get_dns_config(
     return DNSConfigResponse(domain_suffix=domain, server_ip=settings.SERVER_IP)
 
 
+GITEA_USER_KEY = "gitea.username"
+GITEA_PASS_KEY = "gitea.password"
+GITEA_DEFAULT_USER = "ivs-admin"
+GITEA_DEFAULT_PASS = "ChangeMe123!"
+
+
+def _read_gitea_creds(db: Session) -> dict:
+    u = db.query(SystemConfig).filter(SystemConfig.key == GITEA_USER_KEY).first()
+    p = db.query(SystemConfig).filter(SystemConfig.key == GITEA_PASS_KEY).first()
+    return {
+        "username": u.value if u and u.value else GITEA_DEFAULT_USER,
+        "password": p.value if p and p.value else GITEA_DEFAULT_PASS,
+        "is_default": (not u or not u.value) and (not p or not p.value),
+    }
+
+
+@router.get("/gitea-credentials")
+async def get_gitea_credentials(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    return _read_gitea_creds(db)
+
+
+@router.put("/gitea-credentials")
+async def update_gitea_credentials(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    new_user = (payload or {}).get("username", "").strip()
+    new_pass = (payload or {}).get("password", "")
+    if not new_user or not new_pass:
+        raise HTTPException(status_code=400, detail="username and password are required")
+    if len(new_user) < 3:
+        raise HTTPException(status_code=400, detail="username must be at least 3 characters")
+    if len(new_pass) < 8:
+        raise HTTPException(status_code=400, detail="password must be at least 8 characters")
+
+    for key, value in ((GITEA_USER_KEY, new_user), (GITEA_PASS_KEY, new_pass)):
+        row = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if row:
+            row.value = value
+        else:
+            db.add(SystemConfig(key=key, value=value))
+
+    create_audit_log(
+        db, request, user=user, action="update_gitea_credentials", resource_type="system",
+        details=f"Updated Gitea reference credentials (username={new_user}, password=*****)",
+        log_level="WARNING",
+    )
+    db.commit()
+    return _read_gitea_creds(db)
+
+
 @router.put("/dns-config", response_model=DNSConfigResponse)
 async def update_dns_config(
     req: DNSConfigUpdate,
