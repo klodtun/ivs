@@ -209,14 +209,19 @@ def scan_app_for_pii(source_path: str) -> dict:
     # Deduplicate PII categories
     pii_categories = sorted(found_pii.keys())
 
-    # Deduplicate masking by file
+    # Deduplicate masking by file — structured so the frontend can format
+    # the sentence per locale ("Found 'X' in Y (line N)" / "X 'P' Y N行目" etc.)
     masking_files = set()
     masking_summary = []
     for m in found_masking:
         key = f"{m['file']}:{m['pattern']}"
         if key not in masking_files:
             masking_files.add(key)
-            masking_summary.append(f"พบ '{m['pattern']}' ใน {m['file']} (บรรทัด {m['line']})")
+            masking_summary.append({
+                "pattern": m["pattern"],
+                "file": m["file"],
+                "line": m["line"],
+            })
 
     # Limit scan details to most important (max 50 entries)
     scan_details_limited = scan_details[:50]

@@ -36,6 +36,30 @@ interface NetworkInfo {
   platform: string;
 }
 
+// Backend stores PII categories as Thai strings (legacy schema).
+// Map them to i18n keys so EU/JP locales see localized labels.
+const PII_CATEGORY_TO_KEY: Record<string, string> = {
+  "ชื่อ-นามสกุล": "pii.full_name",
+  "อีเมล": "pii.email",
+  "เบอร์โทรศัพท์": "pii.phone",
+  "ที่อยู่": "pii.address",
+  "บัตรประชาชน/Passport": "pii.national_id",
+  "วันเกิด/อายุ": "pii.dob",
+  "LINE ID": "pii.line_id",
+  "รูปภาพ/ไบโอเมตริก": "pii.photo_bio",
+  "บัญชีธนาคาร/การเงิน": "pii.bank_account",
+  "เลขประจำตัวผู้เสียภาษี": "pii.tax_id",
+  "ข้อมูลบริษัท/องค์กร": "pii.org_info",
+};
+
+function localizePiiCategory(raw: string, t: (k: string) => string): string {
+  const key = PII_CATEGORY_TO_KEY[raw];
+  if (!key) return raw;
+  const translated = t(key);
+  // If the key isn't translated (returns the key itself), fall back to raw.
+  return translated === key ? raw : translated;
+}
+
 export default function SettingsPage() {
   const { t } = useLang();
   const [users, setUsers] = useState<User[]>([]);
@@ -1167,7 +1191,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                           {(r.pii_fields?.length > 0 || r.pii_auto_detected?.length > 0) ? (
                             <div className="flex flex-wrap gap-0.5">
                               {(r.pii_fields?.length > 0 ? r.pii_fields : r.pii_auto_detected)?.slice(0, 3).map((f: string) => (
-                                <span key={f} className="px-1 py-0.5 bg-orange-50 text-orange-700 rounded text-[9px]">{f}</span>
+                                <span key={f} className="px-1 py-0.5 bg-orange-50 text-orange-700 rounded text-[9px]">{localizePiiCategory(f, t)}</span>
                               ))}
                               {((r.pii_fields?.length || r.pii_auto_detected?.length || 0) > 3) && (
                                 <span className="px-1 py-0.5 text-gray-400 text-[9px]">+{(r.pii_fields?.length || r.pii_auto_detected?.length) - 3}</span>
@@ -1245,7 +1269,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     <p className="text-[10px] font-medium text-gray-700 mb-1">{t("settings.pdpa_found_pii")}:</p>
                     <div className="flex flex-wrap gap-1">
                       {scanResult.pii_fields_detected.map((f: string) => (
-                        <span key={f} className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded text-[10px]">{f}</span>
+                        <span key={f} className="px-2 py-0.5 bg-orange-50 text-orange-700 rounded text-[10px]">{localizePiiCategory(f, t)}</span>
                       ))}
                     </div>
                   </div>
@@ -1259,28 +1283,36 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
 
                 {scanResult.masking_patterns?.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-[10px] font-medium text-gray-700 mb-1">Masking patterns:</p>
+                    <p className="text-[10px] font-medium text-gray-700 mb-1">{t("settings.pdpa.masking_patterns_label")}:</p>
                     <div className="bg-gray-50 rounded p-2 space-y-0.5 max-h-32 overflow-y-auto">
-                      {scanResult.masking_patterns.map((p: string, i: number) => (
-                        <p key={i} className="text-[9px] text-gray-600 font-mono">{p}</p>
-                      ))}
+                      {scanResult.masking_patterns.map((p: any, i: number) => {
+                        // Backwards compat: legacy backend returns pre-formatted strings;
+                        // current backend returns {pattern, file, line} objects.
+                        const text = typeof p === "string"
+                          ? p
+                          : t("settings.pdpa.masking_line")
+                              .replace("{pattern}", p.pattern)
+                              .replace("{file}", p.file)
+                              .replace("{line}", String(p.line));
+                        return <p key={i} className="text-[9px] text-gray-600 font-mono">{text}</p>;
+                      })}
                     </div>
                   </div>
                 )}
 
                 {scanResult.scan_details?.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-medium text-gray-700 mb-1">Scan Details ({scanResult.scan_details.length} items):</p>
+                    <p className="text-[10px] font-medium text-gray-700 mb-1">{t("settings.pdpa.scan_details_label")} ({scanResult.scan_details.length} {t("settings.pdpa.items")}):</p>
                     <div className="bg-gray-50 rounded p-2 max-h-40 overflow-y-auto">
                       <table className="w-full text-[9px]">
-                        <thead><tr className="text-gray-500"><th className="text-left pr-2">File</th><th className="text-left pr-2">Line</th><th className="text-left pr-2">Field</th><th className="text-left">Category</th></tr></thead>
+                        <thead><tr className="text-gray-500"><th className="text-left pr-2">{t("settings.pdpa.col_file")}</th><th className="text-left pr-2">{t("settings.pdpa.col_line")}</th><th className="text-left pr-2">{t("settings.pdpa.col_field")}</th><th className="text-left">{t("settings.pdpa.col_category")}</th></tr></thead>
                         <tbody>
                           {scanResult.scan_details.slice(0, 20).map((d: any, i: number) => (
                             <tr key={i} className="border-t border-gray-100">
                               <td className="pr-2 py-0.5 font-mono text-blue-600">{d.file}</td>
                               <td className="pr-2 py-0.5">{d.line}</td>
                               <td className="pr-2 py-0.5 font-mono">{d.field}</td>
-                              <td className="py-0.5">{d.category}</td>
+                              <td className="py-0.5">{localizePiiCategory(d.category, t)}</td>
                             </tr>
                           ))}
                         </tbody>
