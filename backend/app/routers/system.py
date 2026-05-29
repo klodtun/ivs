@@ -21,6 +21,7 @@ from app.services.ntp_service import ntp_service
 from app.services.resource_service import get_current_resources, get_history, generate_report, collect_snapshot
 from app.services.app_log_service import get_logs_for_export as get_app_logs_for_export
 from app.services import retention_service
+from app.services import gdpr_erasure_service
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
 from app.config import settings
 
@@ -868,6 +869,113 @@ async def trigger_retention_purge(
     )
     db.commit()
     return result
+
+
+@router.post("/gdpr/erasure/preview")
+async def preview_gdpr_erasure(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    target_type = (payload or {}).get("target_type", "").strip()
+    target_value = (payload or {}).get("target_value", "").strip()
+    if target_type not in ("email", "ip", "username", "user_id"):
+        raise HTTPException(status_code=400, detail="target_type must be email|ip|username|user_id")
+    if not target_value:
+        raise HTTPException(status_code=400, detail="target_value is required")
+    return {"target_type": target_type, "rows_affected": gdpr_erasure_service.preview(db, target_type, target_value)}
+
+
+@router.post("/gdpr/erasure")
+async def execute_gdpr_erasure(
+    payload: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    password = (payload or {}).get("password", "")
+    if not password or not verify_password(password, user.password_hash):
+        create_audit_log(
+            db, request, user=user, action="gdpr_erasure_denied", resource_type="system",
+            details="Erasure attempt denied — password re-authentication failed",
+            log_level="WARNING",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail="Password verification failed. GDPR erasure requires re-authentication.",
+        )
+
+    target_type = (payload or {}).get("target_type", "").strip()
+    target_value = (payload or {}).get("target_value", "").strip()
+    reason = (payload or {}).get("reason", "").strip()
+    legal_basis = (payload or {}).get("legal_basis", "").strip()
+
+    if target_type not in ("email", "ip", "username", "user_id"):
+        raise HTTPException(status_code=400, detail="target_type must be email|ip|username|user_id")
+    if not target_value:
+        raise HTTPException(status_code=400, detail="target_value is required")
+
+    request_ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (
+        request.client.host if request.client else None
+    )
+
+    result = gdpr_erasure_service.execute(
+        db=db,
+        target_type=target_type,
+        target_value=target_value,
+        reason=reason,
+        legal_basis=legal_basis,
+        admin=user,
+        request_ip=request_ip,
+    )
+
+    # IMPORTANT: target_value is NEVER stored in audit_logs — only the hash.
+    create_audit_log(
+        db, request, user=user, action="gdpr_erasure_executed", resource_type="system",
+        resource_id=str(result["id"]),
+        details=(
+            f"GDPR Art. 17 erasure — target_type={target_type}, "
+            f"hash={result['target_hash'][:16]}..., "
+            f"rows={result['rows_affected']}, cert_sha={result['sha256_proof'][:16]}..."
+        ),
+        log_level="CRITICAL" if "CRITICAL" in {"CRITICAL"} else "WARNING",
+    )
+    db.commit()
+    return result
+
+
+@router.get("/gdpr/erasure/history")
+async def list_gdpr_erasures(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    from app.models import GdprErasureRequest
+    rows = (
+        db.query(GdprErasureRequest)
+        .order_by(GdprErasureRequest.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    out = []
+    for r in rows:
+        try:
+            ra = json.loads(r.rows_affected or "{}")
+        except Exception:
+            ra = {}
+        out.append({
+            "id": r.id,
+            "target_type": r.target_type,
+            "target_hash": r.target_hash,
+            "reason": r.reason,
+            "legal_basis": r.legal_basis,
+            "requested_by": r.requested_by,
+            "requested_ip": r.requested_ip,
+            "rows_affected": ra,
+            "sha256_proof": r.sha256_proof,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+    return out
 
 
 @router.websocket("/ws/health")

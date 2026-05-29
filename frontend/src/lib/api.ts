@@ -311,6 +311,51 @@ export const api = {
       }
     ),
 
+  // GDPR / APPI / PDPA — Right to be Forgotten
+  previewGdprErasure: (target_type: string, target_value: string) =>
+    request<{ target_type: string; rows_affected: Record<string, number> }>(
+      "/system/gdpr/erasure/preview",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_type, target_value }),
+      }
+    ),
+
+  executeGdprErasure: (
+    target_type: string,
+    target_value: string,
+    reason: string,
+    legal_basis: string,
+    password: string
+  ) =>
+    request<{
+      id: number;
+      target_hash: string;
+      rows_affected: Record<string, number>;
+      sha256_proof: string;
+      certificate: string;
+      created_at: string | null;
+    }>("/system/gdpr/erasure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_type, target_value, reason, legal_basis, password }),
+    }),
+
+  listGdprErasures: () =>
+    request<Array<{
+      id: number;
+      target_type: string;
+      target_hash: string;
+      reason: string;
+      legal_basis: string;
+      requested_by: number;
+      requested_ip: string | null;
+      rows_affected: Record<string, number>;
+      sha256_proof: string;
+      created_at: string | null;
+    }>>("/system/gdpr/erasure/history"),
+
   triggerRetentionPurge: (password: string) =>
     request<Record<string, number>>("/system/retention/purge", {
       method: "POST",

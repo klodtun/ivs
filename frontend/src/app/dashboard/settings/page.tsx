@@ -7,6 +7,7 @@ import { Pagination, usePagination } from "@/components/pagination";
 import { ExportHistoryTable } from "@/components/export-history-table";
 import { RetentionPolicyPanel } from "@/components/retention-policy-panel";
 import { GiteaCredentialsCard } from "@/components/gitea-credentials-card";
+import { GdprErasurePanel } from "@/components/gdpr-erasure-panel";
 import { isEnabled } from "@/lib/features";
 import { LocalizedDateInput } from "@/components/localized-date-input";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
@@ -1126,6 +1127,9 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
       {/* ===== TAB: PDPA ===== */}
       {tab === "pdpa" && (
         <div className="space-y-4">
+          {/* GDPR / APPI / PDPA — Right to be Forgotten executor */}
+          <GdprErasurePanel />
+
           {/* Header + Actions */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between">

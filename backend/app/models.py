@@ -249,6 +249,25 @@ class AppPdpa(Base):
     app = relationship("App")
 
 
+class GdprErasureRequest(Base):
+    """Audit trail for GDPR Art. 17 / APPI Art. 30 / PDPA §35 erasure
+    requests. The target identifier is stored ONLY as an HMAC hash so the
+    erasure record itself never re-introduces the PII we just erased.
+    """
+    __tablename__ = "gdpr_erasure_requests"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    target_type   = Column(String(20), nullable=False)   # "email" | "ip" | "username" | "user_id"
+    target_hash   = Column(String(64), nullable=False, index=True)
+    reason        = Column(Text, default="")
+    legal_basis   = Column(String(64), default="")       # e.g. "GDPR Art. 17(1)(a)"
+    requested_by  = Column(Integer, ForeignKey("users.id"), nullable=False)
+    requested_ip  = Column(String(45), nullable=True)
+    rows_affected = Column(Text, default="{}")           # JSON {audit_logs: N, app_logs: N, ...}
+    sha256_proof  = Column(String(64), nullable=False)
+    created_at    = Column(DateTime, default=utcnow, index=True)
+
+
 class PdpaConsent(Base):
     """
     Per-user, per-app record of consent decisions for the PDPA Privacy
