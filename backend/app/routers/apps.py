@@ -28,6 +28,23 @@ def make_slug(name: str) -> str:
     return slug[:60]
 
 
+def _heal_container_id(app: "App", db: Session) -> str:
+    """Refresh app.container_id from the live Docker daemon.
+
+    If the stored id is stale (container rebuilt outside IVS), look up
+    by the conventional name `ivs-<slug>` and update the row. Returns
+    the live id or "" if no container exists.
+    """
+    live = docker_service.resolve_live_container_id(app.container_id or "", f"ivs-{app.slug}")
+    if live and live != app.container_id:
+        app.container_id = live
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+    return live
+
+
 def allocate_port(db: Session) -> int:
     used = {a.port for a in db.query(App).filter(App.port.isnot(None)).all()}
     for p in range(settings.APP_PORT_RANGE_START, settings.APP_PORT_RANGE_END + 1):
@@ -632,8 +649,9 @@ async def start_app(
         raise HTTPException(status_code=404, detail="App not found")
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
-    if app.container_id:
-        docker_service.start_container(app.container_id)
+    live_id = _heal_container_id(app, db)
+    if live_id:
+        docker_service.start_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
     return {"message": f"{app.name} started"}
@@ -650,8 +668,9 @@ async def stop_app(
         raise HTTPException(status_code=404, detail="App not found")
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
-    if app.container_id:
-        docker_service.stop_container(app.container_id)
+    live_id = _heal_container_id(app, db)
+    if live_id:
+        docker_service.stop_container(live_id)
     app.status = AppStatus.STOPPED
     db.commit()
     return {"message": f"{app.name} stopped"}
@@ -668,8 +687,9 @@ async def restart_app(
         raise HTTPException(status_code=404, detail="App not found")
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
-    if app.container_id:
-        docker_service.restart_container(app.container_id)
+    live_id = _heal_container_id(app, db)
+    if live_id:
+        docker_service.restart_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
     return {"message": f"{app.name} restarted"}
@@ -687,9 +707,10 @@ async def get_app_logs(
         raise HTTPException(status_code=404, detail="App not found")
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
-    if not app.container_id:
+    live_id = _heal_container_id(app, db)
+    if not live_id:
         return {"logs": "No container associated"}
-    return {"logs": docker_service.get_container_logs(app.container_id, tail)}
+    return {"logs": docker_service.get_container_logs(live_id, tail)}
 
 
 @router.get("/{app_id}/versions", response_model=list[AppVersionResponse])

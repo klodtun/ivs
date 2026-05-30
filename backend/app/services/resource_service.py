@@ -48,7 +48,13 @@ def _get_per_app_stats(db: Session) -> list[dict]:
     apps = db.query(App).filter(App.status == AppStatus.RUNNING, App.container_id.isnot(None)).all()
     result = []
     for app in apps:
-        stats = docker_service.get_container_stats(app.container_id)
+        # Self-heal stale container_id (rebuilt outside IVS)
+        live_id = docker_service.resolve_live_container_id(app.container_id or "", f"ivs-{app.slug}")
+        if live_id and live_id != app.container_id:
+            app.container_id = live_id
+            try: db.commit()
+            except Exception: db.rollback()
+        stats = docker_service.get_container_stats(live_id or app.container_id)
         result.append({
             "slug": app.slug,
             "name": app.name,

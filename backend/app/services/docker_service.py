@@ -175,6 +175,34 @@ class DockerService:
 
         return result
 
+    def resolve_live_container_id(self, container_id: str, name: str) -> str:
+        """Return the actual running container id for an IVS app.
+
+        Self-heals when the stored container_id is stale (container
+        rebuilt outside IVS): if the id doesn't exist but a container
+        with the conventional name `ivs-<slug>` does, returns that
+        container's real id.
+
+        Returns "" if no container exists at all.
+        """
+        if not self._ensure_client():
+            return container_id or ""
+        # Try the recorded id first
+        if container_id:
+            try:
+                c = self.client.containers.get(container_id)
+                return c.id
+            except Exception:
+                pass
+        # Fall back to name lookup
+        if name:
+            try:
+                c = self.client.containers.get(name)
+                return c.id
+            except Exception:
+                pass
+        return ""
+
     def wait_until_ready(self, timeout: int = 90) -> bool:
         """Poll the daemon until it answers ping or timeout (seconds)."""
         import time
