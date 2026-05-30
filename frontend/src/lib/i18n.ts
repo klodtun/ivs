@@ -349,6 +349,13 @@ const translations: Record<Locale, Record<string, string>> = {
     "docker.ready": "✓ Docker พร้อมใช้งานแล้ว",
     "docker.start_failed": "เปิด Docker ไม่สำเร็จ — กรุณาเปิดด้วยตนเอง",
 
+    // Loading + perf
+    "common.loading": "กำลังโหลด…",
+    "common.loading_health": "กำลังโหลดสถานะระบบ…",
+    "common.loading_apps": "กำลังโหลดรายการแอป…",
+    "perf.slow_title": "ระบบช้ากว่าปกติ (≥{n} วินาที)",
+    "perf.slow_desc": "อาจเกิดจาก CPU/RAM/Disk จำกัด, Docker ทำงานหนัก หรือ Next.js dev mode (ครั้งแรกของแต่ละหน้าจะ compile) — กรุณารอ หากเกิดบ่อยให้สลับเป็น production mode: IVS_MODE=prod bash scripts/start-ivs.sh",
+
     // GDPR / APPI / PDPA — Right to be Forgotten
     "gdpr.title": "สิทธิ์การถูกลืม (Right to be Forgotten)",
     "gdpr.subtitle": "ลบ/ปกปิดข้อมูลส่วนบุคคลของผู้ที่ใช้สิทธิตามกฎหมาย (PDPA §35)",
@@ -1381,6 +1388,13 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "docker.starting": "Starting Docker daemon — wait 30-60 seconds…",
     "docker.ready": "✓ Docker is ready",
     "docker.start_failed": "Could not start Docker — please start it manually",
+
+    // Loading + perf
+    "common.loading": "Loading…",
+    "common.loading_health": "Loading system health…",
+    "common.loading_apps": "Loading applications…",
+    "perf.slow_title": "System slower than usual (≥{n}s)",
+    "perf.slow_desc": "Could be CPU/RAM/Disk bound, Docker under load, or Next.js dev-mode first-paint compile. If frequent, switch to production: IVS_MODE=prod bash scripts/start-ivs.sh",
 
     // GDPR / APPI / PDPA — Right to be Forgotten
     "gdpr.title": "Right to be Forgotten",

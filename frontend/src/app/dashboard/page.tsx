@@ -6,6 +6,7 @@ import { SystemHealthPanel } from "@/components/system-health";
 import { AppCard } from "@/components/app-card";
 import { DeployZone } from "@/components/deploy-zone";
 import { DockerStatusBanner } from "@/components/docker-status-banner";
+import { LoadingState, PerfWarningBanner } from "@/components/loading-state";
 import { App, SystemHealth, User } from "@/types";
 
 export default function DashboardPage() {
@@ -16,6 +17,9 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadStartedAt] = useState<number>(() => Date.now());
+  const [slowLoadSeconds, setSlowLoadSeconds] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
     setIsRefreshing(true);
@@ -30,8 +34,19 @@ export default function DashboardPage() {
       setRefreshError(e instanceof Error ? e.message : "Failed to refresh");
     } finally {
       setIsRefreshing(false);
+      setInitialLoading(false);
     }
   }, []);
+
+  // Flag if the very first paint is slow (>5s) — likely Docker / NAS hw-bound
+  useEffect(() => {
+    if (!initialLoading) return;
+    const t = setTimeout(() => {
+      const elapsed = Math.round((Date.now() - loadStartedAt) / 1000);
+      if (initialLoading) setSlowLoadSeconds(elapsed);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [initialLoading, loadStartedAt]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -96,7 +111,15 @@ export default function DashboardPage() {
 
       <DockerStatusBanner onChange={(running) => running && loadData()} />
 
-      <SystemHealthPanel health={health} />
+      {initialLoading && slowLoadSeconds !== null && (
+        <PerfWarningBanner seconds={slowLoadSeconds} />
+      )}
+
+      {initialLoading ? (
+        <LoadingState variant="card" label={t("common.loading_health")} />
+      ) : (
+        <SystemHealthPanel health={health} />
+      )}
 
       {canDeploy && <DeployZone onDeployed={loadData} />}
 

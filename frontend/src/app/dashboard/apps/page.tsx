@@ -5,6 +5,7 @@ import { useLang } from "@/components/lang-provider";
 import { AppCard } from "@/components/app-card";
 import { DeployZone } from "@/components/deploy-zone";
 import { DockerStatusBanner } from "@/components/docker-status-banner";
+import { LoadingState, PerfWarningBanner } from "@/components/loading-state";
 import { App, User } from "@/types";
 
 export default function AppsPage() {
@@ -15,10 +16,21 @@ export default function AppsPage() {
   const [search, setSearch] = useState("");
   const [selectedApp, setSelectedApp] = useState<number | null>(null);
   const [logs, setLogs] = useState<string>("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [slowSec, setSlowSec] = useState<number | null>(null);
 
   const loadApps = useCallback(async () => {
     try { setApps(await api.getApps()); } catch (e) { console.error(e); }
+    finally { setInitialLoading(false); }
   }, []);
+
+  useEffect(() => {
+    const start = Date.now();
+    const t = setTimeout(() => {
+      if (initialLoading) setSlowSec(Math.round((Date.now() - start) / 1000));
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [initialLoading]);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -65,7 +77,11 @@ export default function AppsPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {initialLoading && slowSec !== null && <PerfWarningBanner seconds={slowSec} />}
+
+      {initialLoading ? (
+        <LoadingState variant="card" label={t("common.loading_apps")} />
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
           <p className="text-gray-400 text-xs">{t("apps.no_match")}</p>
         </div>

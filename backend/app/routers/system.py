@@ -30,27 +30,39 @@ EXPORTS_DIR = os.path.join(os.path.dirname(settings.DATABASE_URL.replace("sqlite
 router = APIRouter(prefix="/api/system", tags=["System"])
 
 
+# Short-TTL cache for /system/health — psutil.cpu_percent(interval=0.5)
+# blocks 500 ms PER request, so without a cache the dashboard's poll
+# loops compound into seconds of wait. 3-second TTL is small enough
+# the UI still feels live, large enough N parallel requests share work.
+_HEALTH_CACHE: dict = {"ts": 0.0, "payload": None}
+_HEALTH_TTL = 3.0
+
+
 @router.get("/health", response_model=SystemHealth)
 async def get_system_health(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    cpu = psutil.cpu_percent(interval=0.5)
+    import time
+    now = time.monotonic()
+    cached = _HEALTH_CACHE.get("payload")
+    if cached is not None and (now - _HEALTH_CACHE["ts"]) < _HEALTH_TTL:
+        # Refresh just the cheap-to-compute app counts so the
+        # "N running" badge stays accurate even within the TTL window.
+        cached.apps_total = db.query(App).count()
+        cached.apps_running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
+        return cached
+
+    # psutil.cpu_percent(interval=0) returns the delta since the LAST
+    # call instantly — no 500 ms block. We seed it the first time and
+    # rely on the polling cadence to give it data points after that.
+    cpu = psutil.cpu_percent(interval=None) or psutil.cpu_percent(interval=0.2)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
-    # Count from database (source of truth) instead of Docker labels
     total = db.query(App).count()
     running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
 
-    # IMPORTANT: psutil.virtual_memory().percent uses (total - available) / total,
-    # which on macOS includes inactive/cached pages, while mem.used excludes them.
-    # Use (total - available) here so the displayed bytes match the percentage gauge.
     memory_used = mem.total - mem.available
-
-    # Disk: on macOS APFS, disk.total can include "purgeable" space shared with
-    # other volumes — used + free ≠ total. psutil.disk.percent already uses
-    # used / (used + free) which matches `df` capacity. Use (used + free) as the
-    # displayed total so bytes and percentage stay consistent on every OS.
     disk_total_effective = disk.used + disk.free
 
-    return SystemHealth(
+    payload = SystemHealth(
         cpu_percent=cpu,
         memory_total=mem.total,
         memory_used=memory_used,
@@ -63,6 +75,9 @@ async def get_system_health(db: Session = Depends(get_db), user: User = Depends(
         apps_running=running,
         apps_total=total,
     )
+    _HEALTH_CACHE["ts"] = now
+    _HEALTH_CACHE["payload"] = payload
+    return payload
 
 
 @router.get("/audit-logs", response_model=list[AuditLogResponse])
@@ -829,9 +844,20 @@ async def update_retention_settings(
     return retention_service.get_all_settings(db)
 
 
+_DOCKER_CACHE: dict = {"ts": 0.0, "running": None}
+_DOCKER_TTL = 5.0
+
+
 @router.get("/docker/status")
 async def docker_status(user: User = Depends(get_current_user)):
-    return {"running": docker_service.is_available()}
+    import time
+    now = time.monotonic()
+    if _DOCKER_CACHE["running"] is not None and (now - _DOCKER_CACHE["ts"]) < _DOCKER_TTL:
+        return {"running": _DOCKER_CACHE["running"]}
+    running = docker_service.is_available()
+    _DOCKER_CACHE["ts"] = now
+    _DOCKER_CACHE["running"] = running
+    return {"running": running}
 
 
 @router.post("/docker/start")
