@@ -60,6 +60,15 @@ export const api = {
   hasDefaultAdmin: () =>
     request<{ exists: boolean }>("/auth/default-admin-exists"),
 
+  adminCount: () =>
+    request<{ count: number }>("/auth/admin-count"),
+
+  factoryResetLastAdmin: () =>
+    request<{ reset: string; username: string; previous?: string }>(
+      "/auth/factory-reset-last-admin",
+      { method: "POST" }
+    ),
+
   dockerStatus: () =>
     request<{ running: boolean }>("/system/docker/status"),
 

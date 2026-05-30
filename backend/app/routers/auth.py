@@ -42,6 +42,108 @@ async def default_admin_exists(db: Session = Depends(get_db)):
     return {"exists": exists}
 
 
+@router.get("/admin-count")
+async def admin_count(db: Session = Depends(get_db)):
+    """Public — login page uses this to decide whether to show the
+    last-admin recovery button. Returns count of active admins."""
+    count = (
+        db.query(User)
+        .filter(User.role == UserRole.ADMIN, User.is_active == True)
+        .count()
+    )
+    return {"count": count}
+
+
+@router.post("/factory-reset-last-admin")
+async def factory_reset_last_admin(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Wipe the last active admin and restore the default admin/admin123.
+
+    Public endpoint (no auth — operator forgot password). Only succeeds
+    when exactly ONE active admin exists, so a working multi-admin
+    deployment cannot be reset by a passerby.
+
+    Audit-logged at CRITICAL.
+    """
+    from app.middleware.auth import hash_password
+    from app.models import App, Tunnel, VaultKey, UserAppAccess, AppPdpa, AuditLogExport
+
+    admins = (
+        db.query(User)
+        .filter(User.role == UserRole.ADMIN, User.is_active == True)
+        .all()
+    )
+    if len(admins) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Factory reset only available when exactly one active admin exists.",
+        )
+
+    target = admins[0]
+    target_username = target.username
+    target_id = target.id
+
+    # Reassign owned records — orphans would otherwise break FK or hide
+    # apps from any future admin. We move everything to the NEW default
+    # admin we're about to create.
+    new_admin = User(
+        username=DEFAULT_ADMIN_USERNAME,
+        email=f"{DEFAULT_ADMIN_USERNAME}@ivs.local",
+        password_hash=hash_password("admin123"),
+        role=UserRole.ADMIN,
+    )
+    # If the existing admin already has the default username, just reset
+    # its password and skip the reassignment dance.
+    if target.username == DEFAULT_ADMIN_USERNAME:
+        target.password_hash = hash_password("admin123")
+        create_audit_log(
+            db, request, user=None, action="factory_reset_password",
+            resource_type="auth", resource_id=str(target.id),
+            details=f"Reset password of '{target_username}' to default (factory reset)",
+            log_level="CRITICAL",
+        )
+        db.commit()
+        return {"reset": "password_only", "username": DEFAULT_ADMIN_USERNAME}
+
+    # Different username — create fresh default, reassign, then delete old
+    db.add(new_admin)
+    db.flush()  # get new_admin.id without committing yet
+
+    db.query(App).filter(App.owner_id == target_id).update(
+        {"owner_id": new_admin.id}, synchronize_session=False
+    )
+    db.query(Tunnel).filter(Tunnel.created_by == target_id).update(
+        {"created_by": new_admin.id}, synchronize_session=False
+    )
+    db.query(VaultKey).filter(VaultKey.created_by == target_id).update(
+        {"created_by": new_admin.id}, synchronize_session=False
+    )
+    db.query(AppPdpa).filter(AppPdpa.updated_by == target_id).update(
+        {"updated_by": new_admin.id}, synchronize_session=False
+    )
+    db.query(AuditLogExport).filter(AuditLogExport.exported_by == target_id).update(
+        {"exported_by": new_admin.id}, synchronize_session=False
+    )
+    db.query(UserAppAccess).filter(UserAppAccess.user_id == target_id).delete(
+        synchronize_session=False
+    )
+    db.delete(target)
+
+    create_audit_log(
+        db, request, user=None, action="factory_reset_admin",
+        resource_type="auth", resource_id=str(target_id),
+        details=(
+            f"Factory-reset triggered: deleted last admin '{target_username}' "
+            f"and restored default admin/admin123 (new uid {new_admin.id})"
+        ),
+        log_level="CRITICAL",
+    )
+    db.commit()
+    return {"reset": "replaced", "username": DEFAULT_ADMIN_USERNAME, "previous": target_username}
+
+
 @router.post("/login", response_model=Token)
 async def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()

@@ -805,8 +805,13 @@ async def export_app(
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
 
-    # Strict ownership check (cannot be bypassed by role)
-    if app.owner_id != user.id:
+    # Ownership rule: current owner can always export. Admins also get
+    # export rights because the deployer may have been deleted (their
+    # apps were reassigned to the deleting admin) and other admins still
+    # need access for backup / migration. Non-admin developers can only
+    # export apps they themselves own.
+    role_value = user.role.value if hasattr(user.role, "value") else user.role
+    if app.owner_id != user.id and role_value != "admin":
         owner = db.query(User).filter(User.id == app.owner_id).first()
         owner_name = owner.username if owner else f"uid:{app.owner_id}"
         create_audit_log(

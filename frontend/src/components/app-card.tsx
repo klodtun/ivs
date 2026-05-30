@@ -37,7 +37,10 @@ export function AppCard({
   const canManage = userRole === "admin" || userRole === "developer";
   // Copyright protection: only the original deployer of an app can export
   // its source + data. Admins are deliberately not granted an override.
-  const canExport = userId !== undefined && app.owner_id === userId;
+  // Current owner can always export. Admins also get export rights so
+  // backup/migration still works after the original deployer is deleted.
+  const canExport =
+    (userId !== undefined && app.owner_id === userId) || userRole === "admin";
 
   const appUrl = app.port
     ? `http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:${app.port}`

@@ -13,6 +13,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showDefaultHint, setShowDefaultHint] = useState(false);
+  const [lastAdminVisible, setLastAdminVisible] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetWorking, setResetWorking] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
 
   // Show the default admin hint only while the seeded admin account
   // still exists. Once an admin deletes it (after creating a real admin
@@ -21,7 +25,32 @@ export default function LoginPage() {
     api.hasDefaultAdmin()
       .then((r) => setShowDefaultHint(!!r.exists))
       .catch(() => setShowDefaultHint(false));
+    api.adminCount()
+      .then((r) => setLastAdminVisible(r.count === 1))
+      .catch(() => setLastAdminVisible(false));
   }, []);
+
+  const handleFactoryReset = async () => {
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      return;
+    }
+    setResetWorking(true);
+    setResetMessage("");
+    try {
+      await api.factoryResetLastAdmin();
+      setResetMessage(t("login.reset_done"));
+      setShowDefaultHint(true);
+      setLastAdminVisible(false);
+      setResetConfirm(false);
+      setUsername("admin");
+      setPassword("admin123");
+    } catch (e: any) {
+      setResetMessage(e?.message || t("login.reset_failed"));
+    } finally {
+      setResetWorking(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +140,47 @@ export default function LoginPage() {
               <p className="text-[5px] text-gray-400 mt-0.5 leading-tight">
                 {t("login.default_disappears_note")}
               </p>
+            </div>
+          )}
+
+          {lastAdminVisible && (
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              {!resetConfirm ? (
+                <button
+                  type="button"
+                  onClick={handleFactoryReset}
+                  className="w-full text-[10px] text-gray-400 hover:text-red-600 transition py-1"
+                >
+                  {t("login.reset_link")}
+                </button>
+              ) : (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 space-y-2">
+                  <p className="text-[10px] text-red-700 leading-snug">
+                    {t("login.reset_confirm")}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setResetConfirm(false); setResetMessage(""); }}
+                      disabled={resetWorking}
+                      className="flex-1 text-[10px] py-1.5 bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {t("login.reset_cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleFactoryReset}
+                      disabled={resetWorking}
+                      className="flex-1 text-[10px] py-1.5 bg-red-600 text-white font-semibold rounded hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {resetWorking ? t("login.reset_working") : t("login.reset_confirm_btn")}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {resetMessage && (
+                <p className="mt-2 text-[10px] text-green-700 text-center">{resetMessage}</p>
+              )}
             </div>
           )}
         </div>
