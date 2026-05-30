@@ -13,10 +13,14 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showDefaultHint, setShowDefaultHint] = useState(false);
-  const [lastAdminVisible, setLastAdminVisible] = useState(false);
+  const [isLastAdmin, setIsLastAdmin] = useState(false);
+  const [failedCount, setFailedCount] = useState(0);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetWorking, setResetWorking] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
+
+  const FAILED_KEY = "ivs_login_failed";
+  const FAILED_THRESHOLD = 10;
 
   // Show the default admin hint only while the seeded admin account
   // still exists. Once an admin deletes it (after creating a real admin
@@ -26,9 +30,17 @@ export default function LoginPage() {
       .then((r) => setShowDefaultHint(!!r.exists))
       .catch(() => setShowDefaultHint(false));
     api.adminCount()
-      .then((r) => setLastAdminVisible(r.count === 1))
-      .catch(() => setLastAdminVisible(false));
+      .then((r) => setIsLastAdmin(r.count === 1))
+      .catch(() => setIsLastAdmin(false));
+    // Persist failed-login counter across page reloads so the recovery
+    // button is gated by accumulated mistakes, not just the current session.
+    if (typeof window !== "undefined") {
+      const stored = parseInt(localStorage.getItem(FAILED_KEY) || "0", 10);
+      setFailedCount(Number.isFinite(stored) ? stored : 0);
+    }
   }, []);
+
+  const showRecovery = isLastAdmin && failedCount >= FAILED_THRESHOLD;
 
   const handleFactoryReset = async () => {
     if (!resetConfirm) {
@@ -41,10 +53,14 @@ export default function LoginPage() {
       await api.factoryResetLastAdmin();
       setResetMessage(t("login.reset_done"));
       setShowDefaultHint(true);
-      setLastAdminVisible(false);
+      setIsLastAdmin(false);
       setResetConfirm(false);
       setUsername("admin");
       setPassword("admin123");
+      // Clear failure counter so the recovery prompt doesn't show
+      // again immediately after a successful reset.
+      localStorage.removeItem(FAILED_KEY);
+      setFailedCount(0);
     } catch (e: any) {
       setResetMessage(e?.message || t("login.reset_failed"));
     } finally {
@@ -61,9 +77,18 @@ export default function LoginPage() {
       localStorage.setItem("token", res.access_token);
       const user = await api.getMe();
       localStorage.setItem("user", JSON.stringify(user));
+      // Reset failure counter on successful login
+      localStorage.removeItem(FAILED_KEY);
       router.push("/dashboard");
     } catch (err: any) {
       setError(err.message || "Login failed");
+      // Increment persistent failed-attempt counter (gates the
+      // last-admin recovery button — appears after 10 mistakes).
+      if (typeof window !== "undefined") {
+        const next = failedCount + 1;
+        setFailedCount(next);
+        try { localStorage.setItem(FAILED_KEY, String(next)); } catch {}
+      }
     } finally {
       setLoading(false);
     }
@@ -143,7 +168,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {lastAdminVisible && (
+          {showRecovery && (
             <div className="mt-4 pt-3 border-t border-gray-100">
               {!resetConfirm ? (
                 <button
