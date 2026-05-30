@@ -31,6 +31,16 @@ def _enrich_user_response(user: User, db: Session) -> dict:
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
+DEFAULT_ADMIN_USERNAME = "admin"
+
+
+@router.get("/default-admin-exists")
+async def default_admin_exists(db: Session = Depends(get_db)):
+    """Public endpoint — login page shows the default credentials hint
+    only while the seeded admin/admin123 account is still present."""
+    exists = db.query(User).filter(User.username == DEFAULT_ADMIN_USERNAME).first() is not None
+    return {"exists": exists}
+
 
 @router.post("/login", response_model=Token)
 async def login(req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
@@ -197,6 +207,29 @@ async def delete_user(
             raise HTTPException(
                 status_code=400,
                 detail="Cannot delete the last active admin.",
+            )
+
+    # Extra protection for the seeded default admin: only let it be deleted
+    # once a NON-default admin (different username) exists. This prevents
+    # an operator from locking themselves out before they've replaced the
+    # well-known credentials with their own account.
+    if target.username == DEFAULT_ADMIN_USERNAME:
+        alternative_admin = (
+            db.query(User)
+            .filter(
+                User.role == UserRole.ADMIN,
+                User.username != DEFAULT_ADMIN_USERNAME,
+                User.is_active == True,
+            )
+            .first()
+        )
+        if alternative_admin is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Create another Admin account (with a different username) "
+                    "before deleting the default 'admin' account."
+                ),
             )
 
     reassigned_apps = (

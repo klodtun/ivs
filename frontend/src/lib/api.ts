@@ -57,6 +57,9 @@ export const api = {
 
   getMe: () => request<any>("/auth/me"),
 
+  hasDefaultAdmin: () =>
+    request<{ exists: boolean }>("/auth/default-admin-exists"),
+
   getUsers: () => request<any[]>("/auth/users"),
 
   createUser: (data: {

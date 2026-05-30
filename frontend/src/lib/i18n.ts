@@ -25,12 +25,13 @@ const translations: Record<Locale, Record<string, string>> = {
 
     // Login
     "login.title": "Internal Vibe Server",
-    "login.subtitle": "เกตเวย์สำหรับแอป Vibe Code ภายในองค์กร",
+    "login.subtitle": "คลิกเดียว สตาร์ท Vibe ดีๆ ทั่วทั้งองค์กร",
     "login.username": "ชื่อผู้ใช้",
     "login.password": "รหัสผ่าน",
     "login.submit": "เข้าสู่ระบบ",
     "login.signing_in": "กำลังเข้าสู่ระบบ...",
     "login.default": "ค่าเริ่มต้น: admin / admin123",
+    "login.default_disappears_note": "ถ้าลบ Account นี้ ข้อความ ‘ค่าเริ่มต้น: admin / admin123’ นี้จะหายไป",
     "login.username_placeholder": "กรอกชื่อผู้ใช้",
     "login.password_placeholder": "กรอกรหัสผ่าน",
 
@@ -1054,6 +1055,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "login.submit": "Sign In",
     "login.signing_in": "Signing in...",
     "login.default": "Default: admin / admin123",
+    "login.default_disappears_note": "Deleting this account removes the 'Default: admin / admin123' hint",
     "login.username_placeholder": "Enter username",
     "login.password_placeholder": "Enter password",
 

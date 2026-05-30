@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
@@ -12,6 +12,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showDefaultHint, setShowDefaultHint] = useState(false);
+
+  // Show the default admin hint only while the seeded admin account
+  // still exists. Once an admin deletes it (after creating a real admin
+  // user), the hint disappears for everyone on the next page load.
+  useEffect(() => {
+    api.hasDefaultAdmin()
+      .then((r) => setShowDefaultHint(!!r.exists))
+      .catch(() => setShowDefaultHint(false));
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +48,8 @@ export default function LoginPage() {
             <LangToggle />
           </div>
           <div className="text-center mb-5">
-            <img src="/ivs-logo.png" alt="IVS" className="w-12 h-12 mx-auto mb-3 object-contain" />
+            {/* Logo enlarged 200% (was w-12 h-12) */}
+            <img src="/ivs-logo.png" alt="IVS" className="w-24 h-24 mx-auto mb-3 object-contain" />
             <h1 className="text-lg font-bold text-gray-900">
               {t("login.title")}
             </h1>
@@ -91,9 +102,17 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-[10px] text-gray-400 mt-4">
-            {t("login.default")}
-          </p>
+          {showDefaultHint && (
+            <div className="text-center mt-4">
+              <p className="text-[10px] text-gray-400">
+                {t("login.default")}
+              </p>
+              {/* 50% smaller hint — disappears once default admin is deleted */}
+              <p className="text-[5px] text-gray-400 mt-0.5 leading-tight">
+                {t("login.default_disappears_note")}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
