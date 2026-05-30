@@ -5,6 +5,7 @@ import { useLang } from "@/components/lang-provider";
 import { SystemHealthPanel } from "@/components/system-health";
 import { AppCard } from "@/components/app-card";
 import { DeployZone } from "@/components/deploy-zone";
+import { DockerStatusBanner } from "@/components/docker-status-banner";
 import { App, SystemHealth, User } from "@/types";
 
 export default function DashboardPage() {
@@ -92,6 +93,8 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      <DockerStatusBanner onChange={(running) => running && loadData()} />
 
       <SystemHealthPanel health={health} />
 

@@ -829,6 +829,47 @@ async def update_retention_settings(
     return retention_service.get_all_settings(db)
 
 
+@router.get("/docker/status")
+async def docker_status(user: User = Depends(get_current_user)):
+    return {"running": docker_service.is_available()}
+
+
+@router.post("/docker/start")
+async def docker_start(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Try to start the Docker daemon on the host and wait until it's ready."""
+    if docker_service.is_available():
+        return {"already_running": True, "ready": True}
+
+    launch = docker_service.start_daemon()
+    create_audit_log(
+        db, request, user=user, action="docker_start", resource_type="system",
+        details=f"Attempted Docker daemon start: method={launch.get('method')}, "
+                f"launched={launch.get('launched')}, error={launch.get('error')}",
+        log_level="WARNING",
+    )
+    db.commit()
+
+    if not launch.get("launched"):
+        return {
+            "already_running": False,
+            "ready": False,
+            "launch": launch,
+            "message": "Could not launch Docker. Start it manually.",
+        }
+
+    ready = docker_service.wait_until_ready(timeout=90)
+    return {
+        "already_running": False,
+        "ready": ready,
+        "launch": launch,
+        "message": "Docker is ready." if ready else "Launched but daemon did not respond within 90s.",
+    }
+
+
 @router.post("/retention/purge")
 async def trigger_retention_purge(
     request: Request,

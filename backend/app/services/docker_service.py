@@ -113,6 +113,79 @@ class DockerService:
         """Check if Docker daemon is available."""
         return self._ensure_client()
 
+    def start_daemon(self) -> dict:
+        """Attempt to start the Docker daemon on the host.
+
+        Platform-specific:
+          - macOS:   launches Docker Desktop (`open -a Docker`)
+          - Linux:   `systemctl start docker` then `service docker start`
+          - Windows: starts Docker Desktop via PowerShell
+
+        Non-blocking — the boot can take 20-90s. Caller should poll
+        is_available() until the daemon answers ping.
+        """
+        import platform
+        import subprocess
+
+        system = platform.system()
+        result = {"system": system, "method": None, "launched": False, "error": None}
+
+        try:
+            if system == "Darwin":
+                # macOS — Docker Desktop registers as "Docker"
+                subprocess.Popen(
+                    ["open", "-a", "Docker"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                result["method"] = "open -a Docker"
+                result["launched"] = True
+
+            elif system == "Linux":
+                for cmd in (
+                    ["systemctl", "start", "docker"],
+                    ["service", "docker", "start"],
+                ):
+                    try:
+                        subprocess.run(
+                            cmd, check=True, timeout=10,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        )
+                        result["method"] = " ".join(cmd)
+                        result["launched"] = True
+                        break
+                    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+                        continue
+                if not result["launched"]:
+                    result["error"] = "systemctl / service unavailable — requires manual start"
+
+            elif system == "Windows":
+                subprocess.Popen(
+                    ["powershell", "-Command",
+                     "Start-Process -FilePath 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                result["method"] = "Start-Process Docker Desktop"
+                result["launched"] = True
+
+            else:
+                result["error"] = f"Unsupported platform: {system}"
+
+        except Exception as e:
+            result["error"] = str(e)
+
+        return result
+
+    def wait_until_ready(self, timeout: int = 90) -> bool:
+        """Poll the daemon until it answers ping or timeout (seconds)."""
+        import time
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.client = None  # force fresh connect attempt
+            if self._ensure_client():
+                return True
+            time.sleep(2)
+        return False
+
     def _ensure_network(self):
         if not self.client:
             return

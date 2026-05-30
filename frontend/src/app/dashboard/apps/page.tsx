@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { AppCard } from "@/components/app-card";
 import { DeployZone } from "@/components/deploy-zone";
+import { DockerStatusBanner } from "@/components/docker-status-banner";
 import { App, User } from "@/types";
 
 export default function AppsPage() {
@@ -45,6 +46,8 @@ export default function AppsPage() {
         <h1 className="text-lg font-bold text-gray-900">{t("apps.title")}</h1>
         <p className="text-gray-500 text-[10px] mt-0.5">{t("apps.subtitle")}</p>
       </div>
+
+      <DockerStatusBanner onChange={(running) => running && loadApps()} />
 
       {canDeploy && <DeployZone onDeployed={loadApps} />}
 

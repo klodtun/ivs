@@ -60,6 +60,17 @@ export const api = {
   hasDefaultAdmin: () =>
     request<{ exists: boolean }>("/auth/default-admin-exists"),
 
+  dockerStatus: () =>
+    request<{ running: boolean }>("/system/docker/status"),
+
+  dockerStart: () =>
+    request<{
+      already_running: boolean;
+      ready: boolean;
+      launch?: { system: string; method: string | null; launched: boolean; error: string | null };
+      message?: string;
+    }>("/system/docker/start", { method: "POST" }),
+
   getUsers: () => request<any[]>("/auth/users"),
 
   createUser: (data: {

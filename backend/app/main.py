@@ -146,6 +146,16 @@ async def lifespan(app: FastAPI):
     _seed_admin()
     _reassign_orphan_owners()
     _sync_app_domains_to_current_ip()
+    # Auto-start Docker if not running — deployed apps depend on it.
+    # Fire-and-forget so backend boot doesn't block on Docker Desktop
+    # cold-start (which can be 30-60s on macOS).
+    try:
+        from app.services.docker_service import docker_service
+        if not docker_service.is_available():
+            launch = docker_service.start_daemon()
+            logger.warning(f"Docker not running at boot — attempted auto-start: {launch}")
+    except Exception as e:
+        logger.error(f"Docker auto-start failed: {e}")
     # Start NTP sync with Thai legal NTP servers
     ntp_service.start()
     ntp_status = ntp_service.get_status()

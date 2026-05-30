@@ -333,6 +333,15 @@ const translations: Record<Locale, Record<string, string>> = {
     "datepicker.clear": "ล้าง",
     "datepicker.today": "วันนี้",
 
+    // Docker status banner
+    "docker.banner_title": "Docker ไม่ทำงาน",
+    "docker.banner_desc": "แอปที่ Deploy ผ่าน IVS ต้องใช้ Docker — กรุณาเปิด Docker เพื่อใช้งานต่อ",
+    "docker.start_btn": "🐳 เปิด Docker",
+    "docker.starting_btn": "กำลังเปิด…",
+    "docker.starting": "กำลังเปิด Docker daemon — รอ 30-60 วินาที…",
+    "docker.ready": "✓ Docker พร้อมใช้งานแล้ว",
+    "docker.start_failed": "เปิด Docker ไม่สำเร็จ — กรุณาเปิดด้วยตนเอง",
+
     // GDPR / APPI / PDPA — Right to be Forgotten
     "gdpr.title": "สิทธิ์การถูกลืม (Right to be Forgotten)",
     "gdpr.subtitle": "ลบ/ปกปิดข้อมูลส่วนบุคคลของผู้ที่ใช้สิทธิตามกฎหมาย (PDPA §35)",
@@ -1349,6 +1358,15 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "deploy.close": "Close",
     "datepicker.clear": "Clear",
     "datepicker.today": "Today",
+
+    // Docker status banner
+    "docker.banner_title": "Docker is not running",
+    "docker.banner_desc": "Apps deployed via IVS require Docker — please start it to continue",
+    "docker.start_btn": "🐳 Start Docker",
+    "docker.starting_btn": "Starting…",
+    "docker.starting": "Starting Docker daemon — wait 30-60 seconds…",
+    "docker.ready": "✓ Docker is ready",
+    "docker.start_failed": "Could not start Docker — please start it manually",
 
     // GDPR / APPI / PDPA — Right to be Forgotten
     "gdpr.title": "Right to be Forgotten",
