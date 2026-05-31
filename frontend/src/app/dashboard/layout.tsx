@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { RouteLoader } from "@/components/route-loader";
+import { api } from "@/lib/api";
 import { User } from "@/types";
 
 export default function DashboardLayout({
@@ -20,7 +21,24 @@ export default function DashboardLayout({
       return;
     }
     const stored = localStorage.getItem("user");
-    if (stored) setUser(JSON.parse(stored));
+    if (stored) {
+      try {
+        setUser(JSON.parse(stored));
+        return;
+      } catch {}
+    }
+    // Token present but user cache missing/corrupt — repopulate from /me.
+    // Without this the sidebar renders empty because navItems are
+    // filtered by user.role.
+    api.getMe()
+      .then((u) => {
+        localStorage.setItem("user", JSON.stringify(u));
+        setUser(u);
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+        router.replace("/login");
+      });
   }, [router]);
 
   return (
