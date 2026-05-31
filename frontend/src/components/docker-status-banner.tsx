@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 
@@ -24,20 +24,32 @@ export function DockerStatusBanner({ onChange }: { onChange?: (running: boolean)
     } catch {}
   }, []);
 
+  // Stable callback ref — parents pass inline arrow functions for
+  // `onChange`, which get a new identity every render. Without a ref,
+  // each parent re-render triggers useEffect cleanup + re-schedule +
+  // an immediate `check()` call → API hammer at parent-render rate
+  // instead of every 30s.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   const check = useCallback(async () => {
     try {
       const r = await api.dockerStatus();
       setRunning(r.running);
-      onChange?.(r.running);
+      onChangeRef.current?.(r.running);
     } catch {
       setRunning(false);
-      onChange?.(false);
+      onChangeRef.current?.(false);
     }
-  }, [onChange]);
+  }, []); // empty deps — check is stable forever
 
   useEffect(() => {
     check();
-    const id = setInterval(check, 10_000);
+    // Poll every 30s — Docker daemon status changes rarely; faster
+    // polling just wastes API calls and CPU.
+    const id = setInterval(check, 30_000);
     return () => clearInterval(id);
   }, [check]);
 

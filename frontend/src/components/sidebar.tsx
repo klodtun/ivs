@@ -1,10 +1,12 @@
 "use client";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/components/lang-provider";
 import { LangToggle } from "@/components/lang-toggle";
 import { User } from "@/types";
 import { isEnabled } from "@/lib/features";
+import { api } from "@/lib/api";
 
 const navItems = [
   {
@@ -56,6 +58,27 @@ export function Sidebar({ user }: { user: User | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLang();
+  const [shutdownConfirm, setShutdownConfirm] = useState(false);
+  const [shutdownWorking, setShutdownWorking] = useState(false);
+
+  const handleShutdown = async () => {
+    if (!shutdownConfirm) { setShutdownConfirm(true); return; }
+    setShutdownWorking(true);
+    try {
+      await api.shutdownIvs();
+      // Backend kills both ports 2s after returning; close tab.
+      setTimeout(() => {
+        try { window.close(); } catch {}
+        // Fallback: navigate to about:blank so user sees something neutral
+        // if the browser refuses to close a tab it didn't open via script.
+        try { window.location.href = "about:blank"; } catch {}
+      }, 2500);
+    } catch (e: any) {
+      alert(e?.message || "Shutdown failed");
+      setShutdownWorking(false);
+      setShutdownConfirm(false);
+    }
+  };
 
   const filteredNav = navItems.filter(
     (item) =>
@@ -162,6 +185,29 @@ export function Sidebar({ user }: { user: User | null }) {
           >
             {t("nav.signout")}
           </button>
+
+          {/* Shutdown IVS — admin only. Confirm-then-fire pattern: first
+              click flips the label to red "ยืนยันปิด IVS"; second click
+              hits the endpoint and closes the tab. */}
+          {user.role === "admin" && (
+            <button
+              onClick={handleShutdown}
+              disabled={shutdownWorking}
+              className={cn(
+                "w-full text-left text-[10px] mt-1 px-1.5 py-1 rounded transition disabled:opacity-50",
+                shutdownConfirm
+                  ? "bg-red-600 text-white hover:bg-red-700 font-semibold"
+                  : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+              )}
+              title={t("nav.shutdown_tooltip")}
+            >
+              {shutdownWorking
+                ? `⏻ ${t("nav.shutdown_working")}`
+                : shutdownConfirm
+                ? `⚠ ${t("nav.shutdown_confirm")}`
+                : `⏻ ${t("nav.shutdown")}`}
+            </button>
+          )}
         </div>
       )}
     </aside>

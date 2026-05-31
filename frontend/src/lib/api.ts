@@ -72,6 +72,11 @@ export const api = {
   dockerStatus: () =>
     request<{ running: boolean }>("/system/docker/status"),
 
+  shutdownIvs: () =>
+    request<{ shutting_down: boolean; delay_seconds: number }>(
+      "/system/shutdown", { method: "POST" }
+    ),
+
   dockerStart: () =>
     request<{
       already_running: boolean;

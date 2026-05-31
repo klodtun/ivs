@@ -18,6 +18,11 @@ export default function LoginPage() {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetWorking, setResetWorking] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
+  const [shutdownOpen, setShutdownOpen] = useState(false);
+  const [shutdownUser, setShutdownUser] = useState("");
+  const [shutdownPass, setShutdownPass] = useState("");
+  const [shutdownBusy, setShutdownBusy] = useState(false);
+  const [shutdownErr, setShutdownErr] = useState("");
 
   const FAILED_KEY = "ivs_login_failed";
   const FAILED_THRESHOLD = 10;
@@ -41,6 +46,34 @@ export default function LoginPage() {
   }, []);
 
   const showRecovery = isLastAdmin && failedCount >= FAILED_THRESHOLD;
+
+  const handleShutdown = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shutdownUser || !shutdownPass) return;
+    setShutdownBusy(true);
+    setShutdownErr("");
+    try {
+      // Login first to obtain admin token (endpoint is admin-only)
+      const r = await api.login(shutdownUser, shutdownPass);
+      localStorage.setItem("token", r.access_token);
+      const me = await api.getMe();
+      if (me.role !== "admin") {
+        throw new Error(t("login.shutdown_admin_only"));
+      }
+      await api.shutdownIvs();
+      // Backend kills both ports 2s after returning
+      setTimeout(() => {
+        try { window.close(); } catch {}
+        try { window.location.href = "about:blank"; } catch {}
+      }, 2500);
+      setShutdownErr(t("login.shutdown_started"));
+    } catch (err: any) {
+      setShutdownErr(err?.message || t("login.shutdown_failed"));
+      localStorage.removeItem("token");
+    } finally {
+      setShutdownBusy(false);
+    }
+  };
 
   const handleFactoryReset = async () => {
     if (!resetConfirm) {
@@ -208,6 +241,62 @@ export default function LoginPage() {
               )}
             </div>
           )}
+
+          {/* Shutdown IVS — toggle expanded form. Requires admin credentials
+              because the underlying endpoint is admin-only. */}
+          <div className="mt-3 pt-2 border-t border-gray-100">
+            {!shutdownOpen ? (
+              <button
+                type="button"
+                onClick={() => setShutdownOpen(true)}
+                className="w-full text-[10px] text-gray-400 hover:text-red-600 transition py-1"
+              >
+                ⏻ {t("login.shutdown")}
+              </button>
+            ) : (
+              <form onSubmit={handleShutdown} className="bg-red-50 border border-red-200 rounded-lg p-2.5 space-y-2">
+                <p className="text-[10px] text-red-700 leading-snug">
+                  {t("login.shutdown_desc")}
+                </p>
+                <input
+                  type="text"
+                  value={shutdownUser}
+                  onChange={(e) => setShutdownUser(e.target.value)}
+                  placeholder={t("login.username")}
+                  autoComplete="username"
+                  className="w-full px-2 py-1 text-[11px] border border-red-300 rounded outline-none focus:ring-2 focus:ring-red-300"
+                />
+                <input
+                  type="password"
+                  value={shutdownPass}
+                  onChange={(e) => setShutdownPass(e.target.value)}
+                  placeholder={t("login.password")}
+                  autoComplete="current-password"
+                  className="w-full px-2 py-1 text-[11px] border border-red-300 rounded outline-none focus:ring-2 focus:ring-red-300"
+                />
+                {shutdownErr && (
+                  <p className="text-[10px] text-red-700">{shutdownErr}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShutdownOpen(false); setShutdownErr(""); setShutdownUser(""); setShutdownPass(""); }}
+                    disabled={shutdownBusy}
+                    className="flex-1 text-[10px] py-1.5 bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {t("login.reset_cancel")}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={shutdownBusy || !shutdownUser || !shutdownPass}
+                    className="flex-1 text-[10px] py-1.5 bg-red-600 text-white font-semibold rounded hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {shutdownBusy ? `⏻ ${t("login.shutdown_working")}` : `⏻ ${t("login.shutdown_confirm")}`}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     </div>

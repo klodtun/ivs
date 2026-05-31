@@ -848,6 +848,37 @@ _DOCKER_CACHE: dict = {"ts": 0.0, "running": None}
 _DOCKER_TTL = 5.0
 
 
+@router.post("/shutdown")
+async def shutdown_ivs(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Stop the IVS backend + frontend processes on this host.
+
+    Schedules a kill of ports 8000 + 3000 after a 2s delay so this
+    response can reach the browser first. Admin-only, audit-logged.
+    Deployed app containers keep running — only IVS itself stops.
+    """
+    import subprocess
+
+    create_audit_log(
+        db, request, user=user, action="ivs_shutdown", resource_type="system",
+        details=f"IVS shutdown triggered by {user.username}",
+        log_level="CRITICAL",
+    )
+    db.commit()
+
+    subprocess.Popen(
+        ["bash", "-c",
+         "sleep 2 && "
+         "lsof -ti:3000 | xargs kill -9 2>/dev/null; "
+         "lsof -ti:8000 | xargs kill -9 2>/dev/null"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return {"shutting_down": True, "delay_seconds": 2}
+
+
 @router.get("/docker/status")
 async def docker_status(user: User = Depends(get_current_user)):
     import time
