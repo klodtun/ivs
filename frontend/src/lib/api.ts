@@ -1,3 +1,71 @@
+// ─── API Catalog types (v1.0.1) ──────────────────────────────────────────── //
+export interface CatalogEntry {
+  id: number;
+  app_id: number | null;
+  name: string;
+  method: string;
+  path: string;
+  base_url: string;
+  full_url: string;
+  api_key: string | null;
+  has_api_key: boolean;
+  schema_snippet: string | null;
+  schema_size: number;
+  description: string;
+  category: string;
+  current_version: number;
+  last_test_at: string | null;
+  last_test_status: string;
+  last_test_message: string;
+  last_test_http_code: number | null;
+  last_test_latency_ms: number | null;
+  is_active: boolean;
+  discovery_source: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CatalogVersion {
+  id: number;
+  catalog_id: number;
+  version_number: number;
+  base_url: string;
+  has_api_key: boolean;
+  method: string;
+  path: string;
+  replaced_by_id: number | null;
+  reason: string;
+  created_at: string | null;
+}
+
+// ─── Enterprise types ────────────────────────────────────────────────────── //
+export interface MachineRegistryEntry {
+  id: number;
+  fingerprint: string;
+  serial: string | null;
+  hostname: string | null;
+  ip_address: string | null;
+  port: number;
+  edition: string;
+  group_name: string | null;
+  notes: string | null;
+  is_self: boolean;
+  discovery_source: string;
+  last_seen: string | null;
+  created_at: string;
+}
+
+export interface DiscoveredMachine {
+  hostname: string | null;
+  ip_address: string;
+  port: number;
+  product: string | null;
+  version: string | null;
+  fingerprint: string | null;
+  already_registered: boolean;
+}
+// ─────────────────────────────────────────────────────────────────────────── //
+
 const API_BASE = "/api";
 const BACKEND_DIRECT =
   typeof window !== "undefined"
@@ -175,7 +243,23 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: "Request failed" }));
-      throw new Error(err.detail || "Request failed");
+      const detail = err?.detail;
+      // Structured rejects (e.g. edition gate) return an object detail with
+      // localized messages — surface the one matching the active locale.
+      if (detail && typeof detail === "object") {
+        const loc =
+          typeof window !== "undefined"
+            ? localStorage.getItem("ivs_locale") || "th"
+            : "th";
+        const msg =
+          loc === "th"
+            ? detail.message_th || detail.message_en
+            : detail.message_en || detail.message_th;
+        const e = new Error(msg || "Request failed") as Error & { code?: string };
+        e.code = detail.code;
+        throw e;
+      }
+      throw new Error(detail || "Request failed");
     }
     return res.json();
   },
@@ -450,6 +534,19 @@ export const api = {
     platform: string;
   }>("/system/network"),
 
+  getLicense: () =>
+    request<{
+      serial: string;
+      edition: string;
+      region: string;
+      fingerprint: string;
+      fingerprint_current: string;
+      fingerprint_status: string;
+      created_at: string | null;
+      bound_file: string;
+      serial_valid: boolean;
+    }>("/system/license"),
+
   // DNS Config
   getDNSConfig: () => request<{ domain_suffix: string; server_ip: string }>("/system/dns-config"),
 
@@ -558,4 +655,101 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  // Enterprise — Machine Registry
+  getEnterpriseself: () =>
+    request<MachineRegistryEntry>("/enterprise/machines/self"),
+
+  listEnterpriseMachines: () =>
+    request<MachineRegistryEntry[]>("/enterprise/machines"),
+
+  addEnterpriseMachine: (data: {
+    fingerprint: string;
+    serial?: string;
+    hostname?: string;
+    ip_address?: string;
+    port?: number;
+    group_name?: string;
+    notes?: string;
+  }) =>
+    request<MachineRegistryEntry>("/enterprise/machines", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  patchEnterpriseMachine: (fingerprint: string, data: {
+    group_name?: string;
+    notes?: string;
+    hostname?: string;
+  }) =>
+    request<MachineRegistryEntry>(`/enterprise/machines/${fingerprint}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  removeEnterpriseMachine: (fingerprint: string) =>
+    request<void>(`/enterprise/machines/${fingerprint}`, { method: "DELETE" }),
+
+  discoverEnterpriseMachines: () =>
+    request<DiscoveredMachine[]>("/enterprise/machines/discover"),
+
+  // ── API Catalog ────────────────────────────────────────────────────────── //
+  listCatalog: () =>
+    request<CatalogEntry[]>("/catalog"),
+
+  getCatalogEntry: (id: number) =>
+    request<CatalogEntry>(`/catalog/${id}`),
+
+  createCatalogEntry: (data: {
+    name: string;
+    base_url: string;
+    method?: string;
+    path?: string;
+    api_key?: string;
+    api_schema?: string;
+    description?: string;
+    category?: string;
+    app_id?: number;
+  }) =>
+    request<CatalogEntry>("/catalog", { method: "POST", body: JSON.stringify(data) }),
+
+  scanCatalog: () =>
+    request<{
+      scanned: number;
+      new: number;
+      updated: number;
+      failed: number;
+      details: { slug: string; status: string }[];
+    }>("/catalog/scan", { method: "POST" }),
+
+  testCatalogEntry: (id: number) =>
+    request<{
+      status: string;
+      http_code: number | null;
+      latency_ms: number;
+      message: string;
+      body_snippet: string;
+    }>(`/catalog/${id}/test`, { method: "POST" }),
+
+  replaceCatalogEntry: (id: number, data: {
+    base_url?: string;
+    api_key?: string;
+    api_schema?: string;
+    method?: string;
+    path?: string;
+    reason?: string;
+  }) =>
+    request<CatalogEntry>(`/catalog/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  getCatalogHistory: (id: number) =>
+    request<CatalogVersion[]>(`/catalog/${id}/history`),
+
+  restoreCatalogVersion: (entryId: number, versionId: number) =>
+    request<CatalogEntry>(`/catalog/${entryId}/restore/${versionId}`, { method: "POST" }),
+
+  revealCatalogKey: (id: number) =>
+    request<CatalogEntry>(`/catalog/${id}/reveal-key`, { method: "POST" }),
+
+  deleteCatalogEntry: (id: number) =>
+    request<void>(`/catalog/${id}`, { method: "DELETE" }),
 };

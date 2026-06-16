@@ -158,6 +158,16 @@ export function DeployGuide() {
                   </span>
                   <p className="text-[10px] text-amber-800">{t(`guide.tip.${activeTab}`)}</p>
                 </div>
+
+                {/* Thai/UTF-8 safety — applies to every app type that handles
+                    user input. Common AI-generated bug: Thai text in raw HTTP
+                    headers throws "non ISO-8859-1" during fetch(). */}
+                {activeTab !== "static" && (
+                  <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5 flex gap-2">
+                    <span className="text-blue-500 mt-0.5 flex-shrink-0">🇹🇭</span>
+                    <p className="text-[10px] text-blue-800">{t("guide.tip.thai")}</p>
+                  </div>
+                )}
               </div>
             ) : viewMode === "template" ? (
               /* ivs-app.md Template */
