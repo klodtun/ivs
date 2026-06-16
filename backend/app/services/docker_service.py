@@ -76,6 +76,19 @@ RUN npm run build
 EXPOSE {port}
 CMD ["npx", "vite", "preview", "--port", "{port}", "--host"]
 """,
+    # Next.js needs a full install (devDeps for the build) + `next build`
+    # before `next start`. We invoke `next start -p {port}` directly so a
+    # hardcoded port in the app's "start" script can't override the port
+    # iVS maps. Binds 0.0.0.0 by default.
+    "nodejs_nextjs": """FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE {port}
+CMD ["npx", "next", "start", "-p", "{port}", "-H", "0.0.0.0"]
+""",
 }
 
 
@@ -277,6 +290,66 @@ class DockerService:
                         f"removed {len(removed['dirs'])} dirs, {len(removed['files'])} files")
         return removed
 
+    def requires_external_db(self, source_path: str) -> tuple[bool, list[str]]:
+        """Detect whether an app needs a separate database/cache container
+        (Postgres/MySQL/Redis/Mongo). Returns (needs_db, [signals]).
+
+        Free edition is single-container only — this gates the deploy and
+        points the user to the consulting menu / Pro upgrade.
+        """
+        signals: list[str] = []
+        # 1. docker-compose with extra services beyond the app itself
+        for compose in ("docker-compose.yml", "docker-compose.yaml", "compose.yml"):
+            cpath = os.path.join(source_path, compose)
+            if os.path.exists(cpath):
+                try:
+                    with open(cpath, "r", errors="ignore") as f:
+                        c = f.read().lower()
+                    for engine in ("postgres", "mysql", "mariadb", "redis", "mongo"):
+                        if engine in c:
+                            signals.append(f"{compose}: {engine}")
+                except Exception:
+                    pass
+
+        # 2. DATABASE_URL / connection strings in .env files
+        for envf in (".env", ".env.local", ".env.production"):
+            epath = os.path.join(source_path, envf)
+            if os.path.exists(epath):
+                try:
+                    with open(epath, "r", errors="ignore") as f:
+                        e = f.read().lower()
+                    for token in ("postgresql://", "postgres://", "mysql://",
+                                  "mongodb://", "redis://"):
+                        if token in e:
+                            signals.append(f"{envf}: {token.rstrip(':/')}")
+                except Exception:
+                    pass
+
+        # 3. DB client libraries in dependency manifests
+        # Only server-only clients here. ORMs that also support SQLite
+        # (Prisma, TypeORM, Sequelize, SQLAlchemy) are intentionally excluded
+        # to avoid false positives — a postgresql:// URL or a compose DB
+        # service is the real signal for those.
+        manifests = {
+            "package.json": ("pg", "mysql", "mysql2", "ioredis",
+                             "mongoose", "mongodb"),
+            "requirements.txt": ("psycopg2", "psycopg", "asyncpg", "pymysql",
+                                  "mysqlclient", "pymongo"),
+        }
+        for fname, libs in manifests.items():
+            fpath = os.path.join(source_path, fname)
+            if os.path.exists(fpath):
+                try:
+                    with open(fpath, "r", errors="ignore") as f:
+                        content = f.read().lower()
+                    for lib in libs:
+                        if lib.lower() in content:
+                            signals.append(f"{fname}: {lib}")
+                except Exception:
+                    pass
+
+        return (len(signals) > 0, signals)
+
     def detect_app_type(self, source_path: str) -> str:
         files = os.listdir(source_path)
 
@@ -322,6 +395,16 @@ class DockerService:
                 if is_vite and has_vite_build and not has_vite_preview:
                     logger.info("Detected Vite project — needs build + serve setup")
                     return "nodejs_vite"
+
+                # Next.js: needs `next build` before `next start`, and a full
+                # (non --production) install for devDeps. Plain "nodejs" would
+                # skip the build and crash with "Could not find a production
+                # build in the '.next' directory".
+                is_next = "next" in deps or "next" in dev_deps \
+                    or "next build" in build_script or "next start" in start_script
+                if is_next:
+                    logger.info("Detected Next.js app — needs build + next start")
+                    return "nodejs_nextjs"
 
             except Exception:
                 pass

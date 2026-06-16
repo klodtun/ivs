@@ -18,6 +18,7 @@ from app.services.dns_service import dns_service
 from app.services.vault_service import vault_service
 from app.config import settings
 from app.services.audit_service import create_audit_log
+from app.services import license_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/apps", tags=["Applications"])
@@ -26,6 +27,39 @@ router = APIRouter(prefix="/api/apps", tags=["Applications"])
 def make_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug[:60]
+
+
+def _enforce_external_db_gate(source_path: str):
+    """Free/Lite/Std are single-container. If the app needs a separate DB
+    (Postgres/MySQL/Redis/Mongo), block the deploy and point the user to
+    the consulting menu / Pro upgrade. Raises HTTP 422 with a bilingual
+    message the frontend surfaces inline."""
+    needs_db, signals = docker_service.requires_external_db(source_path)
+    if needs_db and not license_service.edition_supports_external_db():
+        edition = license_service.current_edition()
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "external_db_unsupported",
+                "edition": edition,
+                "signals": signals[:8],
+                "message_th": (
+                    "รุ่นนี้ deploy แอปได้ไม่จำกัดจำนวน พร้อม PDPA, audit log "
+                    "และ vault ครบทุกแอป — แอปนี้ใช้ฐานข้อมูลแยก (เช่น Postgres) "
+                    "ซึ่งเป็นสถาปัตยกรรมหลายคอนเทนเนอร์ระดับองค์กร อยู่ในรุ่น "
+                    "Pro และ Enterprise หากต้องการรันแอปลักษณะนี้ คุยกับเราที่ "
+                    "เมนู 'ปรึกษา' ได้เลย เรายินดีช่วยวางแผน deploy ให้"
+                ),
+                "message_en": (
+                    "This edition deploys unlimited single-container apps — "
+                    "with full PDPA, audit logs and vault on every app. This "
+                    "particular app uses a separate database (e.g. Postgres), "
+                    "an enterprise-grade multi-container setup available in Pro "
+                    "and Enterprise. Want to run apps like this? Reach us via "
+                    "the 'Consulting' menu — we're happy to help you plan it."
+                ),
+            },
+        )
 
 
 def _heal_container_id(app: "App", db: Session) -> str:
@@ -534,10 +568,14 @@ async def deploy_app(
             shutil.rmtree(source_path)
         docker_service.extract_zip(upload_path, source_path)
 
+        # Edition gate: block DB-dependent apps on single-container editions
+        _enforce_external_db_gate(source_path)
+
         app_type = docker_service.detect_app_type(source_path)
         type_map = {
             "nodejs": AppType.NODEJS,
             "nodejs_vite": AppType.NODEJS,
+            "nodejs_nextjs": AppType.NODEJS,
             "python": AppType.PYTHON,
             "python_streamlit": AppType.PYTHON,
             "python_fastapi": AppType.PYTHON,
@@ -571,6 +609,12 @@ async def deploy_app(
         db.refresh(app)
         os.remove(upload_path)
 
+    except HTTPException:
+        # Edition gate (or other deliberate reject) — roll back the
+        # half-created app row so it doesn't linger in ERROR state.
+        db.delete(app)
+        db.commit()
+        raise
     except Exception as e:
         logger.error(f"Deploy failed for {slug}: {e}")
         app.status = AppStatus.ERROR
@@ -602,6 +646,8 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
             shutil.rmtree(source_path)
         docker_service.extract_zip(upload_path, source_path)
 
+        _enforce_external_db_gate(source_path)
+
         app_type = docker_service.detect_app_type(source_path)
         parsed_env = json.loads(app.env_vars) if app.env_vars else {}
         vault_keys = db.query(VaultKey).all()
@@ -626,6 +672,10 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
         os.remove(upload_path)
         return app
 
+    except HTTPException:
+        # Deliberate reject (edition gate / access). Leave the existing
+        # app + container untouched.
+        raise
     except Exception as e:
         logger.error(f"Redeploy failed for {slug}: {e}")
         app.status = AppStatus.ERROR

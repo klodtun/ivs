@@ -21,11 +21,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.resources": "ทรัพยากร",
     "nav.settings": "ตั้งค่า",
     "nav.signout": "ออกจากระบบ",
-    "nav.shutdown": "ปิด IVS",
-    "nav.shutdown_confirm": "ยืนยันปิด IVS",
+    "nav.shutdown": "ปิด iVS",
+    "nav.shutdown_confirm": "ยืนยันปิด iVS",
     "nav.shutdown_working": "กำลังปิด…",
-    "nav.shutdown_tooltip": "หยุดบริการ IVS บนเครื่องนี้ (แอปที่ Deploy ยังทำงานต่อ)",
-    "nav.subtitle": "เกตเวย์องค์กร",
+    "nav.shutdown_tooltip": "หยุดบริการ iVS บนเครื่องนี้ (แอปที่ Deploy ยังทำงานต่อ)",
+    "nav.subtitle": "สตาร์ท Vibe ดีๆ",
 
     // Login
     "login.title": "Internal Vibe Server",
@@ -43,12 +43,12 @@ const translations: Record<Locale, Record<string, string>> = {
     "login.reset_working": "กำลังรีเซ็ต…",
     "login.reset_done": "✓ รีเซ็ตสำเร็จ ใช้ admin / admin123 ล็อกอินได้แล้ว",
     "login.reset_failed": "รีเซ็ตล้มเหลว",
-    "login.shutdown": "ปิด IVS",
-    "login.shutdown_desc": "หยุดบริการ IVS บนเครื่องนี้ ต้องใช้บัญชี Admin ยืนยัน",
-    "login.shutdown_confirm": "ปิด IVS",
+    "login.shutdown": "ปิด iVS",
+    "login.shutdown_desc": "หยุดบริการ iVS บนเครื่องนี้ ต้องใช้บัญชี Admin ยืนยัน",
+    "login.shutdown_confirm": "ปิด iVS",
     "login.shutdown_working": "กำลังปิด…",
     "login.shutdown_started": "✓ ส่งคำสั่งปิดแล้ว — แท็บจะปิดในไม่ช้า",
-    "login.shutdown_failed": "ปิด IVS ไม่สำเร็จ",
+    "login.shutdown_failed": "ปิด iVS ไม่สำเร็จ",
     "login.shutdown_admin_only": "ต้องเป็นบัญชี Admin เท่านั้น",
     "login.username_placeholder": "กรอกชื่อผู้ใช้",
     "login.password_placeholder": "กรอกรหัสผ่าน",
@@ -105,10 +105,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "deploy.warn.git_included": "มี .git/ อยู่ใน zip — ไม่จำเป็น",
     "deploy.warn.nodejs_no_lockfile": "ไม่มี package-lock.json — แนะนำให้ใส่เพื่อความเสถียร",
     "deploy.warn.fastapi_no_uvicorn": "requirements.txt ไม่มี uvicorn — อาจต้องเพิ่ม",
-    "deploy.warn.fullstack_no_dist": "ไม่มี frontend/dist/ — IVS จะ build ให้แต่จะช้ากว่า",
+    "deploy.warn.fullstack_no_dist": "ไม่มี frontend/dist/ — iVS จะ build ให้แต่จะช้ากว่า",
     "deploy.warn.vite_prebuilt_detected": "ตรวจพบ Vite app พร้อม dist/ — จะ deploy เป็น Static Web",
     "deploy.warn.vite_preview_detected": "ตรวจพบ Vite app พร้อม vite preview — จะใช้ npm start",
-    "deploy.warn.custom_dockerfile": "ใช้ Dockerfile ที่มากับโปรเจค — IVS จะไม่สร้างให้อัตโนมัติ",
+    "deploy.warn.custom_dockerfile": "ใช้ Dockerfile ที่มากับโปรเจค — iVS จะไม่สร้างให้อัตโนมัติ",
     "deploy.warn.dockerfile_cmd_missing_file": "⛔ Dockerfile CMD ชี้ไปไฟล์ที่ไม่มี: {file} — อาจรันไม่ได้",
     "deploy.warn.dockerfile_db_dependency": "⛔ ไฟล์ {file} ใช้ {db} — Docker container ไม่มี Database จะเกิด Connection Error",
     "deploy.warn.multiple_server_files": "มีหลาย server file: {files} — ตรวจสอบว่า Dockerfile CMD ชี้ถูกตัว",
@@ -116,7 +116,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "deploy.file_too_large_title": "⚠️ ไฟล์ขนาดใหญ่เกินไป",
     "deploy.file_too_large_msg": "ไฟล์ของคุณมีขนาดใหญ่เกินไป ({size} MB) กรุณาตรวจสอบว่าได้ลบโฟลเดอร์ node_modules หรือ .venv ออกก่อนบีบอัดไฟล์แล้วหรือไม่ เพื่อป้องกันระบบค้าง",
     "deploy.auto_sanitize": "ยืนยัน — ระบบจะลบไฟล์ขยะอัตโนมัติ",
-    "deploy.auto_sanitize_desc": "IVS จะลบ node_modules, .venv, pnpm-lock.yaml อัตโนมัติก่อน Build",
+    "deploy.auto_sanitize_desc": "iVS จะลบ node_modules, .venv, pnpm-lock.yaml อัตโนมัติก่อน Build",
     "deploy.cancel_upload": "ยกเลิก — เลือกไฟล์ใหม่",
     "deploy.build_log_title": "Build Log (Real-time)",
     "deploy.build_timeout": "Build หมดเวลา! เกิน 3 นาที",
@@ -159,7 +159,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "export.filename": "ชื่อไฟล์",
     "export.no_data_warning": "ไม่พบข้อมูล persistent ใน container — แอปนี้อาจไม่ได้เก็บข้อมูลภายใน หรือ container ไม่ได้รันอยู่",
     "export.warnings": "คำเตือน",
-    "export.tip": "เปิดไฟล์ .zip เพื่อดู README.md ที่อธิบายวิธี import แอปกลับเข้า IVS",
+    "export.tip": "เปิดไฟล์ .zip เพื่อดู README.md ที่อธิบายวิธี import แอปกลับเข้า iVS",
     "export.download": "ดาวน์โหลด .zip",
     "export.cancel": "ยกเลิก",
     "export.close": "ปิด",
@@ -254,6 +254,8 @@ const translations: Record<Locale, Record<string, string>> = {
     // Vault
     "vault.title": "คลัง API Key",
     "vault.subtitle": "จัดการ API Key ขององค์กร (เข้ารหัส AES-256)",
+    "vault.tab.keys": "คลัง API Key",
+    "vault.tab.programs": "คลังAPI โปรแกรม",
     "vault.add": "+ เพิ่ม Key",
     "vault.cancel": "ยกเลิก",
     "vault.add_title": "เพิ่ม API Key ใหม่",
@@ -313,7 +315,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "tunnel.share.body.security_3": "• กรุณาใช้งานตามนโยบายของหน่วยงานท่าน",
     "tunnel.share.body.security_4": "• หากพบพฤติกรรมผิดปกติ กรุณาแจ้งผู้ดูแลระบบทันที",
     "tunnel.share.body.section_note": "💬  หมายเหตุจากผู้ส่ง",
-    "tunnel.share.body.signoff": "ส่งจาก IVS — Internal Vibe Server",
+    "tunnel.share.body.signoff": "ส่งจาก iVS — Internal Vibe Server",
 
     // PII suggestion checklist (Settings → PDPA tab)
     "pii.full_name": "ชื่อ-นามสกุล",
@@ -353,7 +355,7 @@ const translations: Record<Locale, Record<string, string>> = {
 
     // Docker status banner
     "docker.banner_title": "Docker ไม่ทำงาน",
-    "docker.banner_desc": "แอปที่ Deploy ผ่าน IVS ต้องใช้ Docker — กรุณาเปิด Docker เพื่อใช้งานต่อ",
+    "docker.banner_desc": "แอปที่ Deploy ผ่าน iVS ต้องใช้ Docker — กรุณาเปิด Docker เพื่อใช้งานต่อ",
     "docker.start_btn": "🐳 เปิด Docker",
     "docker.starting_btn": "กำลังเปิด…",
     "docker.starting": "กำลังเปิด Docker daemon — รอ 30-60 วินาที…",
@@ -401,7 +403,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "gdpr.modal_consequence_2": "หาก target = user → บัญชีและ credentials ถูกลบ แอปที่เคย deploy ถูกโอนให้ Admin",
     "gdpr.modal_consequence_3": "ออกใบรับรองการลบ (markdown + SHA-256) เก็บใน DB และดาวน์โหลดได้",
     "gdpr.modal_consequence_4": "บันทึก audit log ระดับ CRITICAL — เก็บเฉพาะ HMAC hash ของ target (ไม่เก็บค่าจริง)",
-    "gdpr.modal_legal": "PDPA §35 ให้สิทธิ์ผู้ใช้ขอลบข้อมูลส่วนบุคคล ผู้ควบคุมข้อมูลต้องดำเนินการภายในกำหนด — IVS จะลบแบบ replace-in-place เพื่อรักษาหลักฐาน traffic data ตามพ.ร.บ.คอมพิวเตอร์ §26",
+    "gdpr.modal_legal": "PDPA §35 ให้สิทธิ์ผู้ใช้ขอลบข้อมูลส่วนบุคคล ผู้ควบคุมข้อมูลต้องดำเนินการภายในกำหนด — iVS จะลบแบบ replace-in-place เพื่อรักษาหลักฐาน traffic data ตามพ.ร.บ.คอมพิวเตอร์ §26",
     "gdpr.modal_confirm": "ยืนยันลบถาวร",
 
     // Vault delete confirmation
@@ -471,6 +473,88 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.tab.pdpa": "PDPA",
     "settings.tab.gitea": "Gitea",
     "settings.tab.autostart": "Auto-Start",
+    "settings.tab.license": "หมายเลขเครื่อง",
+    "license.title": "หมายเลขเครื่อง (Serial Number)",
+    "license.serial": "Serial Number",
+    "license.edition": "Edition",
+    "license.region": "Region",
+    "license.fingerprint": "Machine Fingerprint",
+    "license.fingerprint_status": "สถานะ Fingerprint",
+    "license.fingerprint_ok": "ตรงกัน",
+    "license.fingerprint_mismatch": "ฮาร์ดแวร์เปลี่ยนแปลง",
+    "license.created_at": "ออกให้เมื่อ",
+    "license.bound_file": "ไฟล์ที่เก็บ",
+    "license.copy": "คัดลอก",
+    "license.copied": "คัดลอกแล้ว",
+    "license.valid": "ถูกต้อง",
+    "license.invalid": "ไม่ถูกต้อง",
+    "license.serial_status": "สถานะ Serial",
+    "license.desc": "หมายเลขเครื่องนี้ผูกกับลายนิ้วมือฮาร์ดแวร์ของเครื่อง ใช้สำหรับ License Activation และ iVS Enterprise",
+    // API Catalog (v1.0.1)
+    "catalog.title": "คลัง API",
+    "catalog.subtitle": "จัดการ API ของแอปที่ deploy แล้ว — ค้นหาอัตโนมัติ ทดสอบ และเปลี่ยน URL/Key (เข้ารหัสไว้)",
+    "catalog.scan_now": "สแกนใหม่",
+    "catalog.scanning": "กำลังสแกน...",
+    "catalog.scan_done": "สแกนเสร็จ",
+    "catalog.scanned": "สแกน",
+    "catalog.new": "ใหม่",
+    "catalog.updated": "อัปเดต",
+    "catalog.failed": "ล้มเหลว",
+    "catalog.add_manual": "เพิ่ม API",
+    "catalog.search": "ค้นหา API...",
+    "catalog.empty": "ยังไม่มี API ในคลัง — กดสแกนหรือเพิ่มเอง",
+    "catalog.test": "ทดสอบ",
+    "catalog.details": "รายละเอียด",
+    "catalog.collapse": "ย่อ",
+    "catalog.base_url": "Base URL",
+    "catalog.path": "Path",
+    "catalog.api_key": "API Key",
+    "catalog.schema_size": "Schema",
+    "catalog.show_schema": "ดู Schema",
+    "catalog.reveal_copy": "เปิด & คัดลอก",
+    "catalog.copied": "คัดลอกแล้ว",
+    "catalog.replace": "เปลี่ยนค่า",
+    "catalog.create": "สร้าง",
+    "catalog.delete": "ลบ",
+    "catalog.delete_confirm": "ลบ API นี้?",
+    "catalog.history": "ประวัติ",
+    "catalog.no_history": "ยังไม่มีประวัติ",
+    "catalog.restore": "Restore",
+    "catalog.restore_confirm": "นำค่าเวอร์ชันเก่ากลับมาใช้?",
+    "catalog.name": "ชื่อ API",
+    "catalog.reason": "เหตุผลที่เปลี่ยน",
+    "catalog.optional": "ไม่บังคับ",
+    // Copyright / EULA notices
+    "copyright.all_rights": "สงวนลิขสิทธิ์ทุกประการ",
+    "copyright.eula_notice": "ซอฟต์แวร์ลิขสิทธิ์ภายใต้ IVS Proprietary EULA — ห้ามแจกจ่ายต่อ",
+    "copyright.footer": "© 2026 IVS Project · Free Edition · ใช้งานส่วนตัว/ไม่แสวงหากำไรเท่านั้น",
+    "copyright.tampering_warning": "ตรวจพบการแก้ไขข้อมูลลิขสิทธิ์ — โปรดติดต่อผู้ดูแล",
+    // Enterprise — machine registry
+    "settings.tab.enterprise": "จัดการเครื่อง",
+    "enterprise.title": "ทะเบียนเครื่อง (Machine Registry)",
+    "enterprise.desc": "เพิ่มเครื่อง IVS อื่นๆ เข้ามาในกลุ่มเพื่อจัดการแบบรวมศูนย์ (Enterprise)",
+    "enterprise.self_machine": "เครื่องนี้",
+    "enterprise.add_machine": "เพิ่มเครื่อง",
+    "enterprise.discover": "ค้นหาอัตโนมัติ (LAN)",
+    "enterprise.discovering": "กำลังสแกน LAN...",
+    "enterprise.fingerprint": "Machine Fingerprint",
+    "enterprise.serial": "Serial",
+    "enterprise.hostname": "Hostname",
+    "enterprise.ip": "IP Address",
+    "enterprise.group": "กลุ่ม",
+    "enterprise.notes": "หมายเหตุ",
+    "enterprise.edition": "Edition",
+    "enterprise.last_seen": "พบล่าสุด",
+    "enterprise.source_manual": "เพิ่มเอง",
+    "enterprise.source_mdns": "ค้นพบอัตโนมัติ",
+    "enterprise.source_self": "เครื่องนี้",
+    "enterprise.already_registered": "ลงทะเบียนแล้ว",
+    "enterprise.not_registered": "ยังไม่ได้ลงทะเบียน",
+    "enterprise.add_discovered": "เพิ่มเครื่องนี้",
+    "enterprise.no_machines": "ยังไม่มีเครื่องในทะเบียน",
+    "enterprise.no_discovered": "ไม่พบเครื่อง IVS อื่นบน LAN",
+    "enterprise.remove": "นำออก",
+    "enterprise.remove_confirm": "นำเครื่องนี้ออกจากทะเบียน?",
     "settings.export_logs": "Export .zip",
     "settings.exporting": "กำลัง Export...",
     "settings.export_history": "ประวัติการ Export",
@@ -576,11 +660,11 @@ const translations: Record<Locale, Record<string, string>> = {
     // User disable confirmation
     "user_disable.title": "ปิดใช้งานผู้ใช้",
     "user_disable.desc_prefix": "ยืนยันปิดใช้งานบัญชี",
-    "user_disable.desc_suffix": "ผู้ใช้จะไม่สามารถเข้าใช้งาน IVS ได้จนกว่าจะถูกเปิดใช้งานอีกครั้ง กรุณาใส่รหัสผ่านของท่านเพื่อยืนยันตัวตน",
+    "user_disable.desc_suffix": "ผู้ใช้จะไม่สามารถเข้าใช้งาน iVS ได้จนกว่าจะถูกเปิดใช้งานอีกครั้ง กรุณาใส่รหัสผ่านของท่านเพื่อยืนยันตัวตน",
     "user_disable.consequence_1": "ผู้ใช้จะถูก logout ในเซสชันถัดไป และไม่สามารถ login ใหม่ได้",
     "user_disable.consequence_2": "แอปและทรัพยากรของผู้ใช้ยังคงอยู่ — ไม่ถูกลบ การเปิดใช้งานใหม่จะคืนสิทธิ์ทั้งหมด",
     "user_disable.consequence_3": "บันทึก audit log ระดับ WARNING พร้อมระบุผู้กดและเวลา",
-    "user_disable.legal_note": "การจำกัดสิทธิ์เข้าใช้งานระบบสารสนเทศต้องมีการ audit trail ที่ตรวจสอบได้ — IVS จะเก็บบันทึกนี้ตาม policy retention",
+    "user_disable.legal_note": "การจำกัดสิทธิ์เข้าใช้งานระบบสารสนเทศต้องมีการ audit trail ที่ตรวจสอบได้ — iVS จะเก็บบันทึกนี้ตาม policy retention",
     "user_disable.confirm": "ยืนยันปิดใช้งาน",
 
     "settings.delete_user": "ลบ",
@@ -592,7 +676,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "user_delete.consequence_2": "แอปที่ User เคย Deploy ไว้จะถูกโอนสิทธิ์ความเป็นเจ้าของให้ท่าน (Admin) อัตโนมัติ — แอปยังคงทำงานต่อ",
     "user_delete.consequence_3": "ประวัติใน Audit Log ยังคงเก็บไว้ตาม retention policy (ไม่ถูกลบ)",
     "user_delete.consequence_4": "ไม่สามารถลบ Admin คนสุดท้าย และไม่สามารถลบตัวเองได้",
-    "user_delete.legal_note": "การลบผู้ใช้ต้องมีหลักฐานการโอนความรับผิดชอบที่ตรวจสอบได้ — IVS จะบันทึก audit log การลบและการโอนสิทธิ์แอป",
+    "user_delete.legal_note": "การลบผู้ใช้ต้องมีหลักฐานการโอนความรับผิดชอบที่ตรวจสอบได้ — iVS จะบันทึก audit log การลบและการโอนสิทธิ์แอป",
     "user_delete.confirm": "ยืนยันลบถาวร",
     "retention.purge_result": "ผลการลบ (จำนวน records)",
     // Per-type labels
@@ -645,10 +729,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.pdpa_found_masking": "พบ Data Masking",
     "settings.pdpa_no_masking": "ไม่พบ Data Masking",
     "settings.pdpa_masking_warn": "แนะนำเพิ่มการ mask ข้อมูลส่วนบุคคลในแอป",
-    "settings.pdpa_security_base": "มาตรการพื้นฐาน IVS: User Management, Audit Log, Docker Isolation",
+    "settings.pdpa_security_base": "มาตรการพื้นฐาน iVS: User Management, Audit Log, Docker Isolation",
     "settings.pn_title": "ประกาศแจ้งเตือน (Privacy Notice)",
     "settings.pn_desc": "ตั้งค่าการแจ้งเตือนก่อนเข้าใช้งานแอปพลิเคชัน ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล",
-    "settings.pn_toggle": "เปิดใช้ประกาศแจ้งเตือนของ IVS",
+    "settings.pn_toggle": "เปิดใช้ประกาศแจ้งเตือนของ iVS",
     "settings.pn_toggle_hint": "หากแอปมี Privacy Notice อยู่แล้วสามารถปิดได้",
     "settings.pn_notice_title": "หัวเรื่องประกอบแจ้งเตือน",
     "settings.pn_notice_detail": "รายละเอียดโดยย่อ",
@@ -741,13 +825,13 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.autostart_location": "ตำแหน่งในเมนู",
     "settings.autostart_docker_title": "ตั้งค่า Docker Desktop Auto-Start",
     "settings.autostart_docker_desc": "เปิด Docker Desktop > Settings > General > Start Docker Desktop when you sign in",
-    "settings.autostart_ivs_title": "ตั้งค่า IVS Auto-Start",
+    "settings.autostart_ivs_title": "ตั้งค่า iVS Auto-Start",
     "settings.autostart_ivs_desc": "ใช้ docker compose ร่วมกับ restart policy: always",
 
     // Settings - Network
     "settings.tab.network": "เครือข่าย",
     "settings.net_title": "ข้อมูลเครือข่าย",
-    "settings.net_desc": "สถานะการเชื่อมต่อ, IP, Gateway และ DNS ของเครื่อง IVS",
+    "settings.net_desc": "สถานะการเชื่อมต่อ, IP, Gateway และ DNS ของเครื่อง iVS",
     "settings.net_ip": "IP เซิร์ฟเวอร์",
     "settings.net_hostname": "ชื่อเครื่อง (Hostname)",
     "settings.net_gateway": "Default Gateway",
@@ -763,20 +847,20 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.net_col_speed": "Speed",
     "settings.net_up": "UP",
     "settings.net_down": "DOWN",
-    "settings.net_mdns_title": "mDNS / Bonjour — ค้นหา IVS อัตโนมัติ",
-    "settings.net_mdns_desc": "ระบบค้นหาเครื่องในเครือข่ายแบบ Zero-Config — ไม่ต้องรู้ IP ก็เข้าถึง IVS ได้",
+    "settings.net_mdns_title": "mDNS / Bonjour — ค้นหา iVS อัตโนมัติ",
+    "settings.net_mdns_desc": "ระบบค้นหาเครื่องในเครือข่ายแบบ Zero-Config — ไม่ต้องรู้ IP ก็เข้าถึง iVS ได้",
     "settings.net_mdns_status": "สถานะ mDNS",
     "settings.net_mdns_active": "ทำงานอยู่",
     "settings.net_mdns_inactive": "ไม่ทำงาน",
     "settings.net_mdns_service": "บริการ",
     "settings.net_mdns_hostname": "ชื่อ mDNS",
-    "settings.net_mdns_how": "วิธีใช้ mDNS เข้าถึง IVS",
-    "settings.net_mdns_step1": "ตรวจสอบว่าเครื่อง Admin และ IVS อยู่วง LAN เดียวกัน",
-    "settings.net_mdns_step2": "เปิดเบราว์เซอร์แล้วพิมพ์ชื่อ mDNS ของ IVS",
+    "settings.net_mdns_how": "วิธีใช้ mDNS เข้าถึง iVS",
+    "settings.net_mdns_step1": "ตรวจสอบว่าเครื่อง Admin และ iVS อยู่วง LAN เดียวกัน",
+    "settings.net_mdns_step2": "เปิดเบราว์เซอร์แล้วพิมพ์ชื่อ mDNS ของ iVS",
     "settings.net_mdns_step3": "Windows ต้องติดตั้ง Bonjour Print Services หรือ iTunes ก่อน",
     "settings.net_mdns_linux": "Linux: ติดตั้ง avahi-daemon — sudo apt install avahi-daemon && sudo systemctl enable --now avahi-daemon",
     "settings.net_mdns_edit_title": "ตั้งค่าชื่อ mDNS",
-    "settings.net_mdns_edit_desc": "เปลี่ยนชื่อ mDNS เพื่อป้องกันชื่อชนกัน กรณีมี IVS มากกว่า 1 ตัวในเครือข่าย",
+    "settings.net_mdns_edit_desc": "เปลี่ยนชื่อ mDNS เพื่อป้องกันชื่อชนกัน กรณีมี iVS มากกว่า 1 ตัวในเครือข่าย",
     "settings.net_mdns_input_label": "ชื่อ mDNS Hostname",
     "settings.net_mdns_input_hint": "เช่น ivs, ivs-lab1, ivs-office",
     "settings.net_mdns_save": "บันทึก",
@@ -784,24 +868,33 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.net_mdns_reset": "คืนค่าเริ่มต้น",
     "settings.net_mdns_resetting": "กำลังคืนค่า...",
     "settings.net_mdns_default_note": "ค่าเริ่มต้น: ivs.local",
-    "settings.net_mdns_quick_title": "Quick Setup — เข้าถึง IVS ครั้งแรก",
-    "settings.net_mdns_quick_desc": "สำหรับผู้ใช้ครั้งแรก เพียง 3 ขั้นตอนก็เข้าถึง IVS ได้ทันที",
-    "settings.net_mdns_quick_step1": "ตรวจสอบว่าเครื่อง Admin และ IVS อยู่วง LAN เดียวกัน (ต่อ Router/Switch เดียวกัน)",
+    "settings.net_mdns_quick_title": "Quick Setup — เข้าถึง iVS ครั้งแรก",
+    "settings.net_mdns_quick_desc": "สำหรับผู้ใช้ครั้งแรก เพียง 3 ขั้นตอนก็เข้าถึง iVS ได้ทันที",
+    "settings.net_mdns_quick_step1": "ตรวจสอบว่าเครื่อง Admin และ iVS อยู่วง LAN เดียวกัน (ต่อ Router/Switch เดียวกัน)",
     "settings.net_mdns_quick_step2_pre": "เปิดเบราว์เซอร์แล้วพิมพ์",
     "settings.net_mdns_quick_step3": "Windows ต้องติดตั้ง Bonjour Print Services หรือ iTunes ก่อน",
     "settings.net_mdns_download_bonjour": "Download Bonjour (Windows)",
     "settings.net_mdns_win_note": "macOS และ iOS รองรับ mDNS โดยไม่ต้องติดตั้งเพิ่ม",
     "settings.net_static_title": "คู่มือตั้ง Static IP",
-    "settings.net_static_desc": "แนะนำให้ตั้ง Static IP เพื่อให้เข้าถึง IVS ได้แน่นอน ไม่เปลี่ยนแปลง",
+    "settings.net_static_desc": "แนะนำให้ตั้ง Static IP เพื่อให้เข้าถึง iVS ได้แน่นอน ไม่เปลี่ยนแปลง",
     "settings.net_static_why": "ทำไมต้องตั้ง Static IP?",
     "settings.net_static_reason1": "DHCP อาจเปลี่ยน IP ทุกครั้งที่รีบูต ทำให้ DNS ชี้ผิด",
-    "settings.net_static_reason2": "Static IP ทำให้อุปกรณ์อื่นเข้าถึง IVS ได้ตลอด",
+    "settings.net_static_reason2": "Static IP ทำให้อุปกรณ์อื่นเข้าถึง iVS ได้ตลอด",
     "settings.net_static_reason3": "จำเป็นสำหรับ headless server ที่ไม่มีจอ",
     "settings.net_static_ubuntu": "Ubuntu / Debian",
     "settings.net_static_macos": "macOS",
     "settings.net_static_router": "ตั้งที่ Router (DHCP Reservation)",
-    "settings.net_static_router_desc": "เข้า Admin Panel ของ Router → DHCP → จอง IP ให้ MAC Address ของ IVS",
+    "settings.net_static_router_desc": "เข้า Admin Panel ของ Router → DHCP → จอง IP ให้ MAC Address ของ iVS",
     "settings.net_refresh": "รีเฟรช",
+
+    // Consulting
+    "nav.consulting": "ปรึกษา",
+    "consulting.title": "ปรึกษา",
+    "consulting.body": "เราทำทางด้าน LawTech มาตั้งแต่จัดเก็บ Log file ตามพรบ.ว่าด้วยการกระทำความผิดทางคอมพิวเตอร์ พ.ศ.2550 (พรบ.คอมฯ) จึงถึงปัจจุบัน การจัดเก็บข้อมูลส่วนบุคคล ตาม พรบ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ.2562 (PDPA)",
+    "consulting.coffee": "เลี้ยงกาแฟทีมพัฒนา iVS",
+    "consulting.contact_name": "นายทรงกลด ตันทรบันฑิตย์",
+    "consulting.contact_email": "pdpa@sgc.co.th",
+    "consulting.contact_label": "ติดต่อปรึกษา",
 
     // API Catalog
     "nav.api_catalog": "คลัง API สาธารณะ",
@@ -830,7 +923,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "api_catalog.docs": "Docs",
     "api_catalog.tip_title": "เคล็ดลับสำหรับ Vibe Coder",
     "api_catalog.tip_1": "เลือก API ที่ไม่ต้องใช้ Key สำหรับโปรเจกต์ทดลอง จะเริ่มต้นได้เร็ว",
-    "api_catalog.tip_2": "เก็บ API Key ที่ได้รับใน คลัง API Key ของ IVS เพื่อความปลอดภัย",
+    "api_catalog.tip_2": "เก็บ API Key ที่ได้รับใน คลัง API Key ของ iVS เพื่อความปลอดภัย",
     "api_catalog.tip_3": "ทดสอบ API ด้วย curl หรือ Postman ก่อนเขียนโค้ดจริง",
     "api_catalog.tip_4": "ดู Rate Limit ของแต่ละ API เพื่อไม่ให้โดน Block",
 
@@ -847,7 +940,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "guide.copied": "คัดลอกแล้ว!",
     "guide.copy_template": "คัดลอก Template",
     "guide.template_title": "ivs-app.md — ใส่ไว้ในโปรเจค",
-    "guide.template_desc": "คัดลอกไฟล์นี้ใส่ไว้ใน root ของโปรเจค เพื่อให้ AI เข้าใจข้อกำหนดของ IVS",
+    "guide.template_desc": "คัดลอกไฟล์นี้ใส่ไว้ใน root ของโปรเจค เพื่อให้ AI เข้าใจข้อกำหนดของ iVS",
 
     "guide.type.static": "Static",
     "guide.type.nodejs": "Node.js",
@@ -887,7 +980,7 @@ const translations: Record<Locale, Record<string, string>> = {
 │   │   └── assets/
 │   ├── package.json
 │   └── src/
-└── (ไม่ต้องมี Dockerfile — IVS สร้างให้)`,
+└── (ไม่ต้องมี Dockerfile — iVS สร้างให้)`,
 
     "guide.prompt.static": `สร้างเว็บไซต์แบบ HTML/CSS/JavaScript ที่มี:
 - ไฟล์ index.html เป็น entry point
@@ -897,7 +990,7 @@ const translations: Record<Locale, Record<string, string>> = {
 - Responsive รองรับ mobile
 
 โครงสร้าง: ไฟล์ทั้งหมดอยู่ที่ root (ไม่มี subfolder)
-Deploy: zip ทุกไฟล์แล้วอัปโหลดขึ้น IVS`,
+Deploy: zip ทุกไฟล์แล้วอัปโหลดขึ้น iVS`,
     "guide.prompt.nodejs": `สร้าง Node.js application ที่มี:
 - package.json พร้อม "start" script
 - ใช้ Express.js สำหรับ HTTP server
@@ -905,6 +998,10 @@ Deploy: zip ทุกไฟล์แล้วอัปโหลดขึ้น I
   const PORT = process.env.PORT || 3000;
 - ตอบ health check ที่ GET /
 - ใส่ package-lock.json ด้วย
+- รองรับภาษาไทย (UTF-8): ห้ามใส่ค่าภาษาไทยลง HTTP header ดิบ ๆ
+  (จะเกิด error "non ISO-8859-1") — encodeURIComponent() ก่อนเสมอ
+  แล้ว decodeURIComponent() ฝั่ง server; เก็บข้อมูลผู้ใช้ใน body (JSON)
+  ไม่ใช่ header; response ตั้ง Content-Type: charset=utf-8
 
 โครงสร้าง: package.json อยู่ที่ root
 Deploy: zip ทั้งโฟลเดอร์ (ไม่รวม node_modules)`,
@@ -917,6 +1014,10 @@ Deploy: zip ทั้งโฟลเดอร์ (ไม่รวม node_module
 - รับ PORT จาก environment variable
 - มี health check endpoint ที่ GET /
 - รองรับ CORS
+- รองรับภาษาไทย (UTF-8): ห้ามใส่ค่าภาษาไทยลง HTTP header ดิบ ๆ
+  (header เป็น ISO-8859-1) — ฝั่ง client encodeURIComponent() ก่อน
+  ฝั่ง server ใช้ urllib.parse.unquote(); เก็บข้อมูลผู้ใช้ใน body
+  ไฟล์ดาวน์โหลดชื่อไทยใช้ Content-Disposition: filename*=UTF-8''
 
 โครงสร้าง: main.py + requirements.txt ที่ root
 Deploy: zip ทั้งโฟลเดอร์ (ไม่รวม .venv)`,
@@ -925,6 +1026,8 @@ Deploy: zip ทั้งโฟลเดอร์ (ไม่รวม .venv)`,
 - requirements.txt ต้องมี streamlit อยู่ในนั้น
 - ใช้ st.set_page_config() ตั้งค่าหน้า
 - หน้าย่อยใส่ในโฟลเดอร์ pages/
+- รองรับภาษาไทย (UTF-8): อ่าน/เขียนไฟล์ใช้ encoding="utf-8" เสมอ
+  ถ้าเรียก API ภายนอก ห้ามใส่ค่าไทยใน header ดิบ — quote() ก่อน
 
 โครงสร้าง: app.py + requirements.txt ที่ root
 Deploy: zip ทั้งโฟลเดอร์ (ไม่รวม .venv)`,
@@ -944,26 +1047,30 @@ Deploy: zip ทั้งโฟลเดอร์ (ไม่รวม .venv)`,
 - frontend ใช้ Vite+React+TypeScript
 - ต้องรัน: cd frontend && npm run build
   ก่อน zip เพื่อให้ได้ dist/
-- IVS จะสร้าง nginx proxy: / → frontend,
+- iVS จะสร้าง nginx proxy: / → frontend,
   /api → backend อัตโนมัติ
+- รองรับภาษาไทย (UTF-8): frontend ห้ามใส่ค่าไทยใน fetch header ดิบ
+  — encodeURIComponent() ก่อน, backend unquote(); ส่งข้อมูลผู้ใช้ใน
+  body (JSON) ไม่ใช่ header; response ตั้ง charset=utf-8
 
 Deploy: zip ทั้ง root (ต้องมี dist/ พร้อม)`,
 
     "guide.tip.static": "Static site ใช้ nginx:alpine — เบาและเร็วที่สุด เหมาะสำหรับ Landing page, Portfolio, Dashboard แบบ client-side",
-    "guide.tip.nodejs": "อย่าลืมใส่ package-lock.json ด้วย และต้องมี \"start\" script ใน package.json ไม่งั้น IVS จะหา dev script หรือ main field แทน",
-    "guide.tip.fastapi": "IVS ตรวจจับจากคำว่า \"fastapi\" หรือ \"FastAPI\" ใน main.py ถ้าไม่มีจะถูกจัดเป็น Python ธรรมดา",
+    "guide.tip.nodejs": "อย่าลืมใส่ package-lock.json ด้วย และต้องมี \"start\" script ใน package.json ไม่งั้น iVS จะหา dev script หรือ main field แทน",
+    "guide.tip.fastapi": "iVS ตรวจจับจากคำว่า \"fastapi\" หรือ \"FastAPI\" ใน main.py ถ้าไม่มีจะถูกจัดเป็น Python ธรรมดา",
     "guide.tip.streamlit": "Entry point ต้องเป็น app.py (ไม่ใช่ main.py) และ requirements.txt ต้องมีคำว่า streamlit",
-    "guide.tip.fullstack": "สำคัญ: ต้อง npm run build ก่อน zip! ถ้าไม่มี dist/ IVS จะ build ใน Docker แต่จะช้ากว่ามาก",
+    "guide.tip.fullstack": "สำคัญ: ต้อง npm run build ก่อน zip! ถ้าไม่มี dist/ iVS จะ build ใน Docker แต่จะช้ากว่ามาก",
+    "guide.tip.thai": "ภาษาไทย (UTF-8): ห้ามใส่ค่าภาษาไทยลง HTTP header ดิบ ๆ — จะเกิด error \"non ISO-8859-1\" ขณะ fetch() ใช้ encodeURIComponent() ก่อนเสมอ เก็บข้อมูลผู้ใช้ใน body (JSON) ไม่ใช่ header",
 
-    "guide.template": `# ivs-app.md — IVS Deploy Specification
+    "guide.template": `# ivs-app.md — iVS Deploy Specification
 
 ## Deploy Target
-- Platform: IVS (Internal Vibe Server)
+- Platform: iVS (Internal Vibe Server)
 - Container: Docker (auto-generated Dockerfile)
 - Port: อ่านจาก ENV variable "PORT"
 
 ## Project Rules
-1. ไม่ต้องสร้าง Dockerfile (IVS สร้างให้)
+1. ไม่ต้องสร้าง Dockerfile (iVS สร้างให้)
 2. ไม่ต้องมี docker-compose.yml
 3. อ่า PORT จาก environment variable เสมอ
 4. ห้ามใส่ .venv/, node_modules/, .git/ ใน zip
@@ -984,12 +1091,12 @@ backend/main.py        → FastAPI app
 backend/requirements.txt
 frontend/package.json  → Required (build script)
 frontend/src/          → Source code
-frontend/dist/         → Optional (IVS auto-builds if missing)
+frontend/dist/         → Optional (iVS auto-builds if missing)
 \`\`\`
 
 ## Environment Variables
-- PORT: assigned by IVS automatically
-- Vault keys: injected from IVS Vault
+- PORT: assigned by iVS automatically
+- Vault keys: injected from iVS Vault
 
 ## Constraints (v1.0)
 - Max upload: ~150MB zip
@@ -1000,24 +1107,24 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     // Case Studies
     "guide.tab_cases": "Case ตัวอย่าง",
     "guide.cases_title": "ปัญหาที่พบบ่อยและวิธีแก้ไข",
-    "guide.cases_subtitle": "เคสจริงจากการใช้งาน IVS + Vibe Code",
+    "guide.cases_subtitle": "เคสจริงจากการใช้งาน iVS + Vibe Code",
 
     "guide.case.line_oa.title": "LINE OA Webhook Error",
     "guide.case.line_oa.problem": "LINE Developers แจ้ง Webhook Error ทั้งที่ container ทำงานปกติ",
     "guide.case.line_oa.cause": "1. Dockerfile CMD ชี้ไปไฟล์ server.js ที่ต้องใช้ MySQL แต่ Docker ไม่มี DB → Connection Error\n2. ควรใช้ local-server.js (JSON file-based) แทน",
-    "guide.case.line_oa.fix": "• ตรวจสอบ Dockerfile CMD ว่าชี้ไปไฟล์ที่ถูกต้อง\n• ถ้ามีหลาย server file ให้เลือกตัวที่ไม่พึ่ง Database\n• IVS จะแจ้งเตือน ⛔ อัตโนมัติถ้าพบ DB dependency",
+    "guide.case.line_oa.fix": "• ตรวจสอบ Dockerfile CMD ว่าชี้ไปไฟล์ที่ถูกต้อง\n• ถ้ามีหลาย server file ให้เลือกตัวที่ไม่พึ่ง Database\n• iVS จะแจ้งเตือน ⛔ อัตโนมัติถ้าพบ DB dependency",
     "guide.case.line_oa.tag": "LINE OA · Webhook · Dockerfile",
 
     "guide.case.ngrok.title": "ngrok Tunnel ใช้ไม่ได้ (422 Error)",
     "guide.case.ngrok.problem": "ngrok tunnel ส่ง request ได้แต่ได้ HTTP 422 กลับมา ทั้งที่ container ตอบ 200",
     "guide.case.ngrok.cause": "1. ใช้ flag --pooling-enabled ซึ่งสร้าง Cloud Endpoint พร้อม AI Gateway\n2. AI Gateway ดักจับ POST requests ทั้งหมดแล้วคืน 422 (ERR_NGROK_3803)\n3. แม้ลบ flag แล้ว Cloud Endpoint ยังค้างอยู่บน Dashboard",
-    "guide.case.ngrok.fix": "• ห้ามใช้ --pooling-enabled กับ webhook/API tunnel\n• ถ้าใช้ไปแล้ว → ไป ngrok Dashboard → Endpoints → ลบ Cloud Endpoint\n• สั่งใหม่: ngrok http PORT --url=your-domain.ngrok-free.dev\n• ถ้า Deploy บน IVS แล้ว ต้องสร้าง Tunnel ใหม่ใน IVS (ไม่ใช้ของ Vibe Code)",
+    "guide.case.ngrok.fix": "• ห้ามใช้ --pooling-enabled กับ webhook/API tunnel\n• ถ้าใช้ไปแล้ว → ไป ngrok Dashboard → Endpoints → ลบ Cloud Endpoint\n• สั่งใหม่: ngrok http PORT --url=your-domain.ngrok-free.dev\n• ถ้า Deploy บน iVS แล้ว ต้องสร้าง Tunnel ใหม่ใน iVS (ไม่ใช้ของ Vibe Code)",
     "guide.case.ngrok.tag": "ngrok · Tunnel · AI Gateway · 422",
 
     "guide.case.db_deploy.title": "Deploy แอปที่ใช้ MySQL/Database ไม่ได้",
-    "guide.case.db_deploy.problem": "แอปรันบนเครื่อง Dev ได้ แต่ Deploy บน IVS แล้ว error เพราะเชื่อมต่อ Database ไม่ได้",
-    "guide.case.db_deploy.cause": "1. IVS Docker container ไม่มี Database server (MySQL, PostgreSQL, MongoDB)\n2. แอปที่ require('mysql2') หรือ import mysql จะ crash ทันที\n3. Vibe Code มักสร้าง 2 ไฟล์: server.js (ใช้ DB) กับ local-server.js (ใช้ JSON)",
-    "guide.case.db_deploy.fix": "• ใช้ JSON file แทน Database สำหรับ Deploy บน IVS\n• แก้ Dockerfile CMD ให้ชี้ไฟล์ที่ไม่พึ่ง DB:\n  CMD [\"node\", \"src/local-server.js\"]\n• หรือใช้ SQLite (ไฟล์เดียว ไม่ต้อง server)\n• IVS จะแจ้งเตือน ⛔ อัตโนมัติถ้าพบ DB dependency ตอน validate",
+    "guide.case.db_deploy.problem": "แอปรันบนเครื่อง Dev ได้ แต่ Deploy บน iVS แล้ว error เพราะเชื่อมต่อ Database ไม่ได้",
+    "guide.case.db_deploy.cause": "1. iVS Docker container ไม่มี Database server (MySQL, PostgreSQL, MongoDB)\n2. แอปที่ require('mysql2') หรือ import mysql จะ crash ทันที\n3. Vibe Code มักสร้าง 2 ไฟล์: server.js (ใช้ DB) กับ local-server.js (ใช้ JSON)",
+    "guide.case.db_deploy.fix": "• ใช้ JSON file แทน Database สำหรับ Deploy บน iVS\n• แก้ Dockerfile CMD ให้ชี้ไฟล์ที่ไม่พึ่ง DB:\n  CMD [\"node\", \"src/local-server.js\"]\n• หรือใช้ SQLite (ไฟล์เดียว ไม่ต้อง server)\n• iVS จะแจ้งเตือน ⛔ อัตโนมัติถ้าพบ DB dependency ตอน validate",
     "guide.case.db_deploy.tag": "MySQL · Database · JSON · Dockerfile",
 
     // Resources
@@ -1080,11 +1187,11 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "nav.resources": "Resources",
     "nav.settings": "Settings",
     "nav.signout": "Sign Out",
-    "nav.shutdown": "Shut down IVS",
+    "nav.shutdown": "Shut down iVS",
     "nav.shutdown_confirm": "Confirm shutdown",
     "nav.shutdown_working": "Shutting down…",
-    "nav.shutdown_tooltip": "Stop IVS services on this host (deployed apps keep running)",
-    "nav.subtitle": "Enterprise Gateway",
+    "nav.shutdown_tooltip": "Stop iVS services on this host (deployed apps keep running)",
+    "nav.subtitle": "สตาร์ท Vibe ดีๆ",
 
     "login.title": "Internal Vibe Server",
     "login.subtitle": "Enterprise Gateway for Vibe Code Apps",
@@ -1101,8 +1208,8 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "login.reset_working": "Resetting…",
     "login.reset_done": "✓ Reset done. Use admin / admin123 to sign in.",
     "login.reset_failed": "Reset failed",
-    "login.shutdown": "Shut down IVS",
-    "login.shutdown_desc": "Stop IVS on this host. Requires an admin account.",
+    "login.shutdown": "Shut down iVS",
+    "login.shutdown_desc": "Stop iVS on this host. Requires an admin account.",
     "login.shutdown_confirm": "Shut down",
     "login.shutdown_working": "Shutting down…",
     "login.shutdown_started": "✓ Shutdown signal sent — tab will close shortly",
@@ -1161,10 +1268,10 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "deploy.warn.git_included": ".git/ included in zip — unnecessary",
     "deploy.warn.nodejs_no_lockfile": "Missing package-lock.json — recommended for stability",
     "deploy.warn.fastapi_no_uvicorn": "requirements.txt missing uvicorn — may need to add",
-    "deploy.warn.fullstack_no_dist": "Missing frontend/dist/ — IVS will build but slower",
+    "deploy.warn.fullstack_no_dist": "Missing frontend/dist/ — iVS will build but slower",
     "deploy.warn.vite_prebuilt_detected": "Pre-built Vite app with dist/ detected — will deploy as Static Web",
     "deploy.warn.vite_preview_detected": "Vite app with vite preview detected — will use npm start",
-    "deploy.warn.custom_dockerfile": "Using project's own Dockerfile — IVS will not auto-generate",
+    "deploy.warn.custom_dockerfile": "Using project's own Dockerfile — iVS will not auto-generate",
     "deploy.warn.dockerfile_cmd_missing_file": "⛔ Dockerfile CMD points to missing file: {file} — may fail to run",
     "deploy.warn.dockerfile_db_dependency": "⛔ File {file} requires {db} — Docker container has no Database, will cause Connection Error",
     "deploy.warn.multiple_server_files": "Multiple server files found: {files} — verify Dockerfile CMD targets the right one",
@@ -1172,7 +1279,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "deploy.file_too_large_title": "⚠️ File Too Large",
     "deploy.file_too_large_msg": "Your file is too large ({size} MB). Please check that you've removed node_modules or .venv before compressing to prevent system issues.",
     "deploy.auto_sanitize": "Continue — Auto-sanitize enabled",
-    "deploy.auto_sanitize_desc": "IVS will auto-remove node_modules, .venv, pnpm-lock.yaml before build",
+    "deploy.auto_sanitize_desc": "iVS will auto-remove node_modules, .venv, pnpm-lock.yaml before build",
     "deploy.cancel_upload": "Cancel — Choose another file",
     "deploy.build_log_title": "Build Log (Real-time)",
     "deploy.build_timeout": "Build timeout! Exceeded 3 minutes",
@@ -1214,7 +1321,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "export.filename": "Filename",
     "export.no_data_warning": "No persistent data found inside the container — this app may not store data internally, or the container is not running.",
     "export.warnings": "Warnings",
-    "export.tip": "Open the .zip to find README.md with instructions for re-importing back into IVS.",
+    "export.tip": "Open the .zip to find README.md with instructions for re-importing back into iVS.",
     "export.download": "Download .zip",
     "export.cancel": "Cancel",
     "export.close": "Close",
@@ -1305,6 +1412,8 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 
     "vault.title": "API Key Vault",
     "vault.subtitle": "Secure enterprise API key management (AES-256 encrypted)",
+    "vault.tab.keys": "API Keys",
+    "vault.tab.programs": "App APIs",
     "vault.add": "+ Add Key",
     "vault.cancel": "Cancel",
     "vault.add_title": "Add New API Key",
@@ -1364,7 +1473,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "tunnel.share.body.security_3": "• Please use within your organization's policy",
     "tunnel.share.body.security_4": "• Report any unusual behavior to the system administrator immediately",
     "tunnel.share.body.section_note": "💬  Note from the sender",
-    "tunnel.share.body.signoff": "Sent from IVS — Internal Vibe Server",
+    "tunnel.share.body.signoff": "Sent from iVS — Internal Vibe Server",
 
     // PII suggestion checklist (Settings → PDPA tab)
     "pii.full_name": "Full name",
@@ -1404,7 +1513,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 
     // Docker status banner
     "docker.banner_title": "Docker is not running",
-    "docker.banner_desc": "Apps deployed via IVS require Docker — please start it to continue",
+    "docker.banner_desc": "Apps deployed via iVS require Docker — please start it to continue",
     "docker.start_btn": "🐳 Start Docker",
     "docker.starting_btn": "Starting…",
     "docker.starting": "Starting Docker daemon — wait 30-60 seconds…",
@@ -1451,7 +1560,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "gdpr.modal_consequence_2": "If target = user → account deleted, deployed apps reassigned to you",
     "gdpr.modal_consequence_3": "Erasure Certificate (markdown + SHA-256) issued and downloadable",
     "gdpr.modal_consequence_4": "Audit log written at CRITICAL — only the HMAC hash is recorded (never raw target)",
-    "gdpr.modal_legal": "Erasure under applicable data-protection law. IVS uses replace-in-place to honor records-retention obligations (records are preserved without identifiers).",
+    "gdpr.modal_legal": "Erasure under applicable data-protection law. iVS uses replace-in-place to honor records-retention obligations (records are preserved without identifiers).",
     "gdpr.modal_confirm": "Confirm erasure",
 
     // Vault delete confirmation
@@ -1520,6 +1629,88 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.tab.dns": "DNS & Domain",
     "settings.tab.gitea": "Gitea",
     "settings.tab.autostart": "Auto-Start",
+    "settings.tab.license": "Machine Serial",
+    "license.title": "Machine Serial Number (S/N)",
+    "license.serial": "Serial Number",
+    "license.edition": "Edition",
+    "license.region": "Region",
+    "license.fingerprint": "Machine Fingerprint",
+    "license.fingerprint_status": "Fingerprint Status",
+    "license.fingerprint_ok": "Matched",
+    "license.fingerprint_mismatch": "Hardware Changed",
+    "license.created_at": "Issued At",
+    "license.bound_file": "Bound File",
+    "license.copy": "Copy",
+    "license.copied": "Copied",
+    "license.valid": "Valid",
+    "license.invalid": "Invalid",
+    "license.serial_status": "Serial Status",
+    "license.desc": "This serial number is bound to the machine hardware fingerprint. Used for License Activation and iVS Enterprise.",
+    // API Catalog (v1.0.1)
+    "catalog.title": "API Catalog",
+    "catalog.subtitle": "Manage APIs from deployed apps — auto-discover, test, replace URL/Key (encrypted at rest)",
+    "catalog.scan_now": "Scan Now",
+    "catalog.scanning": "Scanning...",
+    "catalog.scan_done": "Scan complete",
+    "catalog.scanned": "scanned",
+    "catalog.new": "new",
+    "catalog.updated": "updated",
+    "catalog.failed": "failed",
+    "catalog.add_manual": "Add API",
+    "catalog.search": "Search APIs...",
+    "catalog.empty": "No APIs in catalog yet — click Scan or add manually",
+    "catalog.test": "Test",
+    "catalog.details": "Details",
+    "catalog.collapse": "Collapse",
+    "catalog.base_url": "Base URL",
+    "catalog.path": "Path",
+    "catalog.api_key": "API Key",
+    "catalog.schema_size": "Schema",
+    "catalog.show_schema": "View Schema",
+    "catalog.reveal_copy": "Reveal & Copy",
+    "catalog.copied": "Copied",
+    "catalog.replace": "Replace",
+    "catalog.create": "Create",
+    "catalog.delete": "Delete",
+    "catalog.delete_confirm": "Delete this API?",
+    "catalog.history": "History",
+    "catalog.no_history": "No history yet",
+    "catalog.restore": "Restore",
+    "catalog.restore_confirm": "Restore this prior version?",
+    "catalog.name": "API name",
+    "catalog.reason": "Replacement reason",
+    "catalog.optional": "optional",
+    // Copyright / EULA notices
+    "copyright.all_rights": "All Rights Reserved",
+    "copyright.eula_notice": "Proprietary software licensed under the IVS EULA — Redistribution prohibited",
+    "copyright.footer": "© 2026 IVS Project · Free Edition · Personal / non-commercial use only",
+    "copyright.tampering_warning": "Copyright tampering detected — contact administrator",
+    // Enterprise — machine registry
+    "settings.tab.enterprise": "Machines",
+    "enterprise.title": "Machine Registry",
+    "enterprise.desc": "Add other IVS machines to manage as a fleet (Enterprise feature).",
+    "enterprise.self_machine": "This Machine",
+    "enterprise.add_machine": "Add Machine",
+    "enterprise.discover": "Auto-Discover (LAN)",
+    "enterprise.discovering": "Scanning LAN...",
+    "enterprise.fingerprint": "Machine Fingerprint",
+    "enterprise.serial": "Serial",
+    "enterprise.hostname": "Hostname",
+    "enterprise.ip": "IP Address",
+    "enterprise.group": "Group",
+    "enterprise.notes": "Notes",
+    "enterprise.edition": "Edition",
+    "enterprise.last_seen": "Last Seen",
+    "enterprise.source_manual": "Manual",
+    "enterprise.source_mdns": "Auto-discovered",
+    "enterprise.source_self": "This machine",
+    "enterprise.already_registered": "Registered",
+    "enterprise.not_registered": "Not registered",
+    "enterprise.add_discovered": "Add This Machine",
+    "enterprise.no_machines": "No machines in registry",
+    "enterprise.no_discovered": "No IVS instances found on LAN",
+    "enterprise.remove": "Remove",
+    "enterprise.remove_confirm": "Remove this machine from registry?",
     "settings.export_logs": "Export .zip",
     "settings.exporting": "Exporting...",
     "settings.export_history": "Export History",
@@ -1625,11 +1816,11 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     // User disable confirmation
     "user_disable.title": "Disable user",
     "user_disable.desc_prefix": "Confirm disabling the account",
-    "user_disable.desc_suffix": "— the user will be locked out of IVS until re-enabled. Please re-enter your own password to confirm.",
+    "user_disable.desc_suffix": "— the user will be locked out of iVS until re-enabled. Please re-enter your own password to confirm.",
     "user_disable.consequence_1": "User is signed out on their next request and cannot log in again",
     "user_disable.consequence_2": "Their apps and resources remain intact — re-enabling restores full access",
     "user_disable.consequence_3": "Writes a WARNING-level audit log naming you and the timestamp",
-    "user_disable.legal_note": "Restricting access to an information system must be audit-traceable — IVS keeps this record per the configured retention policy.",
+    "user_disable.legal_note": "Restricting access to an information system must be audit-traceable — iVS keeps this record per the configured retention policy.",
     "user_disable.confirm": "Confirm disable",
 
     "settings.delete_user": "Delete",
@@ -1641,7 +1832,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "user_delete.consequence_2": "Apps the user deployed are automatically reassigned to you (Admin) — they keep running",
     "user_delete.consequence_3": "Audit log history is retained per the retention policy (not deleted)",
     "user_delete.consequence_4": "Cannot delete the last admin or your own account",
-    "user_delete.legal_note": "User deletion requires a verifiable transfer-of-responsibility record — IVS audit-logs the deletion and the app reassignment.",
+    "user_delete.legal_note": "User deletion requires a verifiable transfer-of-responsibility record — iVS audit-logs the deletion and the app reassignment.",
     "user_delete.confirm": "Confirm delete",
     "retention.purge_result": "Purge result (record counts)",
     // Per-type labels
@@ -1694,10 +1885,10 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.pdpa_found_masking": "Data Masking found",
     "settings.pdpa_no_masking": "No Data Masking found",
     "settings.pdpa_masking_warn": "Recommend adding data masking for personal data in this app",
-    "settings.pdpa_security_base": "IVS Base: User Management, Audit Log, Docker Isolation",
+    "settings.pdpa_security_base": "iVS Base: User Management, Audit Log, Docker Isolation",
     "settings.pn_title": "Privacy Notice",
     "settings.pn_desc": "Configure privacy notice displayed before app access per PDPA requirements",
-    "settings.pn_toggle": "Enable IVS Privacy Notice",
+    "settings.pn_toggle": "Enable iVS Privacy Notice",
     "settings.pn_toggle_hint": "Disable if the app already has its own Privacy Notice",
     "settings.pn_notice_title": "Notice Title",
     "settings.pn_notice_detail": "Brief Description",
@@ -1790,13 +1981,13 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.autostart_location": "Menu Location",
     "settings.autostart_docker_title": "Docker Desktop Auto-Start",
     "settings.autostart_docker_desc": "Open Docker Desktop > Settings > General > Start Docker Desktop when you sign in",
-    "settings.autostart_ivs_title": "IVS Auto-Start",
+    "settings.autostart_ivs_title": "iVS Auto-Start",
     "settings.autostart_ivs_desc": "Use docker compose with restart policy: always",
 
     // Settings - Network
     "settings.tab.network": "Network",
     "settings.net_title": "Network Information",
-    "settings.net_desc": "Connection status, IP, Gateway, and DNS of the IVS machine",
+    "settings.net_desc": "Connection status, IP, Gateway, and DNS of the iVS machine",
     "settings.net_ip": "Server IP",
     "settings.net_hostname": "Hostname",
     "settings.net_gateway": "Default Gateway",
@@ -1812,20 +2003,20 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.net_col_speed": "Speed",
     "settings.net_up": "UP",
     "settings.net_down": "DOWN",
-    "settings.net_mdns_title": "mDNS / Bonjour — Auto-discover IVS",
-    "settings.net_mdns_desc": "Zero-Config network discovery — access IVS without knowing its IP",
+    "settings.net_mdns_title": "mDNS / Bonjour — Auto-discover iVS",
+    "settings.net_mdns_desc": "Zero-Config network discovery — access iVS without knowing its IP",
     "settings.net_mdns_status": "mDNS Status",
     "settings.net_mdns_active": "Active",
     "settings.net_mdns_inactive": "Inactive",
     "settings.net_mdns_service": "Service",
     "settings.net_mdns_hostname": "mDNS Name",
-    "settings.net_mdns_how": "How to access IVS via mDNS",
-    "settings.net_mdns_step1": "Ensure the Admin device and IVS are on the same LAN",
-    "settings.net_mdns_step2": "Open a browser and type the mDNS hostname of IVS",
+    "settings.net_mdns_how": "How to access iVS via mDNS",
+    "settings.net_mdns_step1": "Ensure the Admin device and iVS are on the same LAN",
+    "settings.net_mdns_step2": "Open a browser and type the mDNS hostname of iVS",
     "settings.net_mdns_step3": "Windows requires Bonjour Print Services or iTunes installed",
     "settings.net_mdns_linux": "Linux: Install avahi-daemon — sudo apt install avahi-daemon && sudo systemctl enable --now avahi-daemon",
     "settings.net_mdns_edit_title": "Configure mDNS Name",
-    "settings.net_mdns_edit_desc": "Change mDNS name to avoid conflicts when multiple IVS instances exist on the network",
+    "settings.net_mdns_edit_desc": "Change mDNS name to avoid conflicts when multiple iVS instances exist on the network",
     "settings.net_mdns_input_label": "mDNS Hostname",
     "settings.net_mdns_input_hint": "e.g. ivs, ivs-lab1, ivs-office",
     "settings.net_mdns_save": "Save",
@@ -1834,23 +2025,32 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "settings.net_mdns_resetting": "Resetting...",
     "settings.net_mdns_default_note": "Default: ivs.local",
     "settings.net_mdns_quick_title": "Quick Setup — First-time Access",
-    "settings.net_mdns_quick_desc": "For first-time users, just 3 steps to access IVS immediately",
-    "settings.net_mdns_quick_step1": "Ensure the Admin device and IVS are on the same LAN (same Router/Switch)",
+    "settings.net_mdns_quick_desc": "For first-time users, just 3 steps to access iVS immediately",
+    "settings.net_mdns_quick_step1": "Ensure the Admin device and iVS are on the same LAN (same Router/Switch)",
     "settings.net_mdns_quick_step2_pre": "Open a browser and type",
     "settings.net_mdns_quick_step3": "Windows requires Bonjour Print Services or iTunes installed",
     "settings.net_mdns_download_bonjour": "Download Bonjour (Windows)",
     "settings.net_mdns_win_note": "macOS and iOS support mDNS natively without additional software",
     "settings.net_static_title": "Static IP Setup Guide",
-    "settings.net_static_desc": "Recommended to set a Static IP so IVS is always reachable at the same address",
+    "settings.net_static_desc": "Recommended to set a Static IP so iVS is always reachable at the same address",
     "settings.net_static_why": "Why set a Static IP?",
     "settings.net_static_reason1": "DHCP may change IP on every reboot, causing DNS to point incorrectly",
-    "settings.net_static_reason2": "Static IP ensures other devices can always reach IVS",
+    "settings.net_static_reason2": "Static IP ensures other devices can always reach iVS",
     "settings.net_static_reason3": "Essential for headless servers without a monitor",
     "settings.net_static_ubuntu": "Ubuntu / Debian",
     "settings.net_static_macos": "macOS",
     "settings.net_static_router": "Set at Router (DHCP Reservation)",
-    "settings.net_static_router_desc": "Go to Router Admin Panel > DHCP > Reserve IP for IVS MAC Address",
+    "settings.net_static_router_desc": "Go to Router Admin Panel > DHCP > Reserve IP for iVS MAC Address",
     "settings.net_refresh": "Refresh",
+
+    // Consulting
+    "nav.consulting": "Consulting",
+    "consulting.title": "Consulting",
+    "consulting.body": "We have been working in LawTech since the era of Log file retention under the Computer Crime Act B.E. 2550 through to the present day, including personal data storage under the Personal Data Protection Act B.E. 2562 (PDPA).",
+    "consulting.coffee": "Buy the iVS team a coffee",
+    "consulting.contact_name": "Songklod Tantrabundit",
+    "consulting.contact_email": "pdpa@sgc.co.th",
+    "consulting.contact_label": "Contact for Consulting",
 
     // API Catalog
     "nav.api_catalog": "Public APIs",
@@ -1879,7 +2079,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "api_catalog.docs": "Docs",
     "api_catalog.tip_title": "Tips for Vibe Coders",
     "api_catalog.tip_1": "Choose no-key APIs for prototype projects - faster to start",
-    "api_catalog.tip_2": "Store API Keys in IVS API Vault for security",
+    "api_catalog.tip_2": "Store API Keys in iVS API Vault for security",
     "api_catalog.tip_3": "Test APIs with curl or Postman before writing code",
     "api_catalog.tip_4": "Check Rate Limits of each API to avoid getting blocked",
 
@@ -1887,7 +2087,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "guide.button": "AI Guide",
     "guide.tooltip": "AI prompts & file structure guide for deploying apps",
     "guide.title": "App Preparation Guide",
-    "guide.subtitle": "AI Prompts + correct file structures for IVS deploy",
+    "guide.subtitle": "AI Prompts + correct file structures for iVS deploy",
     "guide.tab_prompts": "AI Prompts & File Structure",
     "guide.tab_template": "ivs-app.md Template",
     "guide.file_structure": "File Structure",
@@ -1896,7 +2096,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "guide.copied": "Copied!",
     "guide.copy_template": "Copy Template",
     "guide.template_title": "ivs-app.md — Add to your project",
-    "guide.template_desc": "Copy this file to your project root so AI understands IVS requirements",
+    "guide.template_desc": "Copy this file to your project root so AI understands iVS requirements",
 
     "guide.type.static": "Static",
     "guide.type.nodejs": "Node.js",
@@ -1936,7 +2136,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 │   │   └── assets/
 │   ├── package.json
 │   └── src/
-└── (no Dockerfile needed — IVS generates it)`,
+└── (no Dockerfile needed — iVS generates it)`,
 
     "guide.prompt.static": `Create an HTML/CSS/JavaScript website with:
 - index.html as entry point
@@ -1946,7 +2146,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
 - Responsive mobile support
 
 Structure: all files at root (no subfolders)
-Deploy: zip all files and upload to IVS`,
+Deploy: zip all files and upload to iVS`,
     "guide.prompt.nodejs": `Create a Node.js application with:
 - package.json with "start" script
 - Express.js for HTTP server
@@ -1954,6 +2154,10 @@ Deploy: zip all files and upload to IVS`,
   const PORT = process.env.PORT || 3000;
 - Health check at GET /
 - Include package-lock.json
+- Thai/UTF-8 safe: never put Thai text in raw HTTP headers
+  (causes "non ISO-8859-1" error) — encodeURIComponent() first,
+  decodeURIComponent() on the server; keep user data in the
+  body (JSON) not headers; set Content-Type: charset=utf-8
 
 Structure: package.json at root
 Deploy: zip folder (exclude node_modules)`,
@@ -1966,6 +2170,10 @@ Deploy: zip folder (exclude node_modules)`,
 - Read PORT from environment variable
 - Health check endpoint at GET /
 - CORS support
+- Thai/UTF-8 safe: never put Thai text in raw HTTP headers
+  (headers are ISO-8859-1) — client encodeURIComponent() first,
+  server urllib.parse.unquote(); keep user data in the body;
+  Thai download filenames use Content-Disposition: filename*=UTF-8''
 
 Structure: main.py + requirements.txt at root
 Deploy: zip folder (exclude .venv)`,
@@ -1974,6 +2182,8 @@ Deploy: zip folder (exclude .venv)`,
 - requirements.txt must include streamlit
 - Use st.set_page_config() for page setup
 - Sub-pages in pages/ folder
+- Thai/UTF-8 safe: always read/write files with encoding="utf-8";
+  if calling external APIs, never put Thai in raw headers — quote() first
 
 Structure: app.py + requirements.txt at root
 Deploy: zip folder (exclude .venv)`,
@@ -1993,26 +2203,30 @@ Important rules:
 - Frontend uses Vite+React+TypeScript
 - Must run: cd frontend && npm run build
   before zipping to produce dist/
-- IVS auto-creates nginx proxy: / → frontend,
+- iVS auto-creates nginx proxy: / → frontend,
   /api → backend
+- Thai/UTF-8 safe: frontend must not put Thai in raw fetch headers
+  — encodeURIComponent() first, backend unquote(); send user data
+  in the body (JSON) not headers; set response charset=utf-8
 
 Deploy: zip root folder (must include dist/)`,
 
     "guide.tip.static": "Static sites use nginx:alpine — lightest and fastest. Great for landing pages, portfolios, client-side dashboards",
-    "guide.tip.nodejs": "Always include package-lock.json, and ensure a \"start\" script exists in package.json. Otherwise IVS will look for dev script or main field",
-    "guide.tip.fastapi": "IVS detects FastAPI from the word \"fastapi\" or \"FastAPI\" in main.py. Without it, the app will be classified as plain Python",
+    "guide.tip.nodejs": "Always include package-lock.json, and ensure a \"start\" script exists in package.json. Otherwise iVS will look for dev script or main field",
+    "guide.tip.fastapi": "iVS detects FastAPI from the word \"fastapi\" or \"FastAPI\" in main.py. Without it, the app will be classified as plain Python",
     "guide.tip.streamlit": "Entry point must be app.py (not main.py) and requirements.txt must contain the word \"streamlit\"",
-    "guide.tip.fullstack": "Important: Run npm run build before zipping! Without dist/, IVS will try to build inside Docker but it will be much slower",
+    "guide.tip.fullstack": "Important: Run npm run build before zipping! Without dist/, iVS will try to build inside Docker but it will be much slower",
+    "guide.tip.thai": "Thai/UTF-8: never put Thai text in raw HTTP headers — it throws \"non ISO-8859-1\" during fetch(). Always encodeURIComponent() first, and keep user data in the body (JSON), not headers",
 
-    "guide.template": `# ivs-app.md — IVS Deploy Specification
+    "guide.template": `# ivs-app.md — iVS Deploy Specification
 
 ## Deploy Target
-- Platform: IVS (Internal Vibe Server)
+- Platform: iVS (Internal Vibe Server)
 - Container: Docker (auto-generated Dockerfile)
 - Port: Read from ENV variable "PORT"
 
 ## Project Rules
-1. No Dockerfile needed (IVS generates it)
+1. No Dockerfile needed (iVS generates it)
 2. No docker-compose.yml needed
 3. Always read PORT from environment variable
 4. Don't include .venv/, node_modules/, .git/ in zip
@@ -2033,12 +2247,12 @@ backend/main.py        → FastAPI app
 backend/requirements.txt
 frontend/package.json  → Required (build script)
 frontend/src/          → Source code
-frontend/dist/         → Optional (IVS auto-builds if missing)
+frontend/dist/         → Optional (iVS auto-builds if missing)
 \`\`\`
 
 ## Environment Variables
-- PORT: assigned by IVS automatically
-- Vault keys: injected from IVS Vault
+- PORT: assigned by iVS automatically
+- Vault keys: injected from iVS Vault
 
 ## Constraints (v1.0)
 - Max upload: ~150MB zip
@@ -2049,24 +2263,24 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     // Case Studies
     "guide.tab_cases": "Case Studies",
     "guide.cases_title": "Common Problems & Solutions",
-    "guide.cases_subtitle": "Real cases from IVS + Vibe Code usage",
+    "guide.cases_subtitle": "Real cases from iVS + Vibe Code usage",
 
     "guide.case.line_oa.title": "LINE OA Webhook Error",
     "guide.case.line_oa.problem": "LINE Developers shows Webhook Error even though the container is running fine",
     "guide.case.line_oa.cause": "1. Dockerfile CMD points to server.js that requires MySQL, but Docker has no DB → Connection Error\n2. Should use local-server.js (JSON file-based) instead",
-    "guide.case.line_oa.fix": "• Check Dockerfile CMD points to the correct file\n• If multiple server files exist, choose the one without DB dependency\n• IVS auto-warns ⛔ when DB dependency is detected",
+    "guide.case.line_oa.fix": "• Check Dockerfile CMD points to the correct file\n• If multiple server files exist, choose the one without DB dependency\n• iVS auto-warns ⛔ when DB dependency is detected",
     "guide.case.line_oa.tag": "LINE OA · Webhook · Dockerfile",
 
     "guide.case.ngrok.title": "ngrok Tunnel Fails (422 Error)",
     "guide.case.ngrok.problem": "ngrok tunnel sends request but gets HTTP 422 back, even though container returns 200",
     "guide.case.ngrok.cause": "1. Used --pooling-enabled flag which creates Cloud Endpoint with AI Gateway\n2. AI Gateway intercepts all POST requests and returns 422 (ERR_NGROK_3803)\n3. Even after removing the flag, Cloud Endpoint persists on Dashboard",
-    "guide.case.ngrok.fix": "• Never use --pooling-enabled for webhook/API tunnels\n• If already used → go to ngrok Dashboard → Endpoints → delete Cloud Endpoint\n• Restart: ngrok http PORT --url=your-domain.ngrok-free.dev\n• When deploying on IVS, create a new Tunnel in IVS (don't reuse Vibe Code's)",
+    "guide.case.ngrok.fix": "• Never use --pooling-enabled for webhook/API tunnels\n• If already used → go to ngrok Dashboard → Endpoints → delete Cloud Endpoint\n• Restart: ngrok http PORT --url=your-domain.ngrok-free.dev\n• When deploying on iVS, create a new Tunnel in iVS (don't reuse Vibe Code's)",
     "guide.case.ngrok.tag": "ngrok · Tunnel · AI Gateway · 422",
 
     "guide.case.db_deploy.title": "Cannot Deploy App with MySQL/Database",
-    "guide.case.db_deploy.problem": "App runs on dev machine but crashes on IVS because it can't connect to Database",
-    "guide.case.db_deploy.cause": "1. IVS Docker container has no Database server (MySQL, PostgreSQL, MongoDB)\n2. Apps with require('mysql2') or import mysql will crash immediately\n3. Vibe Code often creates 2 files: server.js (uses DB) and local-server.js (uses JSON)",
-    "guide.case.db_deploy.fix": "• Use JSON file instead of Database for IVS deploy\n• Fix Dockerfile CMD to point to non-DB file:\n  CMD [\"node\", \"src/local-server.js\"]\n• Or use SQLite (single file, no server needed)\n• IVS auto-warns ⛔ when DB dependency is detected during validation",
+    "guide.case.db_deploy.problem": "App runs on dev machine but crashes on iVS because it can't connect to Database",
+    "guide.case.db_deploy.cause": "1. iVS Docker container has no Database server (MySQL, PostgreSQL, MongoDB)\n2. Apps with require('mysql2') or import mysql will crash immediately\n3. Vibe Code often creates 2 files: server.js (uses DB) and local-server.js (uses JSON)",
+    "guide.case.db_deploy.fix": "• Use JSON file instead of Database for iVS deploy\n• Fix Dockerfile CMD to point to non-DB file:\n  CMD [\"node\", \"src/local-server.js\"]\n• Or use SQLite (single file, no server needed)\n• iVS auto-warns ⛔ when DB dependency is detected during validation",
     "guide.case.db_deploy.tag": "MySQL · Database · JSON · Dockerfile",
 
     // Resources
@@ -2172,7 +2386,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "gdpr.title": "Right to Erasure (GDPR Art. 17)",
     "gdpr.subtitle": "Process a data subject's erasure request under GDPR Art. 17",
     "gdpr.subtitle_short": "Execute GDPR Art. 17 erasure",
-    "gdpr.legal_note": "GDPR Art. 17 grants the data subject the right to erasure ('right to be forgotten'). Recital 26 permits pseudonymisation where outright deletion conflicts with another legal obligation (records-retention). IVS replaces PII with [ERASED_GDPR] across the relevant tables and issues a signed certificate (SHA-256) per Art. 30 accountability.",
+    "gdpr.legal_note": "GDPR Art. 17 grants the data subject the right to erasure ('right to be forgotten'). Recital 26 permits pseudonymisation where outright deletion conflicts with another legal obligation (records-retention). iVS replaces PII with [ERASED_GDPR] across the relevant tables and issues a signed certificate (SHA-256) per Art. 30 accountability.",
     "gdpr.modal_legal": "GDPR Art. 17(1) — the data subject may request erasure of personal data without undue delay. Records-retention obligations (e.g. financial/audit law) permit pseudonymisation per Recital 26.",
 
     // PII suggestions — GDPR Art. 4(1) "personal data" examples
@@ -2299,7 +2513,7 @@ frontend/dist/         → Optional (IVS auto-builds if missing)
     "tunnel.share.body.security_3": "• 貴組織のセキュリティポリシーに従ってご利用ください",
     "tunnel.share.body.security_4": "• 異常を検知した場合は速やかに管理者へご連絡ください",
     "tunnel.share.body.section_note": "💬  送信者からの追記",
-    "tunnel.share.body.signoff": "IVS — Internal Vibe Server より送信",
+    "tunnel.share.body.signoff": "iVS — Internal Vibe Server より送信",
 
     // APPI Art. 30 overlays
     "gdpr.title": "利用停止・消去 (APPI 第30条)",
