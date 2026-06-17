@@ -16,8 +16,8 @@ def _detect_local_ip() -> str:
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "IVS - Internal Vibe Server"
-    APP_VERSION: str = "1.0.0"
+    APP_NAME: str = "iVS - Internal Vibe Server"
+    APP_VERSION: str = "1.0.2"
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
 
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/ivs.db")
