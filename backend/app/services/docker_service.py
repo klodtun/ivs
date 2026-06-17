@@ -15,6 +15,13 @@ logger = logging.getLogger(__name__)
 # Junk directories/files to auto-remove before Docker build
 SANITIZE_DIRS = {"node_modules", ".venv", "venv", "__pycache__", ".git", "__MACOSX", ".pytest_cache"}
 SANITIZE_FILES = {"pnpm-lock.yaml", ".DS_Store"}
+
+# Max filename byte-length docker's build-context tar / ext4 can handle per
+# path component (255). Thai (and other multibyte) names blow past this fast
+# — a 60-char Thai name is ~180 bytes, and uploaded runtime data often pushes
+# well over 255, crashing `docker build` with "file name too long". We skip
+# such files from the build context and warn instead of failing the deploy.
+MAX_FILENAME_BYTES = 255
 # Cross-platform lock files that may cause issues
 CROSS_PLATFORM_LOCKS = {"pnpm-lock.yaml"}
 
@@ -238,7 +245,7 @@ class DockerService:
     def sanitize_source(self, source_path: str) -> dict:
         """Auto-remove junk directories and files before Docker build.
         Returns a summary of what was removed."""
-        removed = {"dirs": [], "files": [], "size_freed_mb": 0}
+        removed = {"dirs": [], "files": [], "size_freed_mb": 0, "long_names": []}
 
         for root, dirs, files in os.walk(source_path, topdown=True):
             # Remove junk directories
@@ -259,10 +266,11 @@ class DockerService:
                     except Exception as e:
                         logger.warning(f"Failed to remove {d}: {e}")
 
-            # Remove junk files
+            # Remove junk files + skip files whose name is too long for the
+            # docker build-context tar (common with Thai-named uploads).
             for f in files:
+                file_path = os.path.join(root, f)
                 if f in SANITIZE_FILES:
-                    file_path = os.path.join(root, f)
                     try:
                         file_size = os.path.getsize(file_path)
                         os.remove(file_path)
@@ -271,6 +279,19 @@ class DockerService:
                         removed["size_freed_mb"] += file_size / (1024 * 1024)
                     except Exception as e:
                         logger.warning(f"Failed to remove {f}: {e}")
+                elif len(f.encode("utf-8")) > MAX_FILENAME_BYTES:
+                    try:
+                        file_size = os.path.getsize(file_path)
+                        os.remove(file_path)
+                        rel_path = os.path.relpath(file_path, source_path)
+                        removed["long_names"].append(rel_path)
+                        removed["size_freed_mb"] += file_size / (1024 * 1024)
+                        logger.warning(
+                            f"Auto-sanitize: skipped long filename "
+                            f"({len(f.encode('utf-8'))} bytes) {rel_path}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to skip long-name file {f}: {e}")
 
         # Also remove cross-platform lock files at root level
         for lock_file in CROSS_PLATFORM_LOCKS:
@@ -634,11 +655,17 @@ CMD ["/start-app.sh"]
         # Auto-sanitize: remove junk files
         self._append_build_log(app_slug, "[IVS] Auto-sanitize: scanning for junk files...")
         sanitize_result = self.sanitize_source(source_path)
-        if sanitize_result["dirs"] or sanitize_result["files"]:
+        if sanitize_result["dirs"] or sanitize_result["files"] or sanitize_result.get("long_names"):
             for d in sanitize_result["dirs"]:
                 self._append_build_log(app_slug, f"[IVS] ✓ Removed directory: {d}")
             for f in sanitize_result["files"]:
                 self._append_build_log(app_slug, f"[IVS] ✓ Removed file: {f}")
+            for f in sanitize_result.get("long_names", []):
+                self._append_build_log(
+                    app_slug,
+                    f"[IVS] ⚠ Skipped (filename too long for Docker build, "
+                    f"likely Thai upload — set up a volume to persist it): {f}"
+                )
             self._append_build_log(app_slug, f"[IVS] Auto-sanitize freed {sanitize_result['size_freed_mb']} MB")
         else:
             self._append_build_log(app_slug, "[IVS] ✓ No junk files found — source is clean")
