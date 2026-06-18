@@ -86,6 +86,7 @@ export default function ResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ filename: string; download_url: string } | null>(null);
+  const [exportError, setExportError] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
   const fetchData = useCallback(async () => {
@@ -112,11 +113,14 @@ export default function ResourcesPage() {
 
   const handleExport = async () => {
     setExporting(true);
+    setExportError("");
     try {
       const result = await api.exportResourceReport();
       setExportResult(result);
     } catch (e: any) {
-      alert(e.message);
+      // Inline error (no alert) per UX convention. Retrying usually works
+      // when the failure was a transient dev-server recompile.
+      setExportError(e?.message || t("res.export_failed"));
     } finally {
       setExporting(false);
     }
@@ -192,6 +196,21 @@ export default function ResourcesPage() {
           >
             {t("res.export_download")}
           </a>
+        </div>
+      )}
+
+      {/* Export error (inline) */}
+      {exportError && (
+        <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+          <span className="text-red-500">⚠</span>
+          <span className="text-xs text-red-700 flex-1">{exportError}</span>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="px-2 py-0.5 text-[10px] bg-red-600 text-white rounded hover:bg-red-700 transition disabled:opacity-50"
+          >
+            {t("res.export")}
+          </button>
         </div>
       )}
 
