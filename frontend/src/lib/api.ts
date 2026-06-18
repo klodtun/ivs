@@ -107,8 +107,15 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(err.detail || "Request failed");
+    // Body may be JSON (FastAPI {detail}) or an HTML error page (e.g. the
+    // dev server mid-recompile). Fall back to the HTTP status so failures
+    // are diagnosable instead of an opaque "Request failed".
+    const err = await res.json().catch(() => null);
+    const detail = err?.detail;
+    const msg =
+      (typeof detail === "string" && detail) ||
+      `Request failed (HTTP ${res.status})`;
+    throw new Error(msg);
   }
 
   return res.json();
