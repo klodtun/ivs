@@ -20,6 +20,7 @@ export interface App {
   port: number | null;
   domain: string | null;
   current_version: number;
+  logo_data: string | null;
   created_at: string;
   updated_at: string;
 }

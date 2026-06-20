@@ -688,6 +688,42 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
         raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
 
+@router.put("/{app_id}/logo")
+async def set_app_logo(
+    app_id: int,
+    request: Request,
+    logo_data: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Set (or clear) an app's logo. Expects a small data URI produced by the
+    client after downscaling. Empty string clears the logo. Capped to ~100 KB
+    so it stays a tiny inline badge, not an upload channel."""
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    if not _can_access_app(user, app, db):
+        raise HTTPException(status_code=403, detail="Access denied to this app")
+
+    value = (logo_data or "").strip()
+    if value:
+        if not value.startswith("data:image/"):
+            raise HTTPException(status_code=422, detail="Logo must be an image data URI")
+        if len(value) > 100_000:
+            raise HTTPException(status_code=422, detail="Logo too large (max ~100 KB)")
+        app.logo_data = value
+    else:
+        app.logo_data = None
+
+    db.commit()
+    create_audit_log(
+        db, request, user=user, action="set_app_logo", resource_type="app",
+        resource_id=str(app.id), details=f"Logo {'set' if value else 'cleared'} for {app.name}",
+    )
+    db.commit()
+    return {"message": "Logo updated", "has_logo": bool(value)}
+
+
 @router.post("/{app_id}/start")
 async def start_app(
     app_id: int,

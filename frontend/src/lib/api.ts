@@ -271,6 +271,15 @@ export const api = {
     return res.json();
   },
 
+  setAppLogo: (id: number, logoData: string) => {
+    const fd = new FormData();
+    fd.append("logo_data", logoData);
+    return request<{ message: string; has_logo: boolean }>(`/apps/${id}/logo`, {
+      method: "PUT",
+      body: fd,
+    });
+  },
+
   startApp: (id: number) =>
     request<any>(`/apps/${id}/start`, { method: "POST" }),
 

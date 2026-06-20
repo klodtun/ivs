@@ -80,6 +80,7 @@ class AppResponse(BaseModel):
     port: Optional[int]
     domain: Optional[str]
     current_version: int
+    logo_data: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -16,6 +16,53 @@ const typeColors: Record<string, string> = {
   unknown: "bg-gray-100 text-gray-600",
 };
 
+// Solid avatar colors keyed by app_type — used for the initials fallback
+// when an app has no logo. Same color family as the type badge.
+const avatarColors: Record<string, string> = {
+  nodejs: "bg-green-500",
+  python: "bg-yellow-500",
+  fullstack: "bg-purple-500",
+  static: "bg-blue-500",
+  unknown: "bg-gray-400",
+};
+
+// First 1–2 "letters" of the app name. Handles Thai by taking whole
+// grapheme-ish chars (no combining-mark split for the common cases).
+function initialsOf(name: string): string {
+  const cleaned = (name || "").trim();
+  if (!cleaned) return "?";
+  const words = cleaned.split(/[\s_-]+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (Array.from(words[0])[0] || "") + (Array.from(words[1])[0] || "");
+  }
+  return Array.from(cleaned).slice(0, 2).join("");
+}
+
+// Downscale any picked image to a 64×64 PNG data URI so logos stay tiny and
+// every card keeps the same size. Returns the data URI string.
+function downscaleToDataUri(file: File, size = 64): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("no canvas"));
+      // contain-fit, centered
+      const scale = Math.min(size / img.width, size / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
+    img.src = url;
+  });
+}
+
 export function AppCard({
   app,
   userRole,
@@ -34,7 +81,25 @@ export function AppCard({
   const [showPrivacyReview, setShowPrivacyReview] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [logo, setLogo] = useState<string | null>(app.logo_data ?? null);
+  const [logoBusy, setLogoBusy] = useState(false);
   const canManage = userRole === "admin" || userRole === "developer";
+
+  const handleLogoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setLogoBusy(true);
+    try {
+      const dataUri = await downscaleToDataUri(file);
+      await api.setAppLogo(app.id, dataUri);
+      setLogo(dataUri);
+    } catch (err) {
+      console.error("Logo upload failed:", err);
+    } finally {
+      setLogoBusy(false);
+    }
+  };
   // Copyright protection: only the original deployer of an app can export
   // its source + data. Admins are deliberately not granted an override.
   // Current owner can always export. Admins also get export rights so
@@ -85,9 +150,50 @@ export function AppCard({
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Avatar: logo if set, else colored initials circle. Fixed 28px —
+              never grows the card. canManage users click to upload. */}
+          <div className="relative flex-shrink-0 group/avatar">
+            {logo ? (
+              <img
+                src={logo}
+                alt={app.name}
+                className="w-7 h-7 rounded-full object-cover border border-gray-200"
+              />
+            ) : (
+              <span
+                className={cn(
+                  "w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold select-none",
+                  avatarColors[app.app_type] || avatarColors.unknown
+                )}
+              >
+                {initialsOf(app.name)}
+              </span>
+            )}
+            {canManage && (
+              <label
+                title={t("app.logo_upload")}
+                className={cn(
+                  "absolute inset-0 rounded-full flex items-center justify-center cursor-pointer",
+                  "bg-black/0 group-hover/avatar:bg-black/40 transition",
+                  logoBusy && "bg-black/40"
+                )}
+              >
+                <span className="opacity-0 group-hover/avatar:opacity-100 text-white text-[9px]">
+                  {logoBusy ? "…" : "✎"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoPick}
+                  disabled={logoBusy}
+                  className="hidden"
+                />
+              </label>
+            )}
+          </div>
           <span className={cn("w-2 h-2 rounded-full flex-shrink-0", statusDot[app.status] || "bg-gray-400", app.status === "running" && "animate-pulse")} />
-          <h3 className="font-semibold text-gray-900 text-xs">{app.name}</h3>
+          <h3 className="font-semibold text-gray-900 text-xs truncate">{app.name}</h3>
         </div>
         <span className={cn("text-[9px] px-1.5 py-px rounded-full font-medium", typeColors[app.app_type] || typeColors.unknown)}>
           {app.app_type}

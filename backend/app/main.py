@@ -123,6 +123,7 @@ def _apply_lightweight_migrations():
         ("audit_log_exports", "start_date", "DATETIME"),
         ("audit_log_exports", "end_date", "DATETIME"),
         ("audit_log_exports", "file_count", "INTEGER DEFAULT 1"),
+        ("apps", "logo_data", "TEXT"),
     ]
     with engine.begin() as conn:
         for table, column, coldef in additions:

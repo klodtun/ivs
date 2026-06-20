@@ -75,6 +75,10 @@ class App(Base):
     current_version = Column(Integer, default=1)
     source_path = Column(String(500), nullable=True)
     env_vars = Column(Text, default="{}")
+    # Small logo as a data URI (data:image/png;base64,...). Stored inline so
+    # no static mount / file management is needed. Downscaled client-side to
+    # keep it tiny and the cards uniform. Null -> render initials avatar.
+    logo_data = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
