@@ -453,7 +453,18 @@ class DockerService:
     def extract_zip(self, zip_path: str, dest_path: str) -> str:
         os.makedirs(dest_path, exist_ok=True)
         with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(dest_path)
+            for info in zf.infolist():
+                # ZIP stores names in CP437 unless the UTF-8 flag (bit 11)
+                # is set. macOS' zip often omits that flag for UTF-8 names,
+                # so Python decodes Thai as CP437 -> mojibake on disk (and
+                # Streamlit page labels / URLs come out garbled). Recover by
+                # round-tripping cp437 bytes back to UTF-8.
+                if not (info.flag_bits & 0x800):
+                    try:
+                        info.filename = info.filename.encode("cp437").decode("utf-8")
+                    except (UnicodeEncodeError, UnicodeDecodeError):
+                        pass  # leave as-is if it isn't really UTF-8
+                zf.extract(info, dest_path)
 
         entries = os.listdir(dest_path)
         non_hidden = [e for e in entries if not e.startswith(".") and not e.startswith("__")]
