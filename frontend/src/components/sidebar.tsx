@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/components/lang-provider";
@@ -40,17 +40,16 @@ const navItems = [
     roles: ["admin"],
   },
   {
-    labelKey: "nav.api_catalog",
-    href: "/dashboard/api-catalog",
-    icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253",
-    roles: ["admin", "developer", "viewer"],
-    featureFlag: "api_catalog" as const,
-  },
-  {
     labelKey: "nav.settings",
     href: "/dashboard/settings",
     icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
     roles: ["admin"],
+  },
+  {
+    labelKey: "nav.consulting",
+    href: "/dashboard/consulting",
+    icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z",
+    roles: ["admin", "developer", "viewer"],
   },
 ];
 
@@ -60,6 +59,39 @@ export function Sidebar({ user }: { user: User | null }) {
   const { t } = useLang();
   const [shutdownConfirm, setShutdownConfirm] = useState(false);
   const [shutdownWorking, setShutdownWorking] = useState(false);
+  // Current LAN IP shown top-left so people always have the right address
+  // even when DHCP changes it and mDNS is off.
+  const [lanIp, setLanIp] = useState<string>("");
+  const [lanUrl, setLanUrl] = useState<string>("");
+  const [ipChanged, setIpChanged] = useState(false);
+  const [ipCopied, setIpCopied] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let stop = false;
+    const check = async () => {
+      try {
+        const r = await api.getLanIp();
+        if (stop) return;
+        setLanIp(r.ip);
+        setLanUrl(r.url);
+        const prev = localStorage.getItem("ivs_last_lan_ip");
+        if (prev && prev !== r.ip) setIpChanged(true);
+        localStorage.setItem("ivs_last_lan_ip", r.ip);
+      } catch {}
+    };
+    check();
+    const id = setInterval(check, 60000); // re-check every 60s
+    return () => { stop = true; clearInterval(id); };
+  }, [user]);
+
+  const copyIp = () => {
+    navigator.clipboard?.writeText(lanUrl || lanIp).then(() => {
+      setIpCopied(true);
+      setIpChanged(false);
+      setTimeout(() => setIpCopied(false), 1500);
+    }).catch(() => {});
+  };
 
   const handleShutdown = async () => {
     if (!shutdownConfirm) { setShutdownConfirm(true); return; }
@@ -110,7 +142,7 @@ export function Sidebar({ user }: { user: User | null }) {
     <aside className="w-52 bg-white border-r border-gray-200 flex flex-col min-h-screen text-xs">
       <div className="p-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <img src="/ivs-logo.png" alt="IVS" className="w-8 h-8 rounded-lg object-contain" />
+          <img src="/ivs-logo.png" alt="iVS" className="w-8 h-8 rounded-lg object-contain" />
           <div className="flex-1 min-w-0">
             <h2 className="font-semibold text-gray-900 text-xs leading-tight">
               Vibe Server
@@ -121,6 +153,34 @@ export function Sidebar({ user }: { user: User | null }) {
           </div>
           <LangToggle compact />
         </div>
+
+        {/* Current LAN IP — click to copy. Highlights if it changed since
+            last seen (DHCP moved it) so users update their bookmark. */}
+        {lanIp && (
+          <button
+            onClick={copyIp}
+            title={t("nav.lan_ip_tooltip")}
+            className={cn(
+              "mt-2 w-full flex items-center gap-1.5 px-2 py-1 rounded-md border transition text-left",
+              ipChanged
+                ? "bg-amber-50 border-amber-300 hover:bg-amber-100"
+                : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+            )}
+          >
+            <svg className="w-3 h-3 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
+            </svg>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[9px] text-gray-400 leading-none">
+                {ipChanged ? t("nav.lan_ip_changed") : t("nav.lan_ip")}
+              </span>
+              <span className="block font-mono text-[11px] text-gray-800 truncate leading-tight">{lanIp}</span>
+            </span>
+            <span className="text-[9px] text-gray-400 flex-shrink-0">
+              {ipCopied ? "✓" : "⧉"}
+            </span>
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 p-2 space-y-0.5">

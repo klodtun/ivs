@@ -537,6 +537,7 @@ export const api = {
     ip: string;
     port: number;
     saved_hostname: string;
+    enabled: boolean;
   }>("/system/mdns"),
 
   updateMdnsHostname: (hostname: string) =>
@@ -544,6 +545,21 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ hostname }),
     }),
+
+  toggleMdns: (enabled: boolean) =>
+    request<{ enabled: boolean; ip: string; port: number; running: boolean }>(
+      "/system/mdns/toggle",
+      { method: "PUT", body: JSON.stringify({ enabled }) }
+    ),
+
+  getLanIp: () =>
+    request<{
+      ip: string;
+      port: number;
+      url: string;
+      mdns_running: boolean;
+      mdns_address: string | null;
+    }>("/system/lan-ip"),
 
   resetMdnsHostname: () =>
     request<any>("/system/mdns/reset", { method: "POST" }),

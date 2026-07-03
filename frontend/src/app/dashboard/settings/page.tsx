@@ -298,6 +298,27 @@ export default function SettingsPage() {
   const [cfTokenInput, setCfTokenInput] = useState("");
   const [tunnelSaving, setTunnelSaving] = useState(false);
   const [tunnelMsg, setTunnelMsg] = useState("");
+  // License tab: LAN IP share + mDNS toggle
+  const [licMdns, setLicMdns] = useState<{ ip: string; port: number; enabled: boolean; running: boolean; mdns_address: string } | null>(null);
+  const [mdnsToggling, setMdnsToggling] = useState(false);
+  const [copiedField, setCopiedField] = useState("");
+  const loadLicMdns = useCallback(async () => {
+    try { const s = await api.getMdnsStatus(); setLicMdns({ ip: s.ip, port: s.port, enabled: s.enabled, running: s.running, mdns_address: s.mdns_address }); }
+    catch (e) { console.error("load mdns", e); }
+  }, []);
+  const copyText = (text: string, field: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(""), 1500);
+    }).catch(() => {});
+  };
+  const toggleMdns = async () => {
+    if (!licMdns) return;
+    setMdnsToggling(true);
+    try { const s = await api.toggleMdns(!licMdns.enabled); setLicMdns((p) => p ? { ...p, enabled: s.enabled, running: s.running } : p); }
+    catch (e) { console.error("toggle mdns", e); }
+    finally { setMdnsToggling(false); }
+  };
   const loadTunnelCfg = useCallback(async () => {
     try {
       const c = await api.getTunnelConfig();
@@ -441,7 +462,7 @@ export default function SettingsPage() {
     setLoadingLicense(true);
     try { const l = await api.getLicense(); setLicenseInfo(l); } catch (e) { console.error(e); } finally { setLoadingLicense(false); }
   }, []);
-  useEffect(() => { if (tab === "license") loadLicense(); }, [tab, loadLicense]);
+  useEffect(() => { if (tab === "license") { loadLicense(); loadLicMdns(); } }, [tab, loadLicense, loadLicMdns]);
 
   const loadNetworkInfo = useCallback(async () => {
     setLoadingNetwork(true);
@@ -2160,6 +2181,69 @@ services:
                 <h2 className="text-sm font-semibold text-gray-900">{t("license.title")}</h2>
               </div>
             </div>
+
+            {/* LAN share: current IP + mDNS toggle */}
+            {licMdns && (
+              <div className="bg-brand-50 border border-brand-100 rounded-lg p-3 space-y-3">
+                <h3 className="text-xs font-semibold text-brand-900">{t("license.lan_share")}</h3>
+
+                {/* IP + copy */}
+                <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-gray-200 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[9px] text-gray-400">{t("license.machine_ip")}</p>
+                    <p className="text-sm font-mono text-gray-900 truncate">{licMdns.ip}</p>
+                  </div>
+                  <button
+                    onClick={() => copyText(licMdns.ip, "ip")}
+                    className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 flex-shrink-0"
+                  >
+                    {copiedField === "ip" ? `✓ ${t("license.copied")}` : t("license.copy")}
+                  </button>
+                </div>
+
+                {/* LAN URL + copy */}
+                <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-gray-200 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[9px] text-gray-400">{t("license.share_url")}</p>
+                    <p className="text-sm font-mono text-brand-700 truncate">http://{licMdns.ip}:{licMdns.port}</p>
+                  </div>
+                  <button
+                    onClick={() => copyText(`http://${licMdns.ip}:${licMdns.port}`, "url")}
+                    className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 flex-shrink-0"
+                  >
+                    {copiedField === "url" ? `✓ ${t("license.copied")}` : t("license.copy")}
+                  </button>
+                </div>
+
+                {/* mDNS toggle */}
+                <div className="flex items-center justify-between gap-2 bg-white rounded-md border border-gray-200 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-gray-800">
+                      mDNS {licMdns.enabled && licMdns.running && (
+                        <span className="font-mono text-brand-700">· {licMdns.mdns_address}</span>
+                      )}
+                    </p>
+                    <p className="text-[9px] text-gray-400">{t("license.mdns_hint")}</p>
+                  </div>
+                  <button
+                    onClick={toggleMdns}
+                    disabled={mdnsToggling}
+                    role="switch"
+                    aria-checked={licMdns.enabled}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 items-center rounded-full transition flex-shrink-0 disabled:opacity-50",
+                      licMdns.enabled ? "bg-brand-600" : "bg-gray-300"
+                    )}
+                  >
+                    <span className={cn(
+                      "inline-block h-4 w-4 transform rounded-full bg-white transition",
+                      licMdns.enabled ? "translate-x-4" : "translate-x-0.5"
+                    )} />
+                  </button>
+                </div>
+                <p className="text-[9px] text-gray-500">{t("license.lan_note")}</p>
+              </div>
+            )}
 
             {loadingLicense && (
               <div className="text-xs text-gray-400 animate-pulse">Loading...</div>

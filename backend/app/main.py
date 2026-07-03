@@ -199,6 +199,11 @@ def _start_mdns():
     """Start mDNS with saved hostname or default 'ivs'."""
     db = SessionLocal()
     try:
+        # Respect the admin's mDNS on/off choice (some LANs block multicast)
+        en_row = db.query(SystemConfig).filter(SystemConfig.key == "mdns_enabled").first()
+        if en_row and en_row.value == "false":
+            logger.info("mDNS disabled by config — skipping broadcast")
+            return
         config = db.query(SystemConfig).filter(SystemConfig.key == "mdns_hostname").first()
         hostname = config.value if config else DEFAULT_MDNS_HOSTNAME
         # Use port 80 for production (Caddy), 3000 for dev (Next.js)

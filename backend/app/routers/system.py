@@ -587,6 +587,23 @@ async def update_dns_config(
     return DNSConfigResponse(domain_suffix=req.domain_suffix, server_ip=settings.SERVER_IP)
 
 
+@router.get("/lan-ip")
+async def get_lan_ip(user: User = Depends(get_current_user)):
+    """Current LAN IP + share info, detected fresh on each call so a DHCP
+    lease change is reflected immediately. Any authenticated user can read
+    it — the sidebar shows it so people always have the right address."""
+    from app.config import _detect_local_ip
+    ip = _detect_local_ip()
+    port = 80 if not settings.DEBUG else 3000
+    return {
+        "ip": ip,
+        "port": port,
+        "url": f"http://{ip}:{port}",
+        "mdns_running": mdns_service.is_running,
+        "mdns_address": mdns_service.mdns_address if mdns_service.is_running else None,
+    }
+
+
 @router.get("/mdns")
 async def get_mdns_status(
     db: Session = Depends(get_db),
@@ -596,8 +613,47 @@ async def get_mdns_status(
     # Check if custom hostname is saved in DB
     config = db.query(SystemConfig).filter(SystemConfig.key == "mdns_hostname").first()
     saved = config.value if config else DEFAULT_MDNS_HOSTNAME
+    en_row = db.query(SystemConfig).filter(SystemConfig.key == "mdns_enabled").first()
+    enabled = (en_row.value if en_row else "true") != "false"
     status = mdns_service.get_status()
     status["saved_hostname"] = saved
+    status["enabled"] = enabled
+    return status
+
+
+@router.put("/mdns/toggle")
+async def toggle_mdns(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Enable/disable mDNS broadcasting. Some networks block multicast, so
+    admins can turn it off and rely on the raw LAN IP instead."""
+    body = await request.json()
+    enabled = bool(body.get("enabled", True))
+
+    row = db.query(SystemConfig).filter(SystemConfig.key == "mdns_enabled").first()
+    if row:
+        row.value = "true" if enabled else "false"
+    else:
+        db.add(SystemConfig(key="mdns_enabled", value="true" if enabled else "false"))
+
+    if enabled:
+        hn = db.query(SystemConfig).filter(SystemConfig.key == "mdns_hostname").first()
+        hostname = hn.value if hn else DEFAULT_MDNS_HOSTNAME
+        port = 80 if not settings.DEBUG else 3000
+        mdns_service.start(hostname, port)
+    else:
+        mdns_service.stop()
+
+    create_audit_log(
+        db, request, user=user, action="toggle_mdns", resource_type="system",
+        details=f"mDNS {'enabled' if enabled else 'disabled'}",
+        log_level="WARNING",
+    )
+    db.commit()
+    status = mdns_service.get_status()
+    status["enabled"] = enabled
     return status
 
 
