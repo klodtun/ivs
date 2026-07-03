@@ -322,6 +322,19 @@ export default function SettingsPage() {
   // Password policy (Policy-as-Code, set in PDPA menu, enforced on user create)
   const [pwPolicy, setPwPolicy] = useState<{ min_length: number; require_upper: boolean; require_lower: boolean; require_number: boolean; require_symbol: boolean } | null>(null);
   const [pwPolicySaving, setPwPolicySaving] = useState(false);
+  // Collapsed by default; choice persisted like the retention panel.
+  const [pwPolicyOpen, setPwPolicyOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined")
+      setPwPolicyOpen(localStorage.getItem("ivs_pwpolicy_open") === "1");
+  }, []);
+  const togglePwPolicy = () => {
+    setPwPolicyOpen((v) => {
+      const nv = !v;
+      try { localStorage.setItem("ivs_pwpolicy_open", nv ? "1" : "0"); } catch {}
+      return nv;
+    });
+  };
   const loadPwPolicy = useCallback(async () => {
     try { setPwPolicy(await api.getPasswordPolicy()); } catch (e) { console.error("load pw policy", e); }
   }, []);
@@ -1489,15 +1502,20 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
               shown as requirements on the user-management screen */}
           {pwPolicy && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+              <button onClick={togglePwPolicy} className="w-full flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
                   <span className="text-lg">🔑</span>
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900 text-sm">{t("settings.pw_policy_title")}</h3>
                   <p className="text-[10px] text-gray-500">{t("settings.pw_policy_desc")}</p>
                 </div>
-              </div>
+                <svg className={cn("w-4 h-4 text-gray-400 transition-transform flex-shrink-0", pwPolicyOpen && "rotate-180")}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {pwPolicyOpen && (<>
               <div className="flex items-center gap-3">
                 <label className="text-xs text-gray-700">{t("settings.pw_req_length")}</label>
                 <input type="number" min={6} max={128} value={pwPolicy.min_length}
@@ -1524,6 +1542,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                 {pwPolicySaving ? t("settings.pw_policy_saving") : t("settings.pw_policy_save")}
               </button>
               <p className="text-[10px] text-purple-600">⚙ {t("settings.pw_policy_note")}</p>
+              </>)}
             </div>
           )}
 
