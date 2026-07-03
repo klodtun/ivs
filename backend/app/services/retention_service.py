@@ -18,16 +18,49 @@ from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 
+import re
+
 from app.models import (
     SystemConfig,
     AuditLog,
     AppLogEntry,
     ResourceMetric,
     AuditLogExport,
+    AppPdpa,
 )
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# Free-text -> days. The PDPA menu stores retention as a human string
+# ("90 วัน", "1 ปี", "6 months") — this turns it into an enforceable number
+# so the policy set in the PDPA menu actually governs each app's real logs.
+_UNIT_DAYS = {
+    "day": 1, "days": 1, "วัน": 1,
+    "week": 7, "weeks": 7, "สัปดาห์": 7,
+    "month": 30, "months": 30, "เดือน": 30,
+    "year": 365, "years": 365, "ปี": 365,
+}
+
+
+def parse_retention_days(text: str):
+    """Parse a human retention string to a day count, or None if it has no
+    number (so the caller can fall back to the global default)."""
+    if not text:
+        return None
+    s = text.strip().lower()
+    m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if not m:
+        return None
+    qty = float(m.group(1))
+    unit_days = 1  # default: treat a bare number as days
+    for unit, d in _UNIT_DAYS.items():
+        if unit in s:
+            unit_days = d
+            break
+    days = int(round(qty * unit_days))
+    return days if days > 0 else None
 
 
 # Defaults applied when no SystemConfig row exists yet.
@@ -116,15 +149,33 @@ def purge_all(db: Session) -> Dict[str, int]:
     )
     result["audit_logs"] = n
 
-    # ── App container logs ──
-    days = get_retention_days(db, "app_logs")
-    cutoff = now - timedelta(days=days)
-    n = (
-        db.query(AppLogEntry)
-        .filter(AppLogEntry.timestamp < cutoff)
-        .delete(synchronize_session=False)
-    )
-    result["app_logs"] = n
+    # ── App container logs (per-app PDPA policy, else global default) ──
+    # Policy-as-Code: the retention_period set in each app's PDPA record
+    # governs THAT app's logs. Values are clamped to the §26 floor (90 d)
+    # and the 10-year cap so a policy typo can't under- or over-retain.
+    global_days = get_retention_days(db, "app_logs")
+    floor = MIN_DAYS_BY_TYPE.get("app_logs", 90)
+    per_app: Dict[int, int] = {}
+    for rec in db.query(AppPdpa).all():
+        d = parse_retention_days(rec.retention_period)
+        if d is not None:
+            per_app[rec.app_id] = max(floor, min(d, MAX_ALLOWED))
+
+    total = 0
+    for app_id, days in per_app.items():
+        cutoff = now - timedelta(days=days)
+        total += (
+            db.query(AppLogEntry)
+            .filter(AppLogEntry.app_id == app_id, AppLogEntry.timestamp < cutoff)
+            .delete(synchronize_session=False)
+        )
+    # Apps without a per-app policy fall back to the global setting.
+    cutoff = now - timedelta(days=global_days)
+    q = db.query(AppLogEntry).filter(AppLogEntry.timestamp < cutoff)
+    if per_app:
+        q = q.filter(~AppLogEntry.app_id.in_(list(per_app.keys())))
+    total += q.delete(synchronize_session=False)
+    result["app_logs"] = total
 
     # ── Resource metrics ──
     days = get_retention_days(db, "resource_metrics")

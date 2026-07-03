@@ -1714,6 +1714,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     <input type="text" value={pdpaForm.retention_period} onChange={e => setPdpaForm(prev => ({ ...prev, retention_period: e.target.value }))}
                       placeholder={t("settings.pdpa_retention_hint")}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none" />
+                    <p className="text-[10px] text-purple-600 mt-1">⚙ {t("settings.pdpa_retention_enforced")}</p>
                   </div>
 
                   {/* Security Notes */}
