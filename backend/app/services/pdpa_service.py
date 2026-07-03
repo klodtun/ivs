@@ -7,6 +7,7 @@ Scans source code for:
 """
 import os
 import re
+import time
 import json
 import logging
 from typing import Optional
@@ -120,24 +121,28 @@ SKIP_DIRS = {
 MAX_FILE_SIZE = 500 * 1024
 
 
-def scan_app_for_pii(source_path: str) -> dict:
+def scan_app_for_pii(source_path: str, deadline_seconds: float = 20.0) -> dict:
     """
     Scan an app's source directory for PII fields and masking patterns.
 
+    Bounded by `deadline_seconds`: a huge app (or one with pathological
+    regex input) can't hang the request — the scan stops early and reports
+    status="timeout" with whatever it found so far, so the UI can warn and
+    offer a retry instead of spinning forever.
+
     Returns:
         {
+            "status": "ok" | "timeout",
             "pii_fields": ["ชื่อ-นามสกุล", "อีเมล", ...],
             "masking_detected": bool,
-            "masking_patterns": ["mask function found in app.py", ...],
+            "masking_patterns": [...],
             "files_scanned": int,
-            "scan_details": [
-                {"file": "app.py", "line": 15, "field": "email", "category": "อีเมล"},
-                ...
-            ]
+            "scan_details": [...],
         }
     """
     if not source_path or not os.path.isdir(source_path):
         return {
+            "status": "ok",
             "pii_fields": [],
             "masking_detected": False,
             "masking_patterns": [],
@@ -149,12 +154,21 @@ def scan_app_for_pii(source_path: str) -> dict:
     found_masking = []
     files_scanned = 0
     scan_details = []
+    status = "ok"
+    start = time.monotonic()
 
     for root, dirs, files in os.walk(source_path):
         # Skip irrelevant directories
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
 
+        if time.monotonic() - start > deadline_seconds:
+            status = "timeout"
+            break
+
         for fname in files:
+            if time.monotonic() - start > deadline_seconds:
+                status = "timeout"
+                break
             ext = os.path.splitext(fname)[1].lower()
             if ext not in SCANNABLE_EXTENSIONS:
                 continue
@@ -227,6 +241,7 @@ def scan_app_for_pii(source_path: str) -> dict:
     scan_details_limited = scan_details[:50]
 
     return {
+        "status": status,
         "pii_fields": pii_categories,
         "masking_detected": len(found_masking) > 0,
         "masking_patterns": masking_summary[:20],

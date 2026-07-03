@@ -1555,6 +1555,26 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                   <button onClick={() => setScanResult(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
                 </div>
 
+                {scanResult.status && scanResult.status !== "ok" && (
+                  <div className={cn(
+                    "flex items-start gap-2 rounded-md p-2.5 mb-3 text-[11px]",
+                    scanResult.status === "timeout" ? "bg-amber-50 border border-amber-200 text-amber-800"
+                                                     : "bg-red-50 border border-red-200 text-red-700"
+                  )}>
+                    <span>⚠</span>
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {scanResult.status === "timeout" ? t("settings.pdpa_scan_timeout") : t("settings.pdpa_scan_failed")}
+                      </p>
+                      {scanResult.scan_message && <p className="mt-0.5 opacity-80">{scanResult.scan_message}</p>}
+                      <button onClick={() => handleScanApp(scanResult.app_id)}
+                        className="mt-1.5 px-2 py-0.5 bg-white border border-current/30 rounded hover:opacity-80">
+                        {t("settings.pdpa_scan_retry")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="bg-gray-50 rounded p-2">
                     <p className="text-[9px] text-gray-500">{t("settings.pdpa_files_scanned")}</p>

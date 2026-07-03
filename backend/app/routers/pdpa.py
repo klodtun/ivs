@@ -5,6 +5,7 @@ PDPA ROPA Router — บันทึกรายการกิจกรรม�
 import os
 import json
 import hashlib
+import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -23,6 +24,7 @@ from app.config import settings
 EXPORTS_DIR = os.path.join(os.path.dirname(settings.DATABASE_URL.replace("sqlite:///", "")), "exports")
 
 router = APIRouter(prefix="/api/pdpa", tags=["PDPA"])
+logger = logging.getLogger(__name__)
 
 
 def _compute_status(pdpa: AppPdpa) -> PdpaStatus:
@@ -166,10 +168,22 @@ async def scan_app_pii(
     if not source_path or not os.path.isdir(source_path):
         raise HTTPException(status_code=400, detail="App source not found on disk")
 
-    # Run PII scan
-    result = scan_app_for_pii(source_path)
+    # Run PII scan (time-bounded; never let it hang the request)
+    try:
+        result = scan_app_for_pii(source_path)
+    except Exception as e:
+        logger.warning(f"PII scan failed for app {app_id}: {e}")
+        return PdpaScanResult(
+            app_id=app_id, app_name=app.name, status="failed",
+            scan_message=str(e)[:200],
+        )
 
-    # Save auto-detected results to the PDPA record
+    status = result.get("status", "ok")
+    msg = ""
+    if status == "timeout":
+        msg = f"Scan hit the time limit after {result['files_scanned']} files — results may be partial. Try again."
+
+    # Save auto-detected results to the PDPA record (even if partial)
     pdpa = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
     if not pdpa:
         pdpa = AppPdpa(app_id=app_id)
@@ -183,13 +197,16 @@ async def scan_app_pii(
     create_audit_log(
         db, request, user=user, action="scan_pdpa", resource_type="app",
         resource_id=str(app_id),
-        details=f"PII scan: {len(result['pii_fields'])} categories found, masking: {result['masking_detected']}, files: {result['files_scanned']}",
+        details=f"PII scan [{status}]: {len(result['pii_fields'])} categories, masking: {result['masking_detected']}, files: {result['files_scanned']}",
+        log_level="WARNING" if status != "ok" else "INFO",
     )
     db.commit()
 
     return PdpaScanResult(
         app_id=app_id,
         app_name=app.name,
+        status=status,
+        scan_message=msg,
         pii_fields_detected=result["pii_fields"],
         masking_detected=result["masking_detected"],
         masking_patterns=result["masking_patterns"],

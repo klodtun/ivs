@@ -256,6 +256,8 @@ class PdpaResponse(BaseModel):
 class PdpaScanResult(BaseModel):
     app_id: int
     app_name: str
+    status: str = "ok"          # ok | timeout | failed
+    scan_message: str = ""
     pii_fields_detected: list[str] = []
     masking_detected: bool = False
     masking_patterns: list[str] = []
