@@ -636,11 +636,21 @@ export const api = {
     pii_fields?: string[];
     retention_period?: string;
     security_notes?: string;
+    anonymization_mode?: string;
   }) =>
     request<any>(`/pdpa/${appId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  getAnonymizationPrompt: (appId: number) =>
+    request<{
+      app_id: number;
+      app_name: string;
+      detected_fields: string[];
+      current_mode: string;
+      prompts: { anonymous: string; pseudonymous: string };
+    }>(`/pdpa/${appId}/anonymization-prompt`),
 
   scanAppPii: (appId: number) =>
     request<any>(`/pdpa/${appId}/scan`, { method: "POST" }),

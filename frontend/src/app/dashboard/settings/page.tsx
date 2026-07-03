@@ -424,7 +424,14 @@ export default function SettingsPage() {
   const [scanningAll, setScanningAll] = useState(false);
   const [exportingRopa, setExportingRopa] = useState(false);
   const [editPdpa, setEditPdpa] = useState<any | null>(null);
-  const [pdpaForm, setPdpaForm] = useState({ purpose: "", pii_fields: [] as string[], retention_period: "", security_notes: "" });
+  const [pdpaForm, setPdpaForm] = useState({ purpose: "", pii_fields: [] as string[], retention_period: "", security_notes: "", anonymization_mode: "none" });
+  const [anonPrompt, setAnonPrompt] = useState<{ app_name: string; detected_fields: string[]; prompts: { anonymous: string; pseudonymous: string } } | null>(null);
+  const [anonPromptTab, setAnonPromptTab] = useState<"anonymous" | "pseudonymous">("anonymous");
+  const [anonCopied, setAnonCopied] = useState(false);
+  const openAnonPrompt = async (appId: number) => {
+    try { setAnonPrompt(await api.getAnonymizationPrompt(appId)); setAnonPromptTab("anonymous"); }
+    catch (e) { console.error("anon prompt", e); }
+  };
   const [savingPdpa, setSavingPdpa] = useState(false);
   const [scanResult, setScanResult] = useState<any | null>(null);
   const [piiInput, setPiiInput] = useState("");
@@ -702,6 +709,7 @@ export default function SettingsPage() {
       pii_fields: record.pii_fields || [],
       retention_period: record.retention_period || "",
       security_notes: record.security_notes || "",
+      anonymization_mode: record.anonymization_mode || "none",
     });
     setPiiInput("");
     setScanResult(null);
@@ -1638,6 +1646,39 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
             <p className="text-[10px] text-blue-700 font-medium">🔒 {t("settings.pdpa_security_base")}</p>
           </div>
 
+          {/* Anonymization Prompt AI Modal */}
+          {anonPrompt && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setAnonPrompt(null)}>
+              <div className="bg-white rounded-lg shadow-xl p-5 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold text-sm text-gray-900">✨ {t("settings.pdpa_anon_prompt_title")}: {anonPrompt.app_name}</h3>
+                  <button onClick={() => setAnonPrompt(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+                </div>
+                <p className="text-[10px] text-gray-500 mb-2">{t("settings.pdpa_anon_prompt_desc")}</p>
+                {anonPrompt.detected_fields.length > 0 && (
+                  <p className="text-[10px] text-gray-600 mb-2">PII: <span className="font-mono">{anonPrompt.detected_fields.join(", ")}</span></p>
+                )}
+                <div className="flex gap-1 mb-2">
+                  {(["anonymous", "pseudonymous"] as const).map(m => (
+                    <button key={m} onClick={() => setAnonPromptTab(m)}
+                      className={cn("px-3 py-1 text-[11px] rounded-md",
+                        anonPromptTab === m ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600")}>
+                      {m === "anonymous" ? t("settings.pdpa_anon_anonymous") : t("settings.pdpa_anon_pseudonymous")}
+                    </button>
+                  ))}
+                </div>
+                <pre className="bg-gray-900 text-gray-100 text-[10px] rounded-md p-3 whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">
+{anonPrompt.prompts[anonPromptTab]}
+                </pre>
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(anonPrompt.prompts[anonPromptTab]); setAnonCopied(true); setTimeout(() => setAnonCopied(false), 1500); }}
+                  className="mt-2 px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700">
+                  {anonCopied ? `✓ ${t("license.copied")}` : `⧉ ${t("settings.pdpa_anon_prompt_copy")}`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Scan Result Modal */}
           {scanResult && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setScanResult(null)}>
@@ -1827,6 +1868,32 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                       placeholder={t("settings.pdpa_retention_hint")}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none" />
                     <p className="text-[10px] text-purple-600 mt-1">⚙ {t("settings.pdpa_retention_enforced")}</p>
+                  </div>
+
+                  {/* Anonymization policy on export / API */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">{t("settings.pdpa_anon_label")}</label>
+                    <select value={pdpaForm.anonymization_mode}
+                      onChange={e => setPdpaForm(prev => ({ ...prev, anonymization_mode: e.target.value }))}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-purple-500 outline-none">
+                      <option value="none">{t("settings.pdpa_anon_none")}</option>
+                      <option value="anonymous">{t("settings.pdpa_anon_anonymous")}</option>
+                      <option value="pseudonymous">{t("settings.pdpa_anon_pseudonymous")}</option>
+                    </select>
+                    {/* Advisory: PII present but no anonymization declared */}
+                    {pdpaForm.anonymization_mode === "none" &&
+                     ((editPdpa?.pii_auto_detected?.length || 0) > 0 || pdpaForm.pii_fields.length > 0) && (
+                      <div className="mt-1.5 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-md p-2">
+                        <span className="text-amber-500">⚠</span>
+                        <div className="flex-1">
+                          <p className="text-[10px] text-amber-800">{t("settings.pdpa_anon_warn")}</p>
+                          <button type="button" onClick={() => openAnonPrompt(editPdpa.app_id)}
+                            className="mt-1 px-2 py-0.5 text-[10px] bg-amber-600 text-white rounded hover:bg-amber-700">
+                            ✨ {t("settings.pdpa_anon_prompt_btn")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Security Notes */}

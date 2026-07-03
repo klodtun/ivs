@@ -238,6 +238,9 @@ class AppPdpa(Base):
     retention_period = Column(String(100), default="")   # ระยะเวลาเก็บ เช่น "1 ปี"
     has_masking = Column(Boolean, default=False)          # พบ masking script หรือไม่
     masking_details = Column(Text, default="")            # รายละเอียด masking ที่พบ
+    # นโยบายการทำข้อมูลนิรนาม/แฝง ตอนส่งออก/เปิด API:
+    #   none = ไม่ระบุ, anonymous = นิรนาม, pseudonymous = ข้อมูลแฝง
+    anonymization_mode = Column(String(20), default="none")
     security_notes = Column(Text, default="")             # หมายเหตุมาตรการเพิ่มเติม
     status = Column(Enum(PdpaStatus), default=PdpaStatus.NOT_STARTED)
     # Privacy Notice — ประกาศแจ้งเตือนก่อนใช้งาน

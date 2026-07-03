@@ -82,6 +82,7 @@ def _pdpa_to_response(pdpa: AppPdpa, app: App) -> dict:
         "retention_period": pdpa.retention_period or "",
         "has_masking": pdpa.has_masking,
         "masking_details": pdpa.masking_details or "",
+        "anonymization_mode": getattr(pdpa, "anonymization_mode", None) or "none",
         "security_notes": pdpa.security_notes or "",
         "status": pdpa.status.value if hasattr(pdpa.status, 'value') else pdpa.status,
         "privacy_notice_enabled": pdpa.privacy_notice_enabled or False,
@@ -163,6 +164,9 @@ async def update_pdpa_record(
         pdpa.pii_fields = json.dumps(data.pii_fields, ensure_ascii=False)
     if data.retention_period is not None:
         pdpa.retention_period = data.retention_period
+    if data.anonymization_mode is not None:
+        mode = data.anonymization_mode if data.anonymization_mode in ("none", "anonymous", "pseudonymous") else "none"
+        pdpa.anonymization_mode = mode
     if data.security_notes is not None:
         pdpa.security_notes = data.security_notes
 
@@ -178,6 +182,59 @@ async def update_pdpa_record(
     db.refresh(pdpa)
 
     return _pdpa_to_response(pdpa, app)
+
+
+@router.get("/{app_id}/anonymization-prompt")
+async def anonymization_prompt(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Generate a copy-paste AI prompt that tells the developer's AI how to
+    anonymize / pseudonymize this app's PII when it exports data or exposes
+    an API. Used when the app has PII but no anonymization policy is set —
+    Policy-as-Code turns the gap into an actionable fix."""
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    pdpa = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+
+    detected = json.loads(pdpa.pii_auto_detected or "[]") if pdpa else []
+    confirmed = json.loads(pdpa.pii_fields or "[]") if pdpa else []
+    fields = confirmed or detected
+    field_list = ", ".join(fields) if fields else "personal data fields (email, phone, national ID, name, address)"
+
+    anonymous = (
+        f"You are editing the source of the app \"{app.name}\".\n"
+        f"Before ANY data export (CSV/JSON/report) or API response, ANONYMIZE "
+        f"these fields so an individual can no longer be identified: {field_list}.\n"
+        "Rules (irreversible anonymization, PDPA/GDPR):\n"
+        "- Emails -> keep only the domain, drop the local part (a@x.com -> ***@x.com)\n"
+        "- Phone / national ID -> replace with [REDACTED]\n"
+        "- Names / addresses -> replace with a generic label (Person_1, Region_A)\n"
+        "- Do NOT keep any reversible mapping table.\n"
+        "Add one function apply_before_export(record) and call it on every "
+        "export path and API serializer. Show the diff."
+    )
+    pseudonymous = (
+        f"You are editing the source of the app \"{app.name}\".\n"
+        f"Before ANY data export or API response, PSEUDONYMIZE these fields: {field_list}.\n"
+        "Rules (reversible only with a secret key, PDPA/GDPR pseudonymisation):\n"
+        "- Replace each identifier with HMAC-SHA256(value, SECRET_KEY) -> a stable token\n"
+        "- The same input must always map to the same token (so records can be "
+        "correlated) but the original must not be recoverable without SECRET_KEY\n"
+        "- Read SECRET_KEY from an environment variable; never hardcode it.\n"
+        "Add pseudonymize(record) and call it on every export path and API "
+        "serializer. Show the diff."
+    )
+
+    return {
+        "app_id": app_id,
+        "app_name": app.name,
+        "detected_fields": fields,
+        "current_mode": getattr(pdpa, "anonymization_mode", "none") if pdpa else "none",
+        "prompts": {"anonymous": anonymous, "pseudonymous": pseudonymous},
+    }
 
 
 @router.post("/{app_id}/scan", response_model=PdpaScanResult)

@@ -225,6 +225,7 @@ class PdpaUpdate(BaseModel):
     pii_fields: Optional[list[str]] = None
     retention_period: Optional[str] = None
     security_notes: Optional[str] = None
+    anonymization_mode: Optional[str] = None   # none | anonymous | pseudonymous
 
 
 class PdpaResponse(BaseModel):
@@ -238,6 +239,7 @@ class PdpaResponse(BaseModel):
     retention_period: str = ""
     has_masking: bool = False
     masking_details: str = ""
+    anonymization_mode: str = "none"
     security_notes: str = ""
     status: str = "not_started"
     privacy_notice_enabled: bool = False
