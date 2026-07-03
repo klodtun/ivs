@@ -27,6 +27,34 @@ router = APIRouter(prefix="/api/pdpa", tags=["PDPA"])
 logger = logging.getLogger(__name__)
 
 
+@router.get("/password-policy")
+async def get_password_policy(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """The password policy (Policy-as-Code). Readable by any user so the
+    user-management form can display the requirements."""
+    from app.services import password_policy
+    return password_policy.get_policy(db)
+
+
+@router.put("/password-policy")
+async def update_password_policy(
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    from app.services import password_policy
+    policy = password_policy.set_policy(db, payload or {})
+    create_audit_log(
+        db, request, user=user, action="update_password_policy", resource_type="system",
+        details=f"Password policy updated: {policy}", log_level="WARNING",
+    )
+    db.commit()
+    return policy
+
+
 def _compute_status(pdpa: AppPdpa) -> PdpaStatus:
     """Compute PDPA status based on filled fields."""
     pii = json.loads(pdpa.pii_fields or "[]")

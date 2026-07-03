@@ -319,6 +319,28 @@ export default function SettingsPage() {
     catch (e) { console.error("toggle mdns", e); }
     finally { setMdnsToggling(false); }
   };
+  // Password policy (Policy-as-Code, set in PDPA menu, enforced on user create)
+  const [pwPolicy, setPwPolicy] = useState<{ min_length: number; require_upper: boolean; require_lower: boolean; require_number: boolean; require_symbol: boolean } | null>(null);
+  const [pwPolicySaving, setPwPolicySaving] = useState(false);
+  const loadPwPolicy = useCallback(async () => {
+    try { setPwPolicy(await api.getPasswordPolicy()); } catch (e) { console.error("load pw policy", e); }
+  }, []);
+  const savePwPolicy = async () => {
+    if (!pwPolicy) return;
+    setPwPolicySaving(true);
+    try { setPwPolicy(await api.updatePasswordPolicy(pwPolicy)); } catch (e) { console.error("save pw policy", e); } finally { setPwPolicySaving(false); }
+  };
+  // Live-check a candidate password against the policy -> failed rule keys.
+  const pwFailsFor = (pw: string): string[] => {
+    if (!pwPolicy || !pw) return pw ? [] : [];
+    const f: string[] = [];
+    if (pw.length < pwPolicy.min_length) f.push("length");
+    if (pwPolicy.require_upper && !/[A-Z]/.test(pw)) f.push("upper");
+    if (pwPolicy.require_lower && !/[a-z]/.test(pw)) f.push("lower");
+    if (pwPolicy.require_number && !/[0-9]/.test(pw)) f.push("number");
+    if (pwPolicy.require_symbol && !/[^A-Za-z0-9]/.test(pw)) f.push("symbol");
+    return f;
+  };
   const loadTunnelCfg = useCallback(async () => {
     try {
       const c = await api.getTunnelConfig();
@@ -490,6 +512,7 @@ export default function SettingsPage() {
 
   const handleAddUser = async () => {
     if (!form.username || !form.email || !form.password) return;
+    if (pwFailsFor(form.password).length > 0) return; // policy not met — button is disabled anyway
     setSaving(true);
     try { await api.createUser(form); setForm({ username: "", email: "", password: "", role: "viewer" }); setShowAdd(false); await loadData(); } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
@@ -636,7 +659,8 @@ export default function SettingsPage() {
     try { const r = await api.getPdpaRecords(); setPdpaRecords(r); } catch (e) { console.error(e); } finally { setLoadingPdpa(false); }
   }, []);
 
-  useEffect(() => { if (tab === "pdpa") loadPdpa(); }, [tab, loadPdpa]);
+  useEffect(() => { if (tab === "pdpa") { loadPdpa(); loadPwPolicy(); } }, [tab, loadPdpa, loadPwPolicy]);
+  useEffect(() => { if (tab === "users") loadPwPolicy(); }, [tab, loadPwPolicy]);
   useEffect(() => { if (tab === "tunnel") loadTunnelCfg(); }, [tab, loadTunnelCfg]);
 
   const handleScanAll = async () => {
@@ -810,7 +834,33 @@ export default function SettingsPage() {
                   <option value="admin">{t("role.admin")}</option>
                 </select>
               </div>
-              <button onClick={handleAddUser} disabled={saving || !form.username || !form.email || !form.password}
+
+              {/* Password policy requirements (set in the PDPA menu) */}
+              {pwPolicy && (
+                <div className="bg-gray-50 border border-gray-200 rounded-md p-2.5">
+                  <p className="text-[10px] font-medium text-gray-600 mb-1">{t("settings.pw_policy_req")}</p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {[
+                      { key: "length", label: `${t("settings.pw_req_length")} ${pwPolicy.min_length}`, on: true },
+                      { key: "upper", label: t("settings.pw_req_upper"), on: pwPolicy.require_upper },
+                      { key: "lower", label: t("settings.pw_req_lower"), on: pwPolicy.require_lower },
+                      { key: "number", label: t("settings.pw_req_number"), on: pwPolicy.require_number },
+                      { key: "symbol", label: t("settings.pw_req_symbol"), on: pwPolicy.require_symbol },
+                    ].filter(r => r.on).map(r => {
+                      const met = form.password ? !pwFailsFor(form.password).includes(r.key) : false;
+                      return (
+                        <span key={r.key} className={cn("text-[10px] flex items-center gap-0.5",
+                          !form.password ? "text-gray-400" : met ? "text-green-600" : "text-red-500")}>
+                          {!form.password ? "○" : met ? "✓" : "✗"} {r.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={handleAddUser}
+                disabled={saving || !form.username || !form.email || !form.password || pwFailsFor(form.password).length > 0}
                 className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50">
                 {saving ? t("settings.creating") : t("settings.create")}
               </button>
@@ -1427,6 +1477,48 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
       {/* ===== TAB: PDPA ===== */}
       {tab === "pdpa" && (
         <div className="space-y-4">
+          {/* Password policy (Policy-as-Code) — enforced on user creation,
+              shown as requirements on the user-management screen */}
+          {pwPolicy && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                  <span className="text-lg">🔑</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 text-sm">{t("settings.pw_policy_title")}</h3>
+                  <p className="text-[10px] text-gray-500">{t("settings.pw_policy_desc")}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-gray-700">{t("settings.pw_req_length")}</label>
+                <input type="number" min={6} max={128} value={pwPolicy.min_length}
+                  onChange={(e) => setPwPolicy({ ...pwPolicy, min_length: parseInt(e.target.value || "6", 10) })}
+                  className="w-20 px-2 py-1 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {([
+                  ["require_upper", "settings.pw_req_upper"],
+                  ["require_lower", "settings.pw_req_lower"],
+                  ["require_number", "settings.pw_req_number"],
+                  ["require_symbol", "settings.pw_req_symbol"],
+                ] as const).map(([k, labelKey]) => (
+                  <label key={k} className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={(pwPolicy as any)[k]}
+                      onChange={(e) => setPwPolicy({ ...pwPolicy, [k]: e.target.checked })}
+                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                    {t(labelKey)}
+                  </label>
+                ))}
+              </div>
+              <button onClick={savePwPolicy} disabled={pwPolicySaving}
+                className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 disabled:opacity-50">
+                {pwPolicySaving ? t("settings.pw_policy_saving") : t("settings.pw_policy_save")}
+              </button>
+              <p className="text-[10px] text-purple-600">⚙ {t("settings.pw_policy_note")}</p>
+            </div>
+          )}
+
           {/* GDPR / APPI / PDPA — Right to be Forgotten executor */}
           <GdprErasurePanel />
 

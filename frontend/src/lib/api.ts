@@ -610,6 +610,25 @@ export const api = {
   // PDPA / ROPA
   getPdpaRecords: () => request<any[]>("/pdpa"),
 
+  getPasswordPolicy: () => request<{
+    min_length: number;
+    require_upper: boolean;
+    require_lower: boolean;
+    require_number: boolean;
+    require_symbol: boolean;
+  }>("/pdpa/password-policy"),
+
+  updatePasswordPolicy: (policy: {
+    min_length?: number;
+    require_upper?: boolean;
+    require_lower?: boolean;
+    require_number?: boolean;
+    require_symbol?: boolean;
+  }) => request<any>("/pdpa/password-policy", {
+    method: "PUT",
+    body: JSON.stringify(policy),
+  }),
+
   getPdpaRecord: (appId: number) => request<any>(`/pdpa/${appId}`),
 
   updatePdpaRecord: (appId: number, data: {

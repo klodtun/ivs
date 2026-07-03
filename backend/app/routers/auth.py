@@ -209,6 +209,16 @@ async def create_user(
     if db.query(User).filter((User.username == req.username) | (User.email == req.email)).first():
         raise HTTPException(status_code=400, detail="Username or email already exists")
 
+    # Enforce the password policy set in the PDPA menu (Policy-as-Code)
+    from app.services import password_policy
+    fails = password_policy.validate_password(req.password, db)
+    if fails:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "weak_password", "failed": fails,
+                    "policy": password_policy.get_policy(db)},
+        )
+
     user = User(
         username=req.username,
         email=req.email,
