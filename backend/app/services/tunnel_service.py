@@ -1,20 +1,69 @@
 """
-Tunnel Service — creates real public tunnels using ngrok or localtunnel.
+Tunnel Service — creates real public tunnels using ngrok, cloudflare, or
+localtunnel.
 
-Priority: ngrok (if installed & configured) → localtunnel (via npx, fallback)
-Each tunnel runs as a subprocess; PID stored for lifecycle management.
+Credentials are per-iVS: each instance stores its OWN provider token in
+system_config (encrypted), so different iVS installs never share one free
+ngrok/cloudflare account. The token is passed to the provider process via
+env/flag — never written to a global config file.
+
+Priority when provider = "auto": ngrok (if token) → cloudflare (if token)
+→ localtunnel (no account). Otherwise the chosen provider is used directly.
 """
 import asyncio
 import json
 import logging
+import os
 import shutil
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
-from app.models import Tunnel, TunnelStatus, App
+from app.models import Tunnel, TunnelStatus, App, SystemConfig
+from app.services.vault_service import vault_service
 
 logger = logging.getLogger(__name__)
+
+# system_config keys
+CFG_PROVIDER = "tunnel.provider"          # auto | ngrok | cloudflare | localtunnel
+CFG_NGROK_TOKEN = "tunnel.ngrok_authtoken"    # encrypted
+CFG_CF_TOKEN = "tunnel.cloudflare_token"      # encrypted
+
+
+def _get_cfg(db: Session, key: str) -> str:
+    row = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+    return row.value if row and row.value else ""
+
+
+def get_tunnel_config(db: Session) -> dict:
+    """Return the tunnel provider + decrypted tokens for THIS iVS instance."""
+    provider = _get_cfg(db, CFG_PROVIDER) or "auto"
+    ngrok_enc = _get_cfg(db, CFG_NGROK_TOKEN)
+    cf_enc = _get_cfg(db, CFG_CF_TOKEN)
+    ngrok_token = vault_service.decrypt(ngrok_enc) if ngrok_enc else ""
+    cf_token = vault_service.decrypt(cf_enc) if cf_enc else ""
+    return {"provider": provider, "ngrok_token": ngrok_token, "cf_token": cf_token}
+
+
+def set_tunnel_config(db: Session, provider: str = None,
+                      ngrok_token: str = None, cf_token: str = None):
+    """Persist tunnel config. Tokens are encrypted; pass "" to clear a token,
+    or None to leave it unchanged."""
+    def _upsert(key: str, value: str):
+        row = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        if not row:
+            row = SystemConfig(key=key, value=value)
+            db.add(row)
+        else:
+            row.value = value
+
+    if provider is not None:
+        _upsert(CFG_PROVIDER, provider)
+    if ngrok_token is not None:
+        _upsert(CFG_NGROK_TOKEN, vault_service.encrypt(ngrok_token) if ngrok_token else "")
+    if cf_token is not None:
+        _upsert(CFG_CF_TOKEN, vault_service.encrypt(cf_token) if cf_token else "")
+    db.commit()
 
 
 class TunnelService:
@@ -33,13 +82,17 @@ class TunnelService:
 
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
 
-        # Try tunnel providers in priority order
-        proc, public_url, provider = await self._try_providers(app.port)
+        # Read this iVS instance's tunnel credentials
+        cfg = get_tunnel_config(db)
+
+        # Try tunnel providers per config
+        proc, public_url, provider = await self._try_providers(app.port, cfg)
 
         if not public_url:
             raise RuntimeError(
-                "Failed to create tunnel — no provider available. "
-                "Install ngrok (https://ngrok.com) or ensure npx is available for localtunnel."
+                "Failed to create tunnel. Configure an ngrok authtoken or "
+                "Cloudflare token in Settings → Tunnel, or ensure npx is "
+                "available for the no-account localtunnel fallback."
             )
 
         tunnel = Tunnel(
@@ -66,16 +119,37 @@ class TunnelService:
     # ── Provider orchestration ──────────────────────────────────
 
     async def _try_providers(
-        self, port: int
+        self, port: int, cfg: dict
     ) -> Tuple[Optional[asyncio.subprocess.Process], Optional[str], str]:
-        """Try tunnel providers in order: ngrok → localtunnel."""
+        """Try tunnel providers according to the instance config.
 
-        # 1. ngrok
-        proc, url = await self._start_ngrok(port)
-        if url:
-            return proc, url, "ngrok"
+        provider == "ngrok"/"cloudflare"/"localtunnel" -> only that one.
+        provider == "auto" -> ngrok (if token) -> cloudflare (if token)
+        -> localtunnel.
+        """
+        provider = (cfg.get("provider") or "auto").lower()
+        ngrok_token = cfg.get("ngrok_token") or ""
+        cf_token = cfg.get("cf_token") or ""
 
-        # 2. localtunnel (via npx)
+        if provider == "ngrok":
+            proc, url = await self._start_ngrok(port, ngrok_token)
+            return (proc, url, "ngrok") if url else (None, None, "none")
+        if provider == "cloudflare":
+            proc, url = await self._start_cloudflare(port, cf_token)
+            return (proc, url, "cloudflare") if url else (None, None, "none")
+        if provider == "localtunnel":
+            proc, url = await self._start_localtunnel(port)
+            return (proc, url, "localtunnel") if url else (None, None, "none")
+
+        # auto
+        if ngrok_token:
+            proc, url = await self._start_ngrok(port, ngrok_token)
+            if url:
+                return proc, url, "ngrok"
+        if cf_token:
+            proc, url = await self._start_cloudflare(port, cf_token)
+            if url:
+                return proc, url, "cloudflare"
         proc, url = await self._start_localtunnel(port)
         if url:
             return proc, url, "localtunnel"
@@ -85,12 +159,22 @@ class TunnelService:
     # ── ngrok ───────────────────────────────────────────────────
 
     async def _start_ngrok(
-        self, port: int
+        self, port: int, authtoken: str = ""
     ) -> Tuple[Optional[asyncio.subprocess.Process], Optional[str]]:
-        """Start an ngrok tunnel and extract the public URL from JSON logs."""
+        """Start an ngrok tunnel and extract the public URL from JSON logs.
+
+        The authtoken is passed via the NGROK_AUTHTOKEN env var so it's scoped
+        to THIS process — it never touches the machine's global ngrok config,
+        which is what previously made every iVS share one free account.
+        """
         if not shutil.which("ngrok"):
             logger.info("ngrok not found in PATH, skipping")
             return None, None
+
+        # Per-instance env: inherit PATH etc., override the authtoken.
+        env = os.environ.copy()
+        if authtoken:
+            env["NGROK_AUTHTOKEN"] = authtoken
 
         proc = None
         try:
@@ -99,6 +183,7 @@ class TunnelService:
                 "--log", "stdout", "--log-format", "json",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
 
             url = await asyncio.wait_for(self._parse_ngrok_url(proc), timeout=15)
@@ -140,6 +225,73 @@ class TunnelService:
                     return None
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
+        return None
+
+    # ── cloudflare ──────────────────────────────────────────────
+
+    async def _start_cloudflare(
+        self, port: int, token: str = ""
+    ) -> Tuple[Optional[asyncio.subprocess.Process], Optional[str]]:
+        """Start a cloudflared tunnel.
+
+        With a token -> a named tunnel bound to the user's Cloudflare account
+        (`cloudflared tunnel run --token`), which routes to their configured
+        hostname. Without a token -> an ephemeral quick tunnel
+        (`--url http://localhost:PORT`) on trycloudflare.com, no account.
+        """
+        if not shutil.which("cloudflared"):
+            logger.info("cloudflared not found in PATH, skipping")
+            return None, None
+
+        if token:
+            args = ["cloudflared", "tunnel", "--no-autoupdate", "run", "--token", token]
+        else:
+            args = ["cloudflared", "tunnel", "--no-autoupdate",
+                    "--url", f"http://localhost:{port}"]
+
+        proc = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            url = await asyncio.wait_for(self._parse_cloudflare_url(proc), timeout=30)
+            if url:
+                logger.info(f"cloudflare tunnel ready: {url} (pid={proc.pid})")
+                return proc, url
+            # Named-tunnel run doesn't print a trycloudflare URL — the public
+            # hostname is the one configured in the CF dashboard. Keep the
+            # process alive and report that hostname is external.
+            if token and proc.returncode is None:
+                logger.info("cloudflare named tunnel started (hostname set in CF dashboard)")
+                return proc, "cloudflare-named-tunnel"
+            logger.warning("cloudflare started but no URL obtained")
+            if proc.returncode is None:
+                proc.terminate()
+            return None, None
+        except asyncio.TimeoutError:
+            logger.warning("cloudflare timed out waiting for URL")
+            if proc:
+                proc.terminate()
+            return None, None
+        except Exception as e:
+            logger.warning(f"cloudflare failed: {e}")
+            if proc and proc.returncode is None:
+                proc.terminate()
+            return None, None
+
+    async def _parse_cloudflare_url(self, proc: asyncio.subprocess.Process) -> Optional[str]:
+        """Read cloudflared output for the trycloudflare.com quick-tunnel URL."""
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            text = line.decode(errors="ignore").strip()
+            if "trycloudflare.com" in text:
+                for tok in text.split():
+                    if tok.startswith("https://") and "trycloudflare.com" in tok:
+                        return tok
         return None
 
     # ── localtunnel ─────────────────────────────────────────────

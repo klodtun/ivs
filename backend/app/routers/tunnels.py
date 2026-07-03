@@ -1,13 +1,69 @@
+from pydantic import BaseModel
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, UserRole, App, Tunnel, TunnelStatus, AuditLog
 from app.schemas import TunnelCreate, TunnelResponse
 from app.middleware.auth import get_current_user, require_role
-from app.services.tunnel_service import tunnel_service
+from app.services.tunnel_service import tunnel_service, get_tunnel_config, set_tunnel_config
+from app.services.vault_service import vault_service
 from app.services.audit_service import create_audit_log
 
 router = APIRouter(prefix="/api/tunnels", tags=["Tunnels"])
+
+
+class TunnelConfigResponse(BaseModel):
+    provider: str
+    ngrok_token_masked: str
+    cloudflare_token_masked: str
+    ngrok_configured: bool
+    cloudflare_configured: bool
+
+
+class TunnelConfigUpdate(BaseModel):
+    provider: Optional[str] = None       # auto|ngrok|cloudflare|localtunnel
+    ngrok_token: Optional[str] = None     # "" clears, None leaves unchanged
+    cloudflare_token: Optional[str] = None
+
+
+@router.get("/config", response_model=TunnelConfigResponse)
+async def get_config(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    cfg = get_tunnel_config(db)
+    return TunnelConfigResponse(
+        provider=cfg["provider"],
+        ngrok_token_masked=vault_service.mask_value(cfg["ngrok_token"]) if cfg["ngrok_token"] else "",
+        cloudflare_token_masked=vault_service.mask_value(cfg["cf_token"]) if cfg["cf_token"] else "",
+        ngrok_configured=bool(cfg["ngrok_token"]),
+        cloudflare_configured=bool(cfg["cf_token"]),
+    )
+
+
+@router.put("/config")
+async def update_config(
+    req: TunnelConfigUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    if req.provider is not None and req.provider not in ("auto", "ngrok", "cloudflare", "localtunnel"):
+        raise HTTPException(status_code=422, detail="Invalid provider")
+    set_tunnel_config(
+        db,
+        provider=req.provider,
+        ngrok_token=req.ngrok_token,
+        cf_token=req.cloudflare_token,
+    )
+    create_audit_log(
+        db, request, user=user, action="update_tunnel_config", resource_type="system",
+        details=f"Tunnel config updated (provider={req.provider or 'unchanged'})",
+        log_level="WARNING",
+    )
+    db.commit()
+    return {"message": "Tunnel config saved"}
 
 
 @router.get("", response_model=list[TunnelResponse])

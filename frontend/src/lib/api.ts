@@ -352,6 +352,25 @@ export const api = {
   revokeTunnel: (id: number) =>
     request<any>(`/tunnels/${id}`, { method: "DELETE" }),
 
+  getTunnelConfig: () =>
+    request<{
+      provider: string;
+      ngrok_token_masked: string;
+      cloudflare_token_masked: string;
+      ngrok_configured: boolean;
+      cloudflare_configured: boolean;
+    }>("/tunnels/config"),
+
+  updateTunnelConfig: (body: {
+    provider?: string;
+    ngrok_token?: string;
+    cloudflare_token?: string;
+  }) =>
+    request<{ message: string }>("/tunnels/config", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   getVaultKeys: () => request<any[]>("/vault"),
 
   getVaultKey: (id: number) => request<any>(`/vault/${id}`),

@@ -14,8 +14,9 @@ import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
 import { User, App, AuditLog, AuditLogExport } from "@/types";
+import { MachineRegistryEntry, DiscoveredMachine } from "@/lib/api";
 
-type Tab = "users" | "logs" | "dns" | "network" | "pdpa" | "gitea" | "autostart";
+type Tab = "users" | "logs" | "dns" | "network" | "pdpa" | "gitea" | "autostart" | "license" | "enterprise" | "tunnel";
 
 interface NetworkInfo {
   server_ip: string;
@@ -61,12 +62,270 @@ function localizePiiCategory(raw: string, t: (k: string) => string): string {
   return translated === key ? raw : translated;
 }
 
+// ─── Enterprise Tab ──────────────────────────────────────────────────────── //
+function EnterpriseTab({ t }: { t: (k: string) => string }) {
+  const [machines, setMachines] = useState<MachineRegistryEntry[]>([]);
+  const [discovered, setDiscovered] = useState<DiscoveredMachine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [discovering, setDiscovering] = useState(false);
+  const [addForm, setAddForm] = useState({ fingerprint: "", serial: "", hostname: "", ip_address: "", group_name: "", notes: "" });
+  const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const list = await api.listEnterpriseMachines();
+      setMachines(list);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const discover = async () => {
+    setDiscovering(true);
+    setDiscovered([]);
+    try {
+      const result = await api.discoverEnterpriseMachines();
+      setDiscovered(result);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const addMachine = async () => {
+    if (!addForm.fingerprint) return;
+    setSaving(true);
+    try {
+      await api.addEnterpriseMachine({
+        fingerprint: addForm.fingerprint,
+        serial: addForm.serial || undefined,
+        hostname: addForm.hostname || undefined,
+        ip_address: addForm.ip_address || undefined,
+        group_name: addForm.group_name || undefined,
+        notes: addForm.notes || undefined,
+      });
+      setShowAdd(false);
+      setAddForm({ fingerprint: "", serial: "", hostname: "", ip_address: "", group_name: "", notes: "" });
+      load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addDiscovered = async (d: DiscoveredMachine) => {
+    try {
+      await api.addEnterpriseMachine({
+        hostname: d.hostname || undefined,
+        ip_address: d.ip_address,
+        port: d.port,
+        fingerprint: d.fingerprint || d.ip_address.replace(/\./g, ""),
+      });
+      load();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const removeMachine = async (fp: string) => {
+    if (!confirm(t("enterprise.remove_confirm"))) return;
+    try {
+      await api.removeEnterpriseMachine(fp);
+      load();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const sourceLabel = (src: string) => {
+    if (src === "self") return t("enterprise.source_self");
+    if (src === "mdns") return t("enterprise.source_mdns");
+    return t("enterprise.source_manual");
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">{error}</div>
+      )}
+
+      {/* Header */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">{t("enterprise.title")}</h2>
+            <p className="text-xs text-gray-500 mt-1">{t("enterprise.desc")}</p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              onClick={discover}
+              disabled={discovering}
+              className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {discovering ? t("enterprise.discovering") : t("enterprise.discover")}
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
+            >
+              {t("enterprise.add_machine")}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+          <h3 className="text-xs font-semibold text-gray-800">{t("enterprise.add_machine")}</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { key: "fingerprint", label: t("enterprise.fingerprint"), required: true },
+              { key: "serial", label: t("enterprise.serial") },
+              { key: "hostname", label: t("enterprise.hostname") },
+              { key: "ip_address", label: t("enterprise.ip") },
+              { key: "group_name", label: t("enterprise.group") },
+              { key: "notes", label: t("enterprise.notes") },
+            ].map(({ key, label, required }) => (
+              <div key={key}>
+                <label className="block text-[10px] text-gray-500 mb-0.5">{label}{required && " *"}</label>
+                <input
+                  value={(addForm as any)[key]}
+                  onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))}
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={addMachine} disabled={saving || !addForm.fingerprint}
+              className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50">
+              {saving ? "..." : t("enterprise.add_machine")}
+            </button>
+            <button onClick={() => setShowAdd(false)}
+              className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Discovered machines */}
+      {discovered.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
+          <h3 className="text-xs font-semibold text-gray-700">{t("enterprise.discover")}</h3>
+          {discovered.map((d, i) => (
+            <div key={i} className="flex items-center justify-between text-xs bg-gray-50 rounded p-2 border border-gray-100">
+              <div className="space-y-0.5">
+                <div className="font-mono font-semibold text-gray-800">{d.hostname || d.ip_address}</div>
+                <div className="text-gray-500">{d.ip_address}:{d.port} · {d.version}</div>
+              </div>
+              {d.already_registered ? (
+                <span className="text-green-600 text-[10px] font-medium">{t("enterprise.already_registered")}</span>
+              ) : (
+                <button onClick={() => addDiscovered(d)}
+                  className="px-2 py-1 text-[10px] bg-brand-600 text-white rounded hover:bg-brand-700">
+                  {t("enterprise.add_discovered")}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Machine list */}
+      <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+        {loading ? (
+          <div className="p-4 text-xs text-gray-400 animate-pulse">Loading...</div>
+        ) : machines.length === 0 ? (
+          <div className="p-4 text-xs text-gray-400">{t("enterprise.no_machines")}</div>
+        ) : machines.map(m => (
+          <div key={m.id} className="p-3 flex items-center justify-between gap-4">
+            <div className="min-w-0 space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-semibold text-gray-800 truncate">{m.fingerprint}</span>
+                {m.is_self && (
+                  <span className="text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded font-medium">
+                    {t("enterprise.self_machine")}
+                  </span>
+                )}
+                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                  {m.edition}
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-500 flex gap-3 flex-wrap">
+                {m.hostname && <span>{m.hostname}</span>}
+                {m.ip_address && <span>{m.ip_address}:{m.port}</span>}
+                {m.group_name && <span className="text-brand-600">{m.group_name}</span>}
+                <span>{sourceLabel(m.discovery_source)}</span>
+              </div>
+            </div>
+            {!m.is_self && (
+              <button onClick={() => removeMachine(m.fingerprint)}
+                className="shrink-0 px-2 py-1 text-[10px] text-red-600 border border-red-200 rounded hover:bg-red-50">
+                {t("enterprise.remove")}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────── //
+
 export default function SettingsPage() {
   const { t } = useLang();
   const [users, setUsers] = useState<User[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [tab, setTab] = useState<Tab>("users");
+  // Tunnel provider config (per-iVS credentials)
+  const [tunnelCfg, setTunnelCfg] = useState<{
+    provider: string; ngrok_configured: boolean; cloudflare_configured: boolean;
+    ngrok_token_masked: string; cloudflare_token_masked: string;
+  } | null>(null);
+  const [tunnelProvider, setTunnelProvider] = useState("auto");
+  const [ngrokTokenInput, setNgrokTokenInput] = useState("");
+  const [cfTokenInput, setCfTokenInput] = useState("");
+  const [tunnelSaving, setTunnelSaving] = useState(false);
+  const [tunnelMsg, setTunnelMsg] = useState("");
+  const loadTunnelCfg = useCallback(async () => {
+    try {
+      const c = await api.getTunnelConfig();
+      setTunnelCfg(c);
+      setTunnelProvider(c.provider || "auto");
+    } catch (e) { console.error("load tunnel cfg", e); }
+  }, []);
+  const saveTunnelCfg = async () => {
+    setTunnelSaving(true);
+    setTunnelMsg("");
+    try {
+      await api.updateTunnelConfig({
+        provider: tunnelProvider,
+        // send token only when the user typed one (empty string keeps unchanged
+        // here; to CLEAR, user types a single space -> trimmed to "")
+        ngrok_token: ngrokTokenInput ? ngrokTokenInput.trim() : undefined,
+        cloudflare_token: cfTokenInput ? cfTokenInput.trim() : undefined,
+      });
+      setNgrokTokenInput("");
+      setCfTokenInput("");
+      setTunnelMsg(t("settings.tunnel_saved"));
+      await loadTunnelCfg();
+    } catch (e: any) {
+      setTunnelMsg(e?.message || t("settings.tunnel_save_failed"));
+    } finally {
+      setTunnelSaving(false);
+    }
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", role: "viewer" });
   const [saving, setSaving] = useState(false);
@@ -133,6 +392,16 @@ export default function SettingsPage() {
   const [savingPN, setSavingPN] = useState(false);
   const [previewPN, setPreviewPN] = useState<any | null>(null);
 
+  // License
+  const [licenseInfo, setLicenseInfo] = useState<{
+    serial: string; edition: string; region: string;
+    fingerprint: string; fingerprint_current: string; fingerprint_status: string;
+    created_at: string | null; bound_file: string; serial_valid: boolean;
+  } | null>(null);
+  const [loadingLicense, setLoadingLicense] = useState(false);
+  const [copiedSerial, setCopiedSerial] = useState(false);
+  const [copiedFingerprint, setCopiedFingerprint] = useState(false);
+
   // NTP Status
   const [ntpStatus, setNtpStatus] = useState<{
     synced: boolean; ntp_server: string | null; ntp_server_name: string | null;
@@ -167,6 +436,12 @@ export default function SettingsPage() {
     }
   }, [tab, loadExports]);
   useEffect(() => { if (tab === "dns") loadDnsConfig(); }, [tab, loadDnsConfig]);
+
+  const loadLicense = useCallback(async () => {
+    setLoadingLicense(true);
+    try { const l = await api.getLicense(); setLicenseInfo(l); } catch (e) { console.error(e); } finally { setLoadingLicense(false); }
+  }, []);
+  useEffect(() => { if (tab === "license") loadLicense(); }, [tab, loadLicense]);
 
   const loadNetworkInfo = useCallback(async () => {
     setLoadingNetwork(true);
@@ -341,6 +616,7 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { if (tab === "pdpa") loadPdpa(); }, [tab, loadPdpa]);
+  useEffect(() => { if (tab === "tunnel") loadTunnelCfg(); }, [tab, loadTunnelCfg]);
 
   const handleScanAll = async () => {
     setScanningAll(true);
@@ -463,7 +739,10 @@ export default function SettingsPage() {
     ...(isEnabled("network_tab") ? [{ key: "network" as Tab, labelKey: "settings.tab.network" }] : []),
     { key: "pdpa", labelKey: "settings.tab.pdpa" },
     ...(isEnabled("gitea_tab") ? [{ key: "gitea" as Tab, labelKey: "settings.tab.gitea" }] : []),
+    { key: "tunnel", labelKey: "settings.tab.tunnel" },
     { key: "autostart", labelKey: "settings.tab.autostart" },
+    { key: "license", labelKey: "settings.tab.license" },
+    ...(isEnabled("enterprise_tab") ? [{ key: "enterprise" as Tab, labelKey: "settings.tab.enterprise" }] : []),
   ];
 
   return (
@@ -1666,6 +1945,95 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
       )}
 
       {/* ===== TAB: AUTO-START ===== */}
+      {tab === "tunnel" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <svg className="w-6 h-6 text-indigo-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 10-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 text-sm">{t("settings.tunnel_title")}</h3>
+                <p className="text-[10px] text-gray-500">{t("settings.tunnel_desc")}</p>
+              </div>
+            </div>
+
+            {/* Provider select */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t("settings.tunnel_provider")}</label>
+              <select
+                value={tunnelProvider}
+                onChange={(e) => setTunnelProvider(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="auto">{t("settings.tunnel_provider_auto")}</option>
+                <option value="ngrok">ngrok</option>
+                <option value="cloudflare">Cloudflare</option>
+                <option value="localtunnel">{t("settings.tunnel_provider_localtunnel")}</option>
+              </select>
+            </div>
+
+            {/* ngrok token */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                ngrok Authtoken
+                {tunnelCfg?.ngrok_configured && (
+                  <span className="ml-2 text-[9px] text-green-600">✓ {t("settings.tunnel_configured")} ({tunnelCfg.ngrok_token_masked})</span>
+                )}
+              </label>
+              <input
+                type="password"
+                value={ngrokTokenInput}
+                onChange={(e) => setNgrokTokenInput(e.target.value)}
+                placeholder={tunnelCfg?.ngrok_configured ? t("settings.tunnel_keep_placeholder") : "2abc...xyz"}
+                autoComplete="off"
+                className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <p className="text-[9px] text-gray-400 mt-1">{t("settings.tunnel_ngrok_hint")} · dashboard.ngrok.com → Your Authtoken</p>
+            </div>
+
+            {/* cloudflare token */}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Cloudflare Tunnel Token
+                {tunnelCfg?.cloudflare_configured && (
+                  <span className="ml-2 text-[9px] text-green-600">✓ {t("settings.tunnel_configured")} ({tunnelCfg.cloudflare_token_masked})</span>
+                )}
+              </label>
+              <input
+                type="password"
+                value={cfTokenInput}
+                onChange={(e) => setCfTokenInput(e.target.value)}
+                placeholder={tunnelCfg?.cloudflare_configured ? t("settings.tunnel_keep_placeholder") : "eyJ...token"}
+                autoComplete="off"
+                className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <p className="text-[9px] text-gray-400 mt-1">{t("settings.tunnel_cf_hint")}</p>
+              {tunnelProvider === "cloudflare" && (
+                <p className="text-[9px] text-amber-600 mt-1">⚠ {t("settings.tunnel_cf_install")}</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={saveTunnelCfg}
+                disabled={tunnelSaving}
+                className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+              >
+                {tunnelSaving ? t("settings.tunnel_saving") : t("settings.tunnel_save")}
+              </button>
+              {tunnelMsg && <span className="text-[10px] text-gray-600">{tunnelMsg}</span>}
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-md p-2.5">
+              <p className="text-[10px] text-indigo-800">{t("settings.tunnel_note")}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === "autostart" && (
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
@@ -1777,6 +2145,101 @@ services:
           onConfirm={handleDisableConfirmed}
           onCancel={() => setPendingDisable(null)}
         />
+      )}
+
+      {tab === "license" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
+                <svg className="w-6 h-6 text-brand-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 12c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">{t("license.title")}</h2>
+              </div>
+            </div>
+
+            {loadingLicense && (
+              <div className="text-xs text-gray-400 animate-pulse">Loading...</div>
+            )}
+
+            {licenseInfo && (
+              <div className="space-y-3">
+                {/* Serial Number — prominent */}
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">{t("license.serial")}</div>
+                      <div className="font-mono text-base font-bold text-gray-900 tracking-widest">{licenseInfo.serial}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(licenseInfo.serial).then(() => {
+                          setCopiedSerial(true);
+                          setTimeout(() => setCopiedSerial(false), 2000);
+                        });
+                      }}
+                      className="ml-4 px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
+                    >
+                      {copiedSerial ? t("license.copied") : t("license.copy")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Info grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">{t("license.edition")}</div>
+                    <div className="font-semibold text-gray-800 mt-0.5">{licenseInfo.edition}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">{t("license.region")}</div>
+                    <div className="font-semibold text-gray-800 mt-0.5">{licenseInfo.region}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded p-2">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">{t("license.fingerprint_status")}</div>
+                    <div className={`font-semibold mt-0.5 ${licenseInfo.fingerprint_status === "OK" ? "text-green-700" : "text-amber-600"}`}>
+                      {licenseInfo.fingerprint_status === "OK" ? t("license.fingerprint_ok") : t("license.fingerprint_mismatch")}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Technical details */}
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between items-center gap-4">
+                    <span className="text-gray-500 shrink-0">{t("license.fingerprint")}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-gray-700 break-all text-right">{licenseInfo.fingerprint}</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(licenseInfo.fingerprint).then(() => {
+                            setCopiedFingerprint(true);
+                            setTimeout(() => setCopiedFingerprint(false), 2000);
+                          });
+                        }}
+                        className="shrink-0 px-2 py-1 text-[10px] bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                      >
+                        {copiedFingerprint ? t("license.copied") : t("license.copy")}
+                      </button>
+                    </div>
+                  </div>
+                  {licenseInfo.created_at && (
+                    <div className="flex justify-between items-start gap-4">
+                      <span className="text-gray-500 shrink-0">{t("license.created_at")}</span>
+                      <span className="text-gray-700 text-right">{new Date(licenseInfo.created_at).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "enterprise" && (
+        <EnterpriseTab t={t} />
       )}
 
       {pendingDelete && (
