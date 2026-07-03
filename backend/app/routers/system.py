@@ -23,6 +23,7 @@ from app.services.app_log_service import get_logs_for_export as get_app_logs_for
 from app.services import retention_service
 from app.services import gdpr_erasure_service
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
+from app.services import license_service, integrity_service
 from app.config import settings
 
 EXPORTS_DIR = os.path.join(os.path.dirname(settings.DATABASE_URL.replace("sqlite:///", "")), "exports")
@@ -36,6 +37,33 @@ router = APIRouter(prefix="/api/system", tags=["System"])
 # the UI still feels live, large enough N parallel requests share work.
 _HEALTH_CACHE: dict = {"ts": 0.0, "payload": None}
 _HEALTH_TTL = 3.0
+
+
+@router.get("/version")
+async def get_public_version():
+    """Public endpoint — login page reads this without auth."""
+    return {
+        "name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "edition": "FREE",
+    }
+
+
+@router.get("/lan-ip")
+async def get_lan_ip(user: User = Depends(get_current_user)):
+    """Current LAN IP + share info, detected fresh on each call so a DHCP
+    lease change is reflected immediately. Any authenticated user can read
+    it — the sidebar shows it so people always have the right address."""
+    from app.config import _detect_local_ip
+    ip = _detect_local_ip()
+    port = 80 if not settings.DEBUG else 3000
+    return {
+        "ip": ip,
+        "port": port,
+        "url": f"http://{ip}:{port}",
+        "mdns_running": mdns_service.is_running,
+        "mdns_address": mdns_service.mdns_address if mdns_service.is_running else None,
+    }
 
 
 @router.get("/health", response_model=SystemHealth)
@@ -587,23 +615,6 @@ async def update_dns_config(
     return DNSConfigResponse(domain_suffix=req.domain_suffix, server_ip=settings.SERVER_IP)
 
 
-@router.get("/lan-ip")
-async def get_lan_ip(user: User = Depends(get_current_user)):
-    """Current LAN IP + share info, detected fresh on each call so a DHCP
-    lease change is reflected immediately. Any authenticated user can read
-    it — the sidebar shows it so people always have the right address."""
-    from app.config import _detect_local_ip
-    ip = _detect_local_ip()
-    port = 80 if not settings.DEBUG else 3000
-    return {
-        "ip": ip,
-        "port": port,
-        "url": f"http://{ip}:{port}",
-        "mdns_running": mdns_service.is_running,
-        "mdns_address": mdns_service.mdns_address if mdns_service.is_running else None,
-    }
-
-
 @router.get("/mdns")
 async def get_mdns_status(
     db: Session = Depends(get_db),
@@ -719,6 +730,29 @@ async def reset_mdns_hostname(
     db.commit()
 
     return mdns_service.get_status()
+
+
+@router.get("/license")
+async def get_license(
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Return machine serial number and fingerprint info."""
+    return license_service.get_license_info()
+
+
+@router.get("/integrity")
+async def get_integrity(
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """
+    Anti-tamper / copyright integrity report.
+
+    Verifies:
+      - Copyright headers in protected source files (EULA §3.3)
+      - LICENSE file exists and is unmodified
+      - Machine fingerprint matches bound value within grace period (EULA §5)
+    """
+    return integrity_service.get_integrity_report()
 
 
 @router.get("/network")

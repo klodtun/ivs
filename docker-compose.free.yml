@@ -18,10 +18,10 @@ services:
       - ./coredns:/etc/coredns
     environment:
       - DATABASE_URL=sqlite:///./data/ivs.db
-      - SECRET_KEY=${SECRET_KEY:-ivs-production-secret-key-change-me}
-      - VAULT_KEY=${VAULT_KEY:-ivs-vault-key-change-me-production}
+      - SECRET_KEY=${SECRET_KEY:-change-me-generate-with-openssl-rand-hex-32}
+      - VAULT_KEY=${VAULT_KEY:-change-me-generate-with-openssl-rand-hex-32}
       - DOMAIN_SUFFIX=${DOMAIN_SUFFIX:-vibe.local}
-      - SERVER_IP=${SERVER_IP:-192.168.1.100}
+      - SERVER_IP=${SERVER_IP:-127.0.0.1}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - DOCKER_NETWORK=ivs-apps
@@ -29,7 +29,14 @@ services:
       - ivs-internal
       - ivs-apps
     depends_on:
-      - coredns
+      coredns:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   # ============================================
   # IVS Frontend Dashboard (Next.js)
@@ -45,7 +52,14 @@ services:
     networks:
       - ivs-internal
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # ============================================
   # Caddy Reverse Proxy
@@ -84,30 +98,9 @@ services:
     networks:
       - ivs-internal
 
-  # ============================================
-  # Gitea (Internal Git Server)
-  # ============================================
-  gitea:
-    image: gitea/gitea:1.22-rootless
-    container_name: ivs-gitea
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-      - "2222:22"
-    volumes:
-      - gitea_data:/var/lib/gitea
-      - gitea_config:/etc/gitea
-    environment:
-      - GITEA__server__DOMAIN=${DOMAIN_SUFFIX:-vibe.local}
-      - GITEA__server__ROOT_URL=http://git.${DOMAIN_SUFFIX:-vibe.local}
-    networks:
-      - ivs-internal
-
 volumes:
   caddy_data:
   caddy_config:
-  gitea_data:
-  gitea_config:
 
 networks:
   ivs-internal:

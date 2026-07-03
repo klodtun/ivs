@@ -1,3 +1,12 @@
+"""
+IVS — Internal Vibe Server (FastAPI entry point).
+
+Copyright © 2026 IVS Project. All Rights Reserved.
+Licensed under the IVS Proprietary EULA. See LICENSE in the project root.
+
+Unauthorized redistribution, resale, or removal of this notice is prohibited
+under EULA §3.3 / §3.5.
+"""
 import logging
 import asyncio
 from contextlib import asynccontextmanager
@@ -7,7 +16,7 @@ from app.config import settings
 from app.database import engine, SessionLocal, Base
 from app.models import User, UserRole
 from app.middleware.auth import hash_password
-from app.routers import auth, apps, system, tunnels, vault, pdpa
+from app.routers import auth, apps, system, tunnels, vault, pdpa, enterprise, api_catalog
 from app.services.tunnel_service import tunnel_service
 from app.services.ntp_service import ntp_service
 from app.services.resource_service import collect_snapshot
@@ -167,7 +176,14 @@ async def lifespan(app: FastAPI):
     resource_task = asyncio.create_task(resource_collection_loop())
     app_log_task = asyncio.create_task(app_log_collection_loop())
     app_log_purge_task = asyncio.create_task(retention_purge_loop())
+    # Anti-tamper / copyright integrity check (logs CRITICAL on breach)
+    try:
+        from app.services.integrity_service import check_on_startup
+        check_on_startup()
+    except Exception as e:
+        logger.warning(f"Integrity check failed: {e}")
     logger.info(f"IVS Backend started - {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info("Copyright (C) 2026 IVS Project. Licensed under IVS Proprietary EULA.")
     yield
     ntp_service.stop()
     mdns_service.stop()
@@ -264,6 +280,8 @@ app.include_router(system.router)
 app.include_router(tunnels.router)
 app.include_router(vault.router)
 app.include_router(pdpa.router)
+app.include_router(enterprise.router)
+app.include_router(api_catalog.router)
 
 
 @app.get("/api/health")

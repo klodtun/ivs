@@ -318,3 +318,104 @@ class ResourceMetric(Base):
     apps_total = Column(Integer, default=0)
     per_app_json = Column(Text, default="[]")         # JSON: [{slug, cpu, mem_mb}]
     created_at = Column(DateTime, default=utcnow, index=True)
+
+
+class ApiCatalogEntry(Base):
+    """
+    Managed API catalog — auto-discovered from deployed apps' OpenAPI specs.
+
+    Each row is one API endpoint (or one app's API root). Sensitive fields
+    (api_key, schema, base_url) are stored encrypted with VAULT_KEY.
+
+    Lifecycle:
+      1. Background scanner reads /openapi.json from each running app's port.
+      2. New endpoints are inserted as catalog entries (encrypted).
+      3. Admin can test the endpoint via UI button — result stored in
+         last_test_status / last_test_message.
+      4. Admin can replace the URL/key/schema. The old version goes to
+         ApiCatalogVersion history; admin can restore any prior version.
+    """
+    __tablename__ = "api_catalog_entries"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    app_id          = Column(Integer, ForeignKey("apps.id", ondelete="CASCADE"), nullable=True, index=True)
+    name            = Column(String(200), nullable=False)
+    method          = Column(String(10), default="GET")
+    path            = Column(String(500), default="/")
+    encrypted_base_url    = Column(Text, nullable=False)     # Fernet
+    encrypted_api_key     = Column(Text, nullable=True)      # Fernet
+    encrypted_schema      = Column(Text, nullable=True)      # Fernet — OpenAPI snippet
+    description     = Column(Text, default="")
+    category        = Column(String(50), default="app")      # "app" | "external"
+    current_version = Column(Integer, default=1)
+    # Last test results
+    last_test_at        = Column(DateTime, nullable=True)
+    last_test_status    = Column(String(20), default="UNKNOWN")  # OK | FAIL | UNKNOWN
+    last_test_message   = Column(Text, default="")
+    last_test_http_code = Column(Integer, nullable=True)
+    last_test_latency_ms = Column(Integer, nullable=True)
+    is_active       = Column(Boolean, default=True)
+    discovery_source = Column(String(20), default="auto")    # auto | manual
+    created_at      = Column(DateTime, default=utcnow)
+    updated_at      = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    versions = relationship(
+        "ApiCatalogVersion",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        order_by="ApiCatalogVersion.version_number.desc()",
+    )
+
+
+class ApiCatalogVersion(Base):
+    """
+    Encrypted history of prior API definitions. Created every time an
+    ApiCatalogEntry is replaced so the prior config can be restored.
+    """
+    __tablename__ = "api_catalog_versions"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    catalog_id      = Column(Integer, ForeignKey("api_catalog_entries.id", ondelete="CASCADE"),
+                              nullable=False, index=True)
+    version_number  = Column(Integer, nullable=False)
+    encrypted_base_url    = Column(Text, nullable=False)
+    encrypted_api_key     = Column(Text, nullable=True)
+    encrypted_schema      = Column(Text, nullable=True)
+    method          = Column(String(10), default="GET")
+    path            = Column(String(500), default="/")
+    replaced_by_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reason          = Column(Text, default="")
+    created_at      = Column(DateTime, default=utcnow, index=True)
+
+    entry = relationship("ApiCatalogEntry", back_populates="versions")
+
+
+class MachineRegistry(Base):
+    """
+    Known IVS machines in the fleet — foundation for Enterprise multi-machine management.
+
+    Each row represents one IVS instance, identified by its machine fingerprint
+    (HMAC of MAC + CPU + mobo serial). Machines can be added manually (admin
+    pastes fingerprint + serial) or via LAN auto-discovery (mDNS scan).
+
+    In IVS Free this table stores only the local machine itself.
+    In IVS Enterprise the admin can add remote machines, assign them to groups,
+    and monitor their health from a single dashboard.
+    """
+    __tablename__ = "machine_registry"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    fingerprint   = Column(String(16), unique=True, nullable=False, index=True)
+    serial        = Column(String(32), nullable=True)
+    hostname      = Column(String(255), nullable=True)
+    ip_address    = Column(String(45), nullable=True)
+    port          = Column(Integer, default=3000)
+    edition       = Column(String(10), default="FREE")   # FREE | LITE | STD | PRO | ENT
+    group_name    = Column(String(100), nullable=True)   # Enterprise grouping
+    notes         = Column(Text, nullable=True)
+    is_self       = Column(Boolean, default=False)       # True = this machine
+    # discovery_source: "manual" | "mdns" | "self"
+    discovery_source = Column(String(20), default="manual")
+    last_seen     = Column(DateTime, nullable=True)
+    added_by      = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at    = Column(DateTime, default=utcnow, index=True)

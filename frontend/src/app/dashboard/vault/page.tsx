@@ -1,16 +1,29 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { cn, timeAgo } from "@/lib/utils";
 import { VaultKey, User } from "@/types";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
+import ApiCatalogView from "@/components/api-catalog-view";
+
+type VaultTab = "keys" | "programs";
 
 const providerIcons: Record<string, string> = { openai: "AI", claude: "CL", anthropic: "AN", google: "GG", default: "KY" };
 const categories = ["general", "ai", "maps", "weather", "finance", "other"];
 
 export default function VaultPage() {
   const { t } = useLang();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab: VaultTab = searchParams.get("tab") === "programs" ? "programs" : "keys";
+  const [tab, setTab] = useState<VaultTab>(initialTab);
+  const switchTab = (next: VaultTab) => {
+    setTab(next);
+    const url = next === "keys" ? "/dashboard/vault" : "/dashboard/vault?tab=programs";
+    router.replace(url);
+  };
   const [keys, setKeys] = useState<VaultKey[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -72,11 +85,41 @@ export default function VaultPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{t("vault.title")}</h1>
-          <p className="text-gray-500 text-[10px] mt-0.5">{t("vault.subtitle")}</p>
-        </div>
+      <div>
+        <h1 className="text-lg font-bold text-gray-900">{t("vault.title")}</h1>
+        <p className="text-gray-500 text-[10px] mt-0.5">{t("vault.subtitle")}</p>
+      </div>
+
+      {/* Tab strip */}
+      <div className="flex border-b border-gray-200 -mb-px">
+        <button
+          onClick={() => switchTab("keys")}
+          className={cn(
+            "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+            tab === "keys"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          {t("vault.tab.keys")}
+        </button>
+        <button
+          onClick={() => switchTab("programs")}
+          className={cn(
+            "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+            tab === "programs"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          {t("vault.tab.programs")}
+        </button>
+      </div>
+
+      {tab === "programs" && <ApiCatalogView />}
+
+      {tab === "keys" && <>
+      <div className="flex items-center justify-end">
         {isAdmin && (
           <button onClick={() => setShowAdd(!showAdd)}
             className="px-3 py-1 bg-brand-600 text-white text-[10px] font-medium rounded-md hover:bg-brand-700 transition">
@@ -177,6 +220,7 @@ export default function VaultPage() {
           onCancel={() => setPendingDeleteKey(null)}
         />
       )}
+      </>}
     </div>
   );
 }

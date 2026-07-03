@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/sidebar";
 import { RouteLoader } from "@/components/route-loader";
 import { api } from "@/lib/api";
 import { User } from "@/types";
+import { useLang } from "@/components/lang-provider";
 
 export default function DashboardLayout({
   children,
@@ -45,9 +46,19 @@ export default function DashboardLayout({
     <div className="flex min-h-screen">
       <RouteLoader />
       <Sidebar user={user} />
-      <main className="flex-1 overflow-auto">
-        <div className="p-4 max-w-6xl mx-auto">{children}</div>
+      <main className="flex-1 overflow-auto flex flex-col">
+        <div className="p-4 max-w-6xl mx-auto flex-1 w-full">{children}</div>
+        <CopyrightFooter />
       </main>
     </div>
+  );
+}
+
+function CopyrightFooter() {
+  const { t } = useLang();
+  return (
+    <footer className="text-center text-[10px] text-gray-400 py-3 border-t border-gray-100 mt-4 select-none">
+      {t("copyright.footer")}
+    </footer>
   );
 }

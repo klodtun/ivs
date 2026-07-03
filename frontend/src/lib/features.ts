@@ -9,15 +9,17 @@
  *   v1.0 — current set (false)
  *   v1.1 — diagnostics: dns, network
  *   v1.2 — ecosystem: api_catalog, gitea
+ *   v2.0 — enterprise: multi-machine fleet management
  */
 export const features = {
   // Sidebar entries
-  api_catalog: false,
+  api_catalog: true,   // v1.0.1 — managed catalog of deployed-app APIs
 
   // Settings tabs
   dns_tab: false,
   network_tab: false,
   gitea_tab: false,
+  enterprise_tab: false,  // v2.0: fleet management (MachineRegistry)
 } as const;
 
 export type FeatureKey = keyof typeof features;

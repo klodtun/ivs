@@ -79,7 +79,8 @@ cd /Users/klod/IVS/frontend
 if [ "$IVS_MODE" = "dev" ]; then
   # next dev: hot module reload, picks up file changes automatically.
   # No pre-build required.
-  BACKEND_URL=http://localhost:8000 npx next dev -p 3000 &
+  # --no-deprecation silences DEP0060 (util._extend) from Next's dev proxy.
+  BACKEND_URL=http://localhost:8000 NODE_OPTIONS=--no-deprecation npx next dev -p 3000 &
 else
   # next start: serves the pre-built .next/ directory. Build first if missing
   # or stale, then start. Production: faster runtime, no file watcher.
@@ -87,7 +88,7 @@ else
     echo "[*] No build found — running 'npm run build' first..."
     npm run build || { echo "[!] Build failed"; exit 1; }
   fi
-  BACKEND_URL=http://localhost:8000 npx next start -p 3000 &
+  BACKEND_URL=http://localhost:8000 NODE_OPTIONS=--no-deprecation npx next start -p 3000 &
 fi
 FRONTEND_PID=$!
 

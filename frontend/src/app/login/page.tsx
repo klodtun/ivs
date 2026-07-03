@@ -128,7 +128,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 via-white to-brand-100">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-brand-50 via-white to-brand-100 py-8">
       <div className="w-full max-w-sm">
         <div className="bg-white rounded-xl shadow-lg p-6 border border-brand-100">
           <div className="flex justify-end mb-2">
@@ -136,7 +136,7 @@ export default function LoginPage() {
           </div>
           <div className="text-center mb-5">
             {/* Logo enlarged 200% (was w-12 h-12) */}
-            <img src="/ivs-logo.png" alt="IVS" className="w-24 h-24 mx-auto mb-3 object-contain" />
+            <img src="/ivs-logo.png" alt="iVS" className="w-24 h-24 mx-auto mb-3 object-contain" />
             <h1 className="text-lg font-bold text-gray-900">
               {t("login.title")}
             </h1>
@@ -298,7 +298,29 @@ export default function LoginPage() {
             )}
           </div>
         </div>
+        <LoginFooter t={t} />
       </div>
+    </div>
+  );
+}
+
+function LoginFooter({ t }: { t: (k: string) => string }) {
+  const [version, setVersion] = useState<{ version: string; edition: string } | null>(null);
+  useEffect(() => {
+    fetch("/api/system/version")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setVersion({ version: d.version, edition: d.edition }))
+      .catch(() => {});
+  }, []);
+  return (
+    <div className="mt-4 text-center text-[10px] text-gray-400 leading-relaxed select-none">
+      {version && (
+        <div className="text-gray-500 font-medium mb-1">
+          iVS v{version.version} · {version.edition} Edition
+        </div>
+      )}
+      © 2026 IVS Project · {t("copyright.all_rights")}<br />
+      {t("copyright.eula_notice")}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import "./globals.css";
 import { LangProvider } from "@/components/lang-provider";
 
 export const metadata: Metadata = {
-  title: "IVS - Internal Vibe Server",
+  title: "iVS - Internal Vibe Server",
   description: "Enterprise Gateway for AI Vibe Coding Applications",
 };
 
