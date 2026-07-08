@@ -1,0 +1,171 @@
+IVS — Internal Vibe Server
+End-User License Agreement (EULA) — Free Edition
+Version 1.0 · Effective 2026-06-01
+
+Copyright © 2026 IVS Project. All Rights Reserved.
+
+THIS IS A PROPRIETARY SOFTWARE LICENSE. THIS SOFTWARE IS NOT OPEN SOURCE.
+READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING THE SOFTWARE.
+
+================================================================================
+1. DEFINITIONS
+================================================================================
+
+"Software"      The IVS — Internal Vibe Server program, including the
+                backend, frontend, scripts, configuration, documentation,
+                and any updates or modifications.
+"Licensor"      The IVS Project, copyright holder.
+"Licensee"      The individual or single legal entity installing or using
+                the Software.
+"Free Edition"  This binary/source distribution, intended for personal,
+                educational, and internal non-commercial use on a single
+                machine identified by its machine fingerprint.
+"Enterprise"    A separately-licensed commercial edition for multi-machine,
+                multi-tenant, or commercial deployment.
+
+================================================================================
+2. GRANT OF LICENSE
+================================================================================
+
+Subject to compliance with this EULA, Licensor grants Licensee a limited,
+non-exclusive, non-transferable, revocable license to:
+
+  (a) Install and run one (1) copy of the Free Edition on a single machine
+      for personal or internal non-commercial use.
+  (b) Deploy user-built applications onto the Software for use within the
+      same private network.
+  (c) Modify the source code for the sole purpose of fixing bugs or
+      adapting it to Licensee's own private environment, provided that all
+      copyright notices and license headers remain intact.
+
+================================================================================
+3. RESTRICTIONS — PROHIBITED ACTS
+================================================================================
+
+Licensee SHALL NOT, and shall not permit any third party to:
+
+  3.1  REDISTRIBUTE the Software, in source or compiled form, in whole or in
+       part, to any third party, whether for free or for a fee.
+  3.2  SELL, RESELL, RENT, LEASE, SUBLICENSE, host as a service (SaaS),
+       or otherwise commercially exploit the Software.
+  3.3  REMOVE, ALTER, OR OBSCURE any copyright notice, license header,
+       trademark, machine serial number, or attribution in the Software,
+       the user interface, exported documents, or generated outputs.
+  3.4  REVERSE ENGINEER, decompile, disassemble, or attempt to derive the
+       source code of any binary distribution, except to the extent
+       expressly permitted by applicable law that cannot be contractually
+       waived.
+  3.5  CIRCUMVENT, DISABLE, OR TAMPER WITH any license validation, machine
+       fingerprint, serial number generator, integrity check, audit log,
+       or anti-piracy mechanism in the Software.
+  3.6  REBRAND, white-label, or pass off the Software as Licensee's own
+       product, or fork the project under a different name with intent
+       to compete.
+  3.7  USE the Software in a multi-machine, multi-tenant, or production
+       commercial deployment — such use requires an Enterprise license.
+  3.8  USE the Software in any manner that violates applicable law,
+       including but not limited to the Thai Personal Data Protection Act
+       (PDPA B.E. 2562), the EU General Data Protection Regulation
+       (GDPR 2016/679), or the Computer Crime Act of Thailand B.E. 2560.
+
+================================================================================
+4. INTELLECTUAL PROPERTY
+================================================================================
+
+The Software, including but not limited to its source code, architecture,
+user interface, audit log format, serial number scheme, machine fingerprint
+algorithm, export bundle layout (v2 manifest), and accompanying
+documentation, is and remains the exclusive property of Licensor and is
+protected by copyright, trade secret, and other intellectual property laws
+of the Kingdom of Thailand and international treaties.
+
+No title or ownership is transferred to Licensee under this EULA. All
+rights not expressly granted are reserved by Licensor.
+
+User-built applications deployed onto the Software remain the property of
+their respective deployers. Section 3.3 (no copyright removal) does not
+extend to those user-built applications, only to the IVS Software itself.
+
+================================================================================
+5. MACHINE FINGERPRINT AND ANTI-TAMPER
+================================================================================
+
+Upon first run the Software generates a unique machine fingerprint and
+serial number, stored at `~/.ivs/license.bound`. This fingerprint is
+computed from hardware identifiers and a cryptographic key, and is used to:
+
+  (a) Identify this installation for support and upgrade eligibility.
+  (b) Detect unauthorized cloning of the installation onto other hardware.
+  (c) Enable Enterprise fleet management when upgraded.
+
+Tampering with, forging, removing, or duplicating the machine fingerprint
+or serial number, or running the Software with a fingerprint mismatch
+sustained for more than thirty (30) days, constitutes a material breach
+of this EULA and automatically terminates this license.
+
+================================================================================
+6. TERMINATION
+================================================================================
+
+This license is effective until terminated. It terminates automatically,
+without notice, upon any breach of this EULA. Upon termination Licensee
+must cease all use of the Software and destroy all copies in Licensee's
+possession or control.
+
+Sections 3 (Restrictions), 4 (IP), 7 (Disclaimer), 8 (Liability), and
+10 (Governing Law) survive termination.
+
+================================================================================
+7. WARRANTY DISCLAIMER
+================================================================================
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR
+DATA ACCURACY. THE FREE EDITION IS PROVIDED FREE OF CHARGE AND CARRIES
+NO SUPPORT OBLIGATION.
+
+================================================================================
+8. LIMITATION OF LIABILITY
+================================================================================
+
+IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES, INCLUDING BUT
+NOT LIMITED TO LOSS OF PROFITS, DATA, OR GOODWILL, ARISING FROM OR
+RELATED TO THE USE OR INABILITY TO USE THE SOFTWARE, EVEN IF ADVISED OF
+THE POSSIBILITY OF SUCH DAMAGES. LICENSOR'S TOTAL CUMULATIVE LIABILITY
+SHALL NOT EXCEED ONE HUNDRED THAI BAHT (THB 100).
+
+================================================================================
+9. THIRD-PARTY COMPONENTS
+================================================================================
+
+The Software bundles or depends on third-party open-source components,
+each governed by its own license (FastAPI/MIT, Next.js/MIT, Caddy/Apache,
+CoreDNS/Apache, SQLAlchemy/MIT, etc.). Those licenses are preserved in
+their respective source files and `requirements.txt` / `package.json`
+manifests. This EULA does NOT modify or override those licenses; it
+governs only the IVS-original code and configuration.
+
+================================================================================
+10. GOVERNING LAW AND JURISDICTION
+================================================================================
+
+This EULA is governed by and construed in accordance with the laws of
+the Kingdom of Thailand, without regard to conflict-of-law principles.
+Any dispute arising out of or related to this EULA shall be submitted to
+the exclusive jurisdiction of the courts of Bangkok, Thailand.
+
+================================================================================
+11. CONTACT
+================================================================================
+
+For licensing inquiries, Enterprise upgrades, or to report copyright
+infringement, contact: songklod69@gmail.com
+
+================================================================================
+
+By installing, copying, or otherwise using the Software, Licensee
+acknowledges having read, understood, and agreed to be bound by this EULA.
+
+If Licensee does not agree, Licensee must NOT install or use the Software.

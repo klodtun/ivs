@@ -1,0 +1,48 @@
+================================================================================
+IVS — Internal Vibe Server
+Copyright © 2026 IVS Project. All Rights Reserved.
+================================================================================
+
+This product is licensed under a proprietary EULA. See LICENSE (English) and
+LICENSE.th.md (Thai) for the full terms.
+
+This is NOT open-source software. Redistribution, resale, or removal of
+copyright notices is prohibited. See LICENSE §3.
+
+================================================================================
+Third-Party Components
+================================================================================
+
+This product bundles or depends on the following third-party open-source
+components. Each component is governed by its own license, which remains
+in effect for that component.
+
+Backend
+-------
+  FastAPI            MIT License        https://github.com/tiangolo/fastapi
+  SQLAlchemy         MIT License        https://www.sqlalchemy.org/
+  Pydantic           MIT License        https://github.com/pydantic/pydantic
+  Uvicorn            BSD-3-Clause       https://www.uvicorn.org/
+  python-docker      Apache-2.0         https://github.com/docker/docker-py
+  cryptography       Apache-2.0/BSD     https://cryptography.io/
+  zeroconf           LGPL-2.1           https://github.com/python-zeroconf/python-zeroconf
+  psutil             BSD-3-Clause       https://github.com/giampaolo/psutil
+
+Frontend
+--------
+  Next.js            MIT License        https://nextjs.org/
+  React              MIT License        https://react.dev/
+  Tailwind CSS       MIT License        https://tailwindcss.com/
+  TypeScript         Apache-2.0         https://www.typescriptlang.org/
+
+Infrastructure
+--------------
+  Caddy              Apache-2.0         https://caddyserver.com/
+  CoreDNS            Apache-2.0         https://coredns.io/
+  Docker             Apache-2.0         https://www.docker.com/
+
+================================================================================
+
+Trademarks: "IVS", "Internal Vibe Server", and the IVS logo are unregistered
+trademarks of the IVS Project. Use of these marks in derivative works,
+forks, or competing products is prohibited without prior written consent.

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * IVS API Catalog (v1.0.1)
+ * IVS API Catalog
  *
  * Copyright (c) 2026 IVS Project. All Rights Reserved.
  * Licensed under the IVS Proprietary EULA.

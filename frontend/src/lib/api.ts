@@ -1,4 +1,4 @@
-// ─── API Catalog types (v1.0.1) ──────────────────────────────────────────── //
+// ─── API Catalog types ──────────────────────────────────────────── //
 export interface CatalogEntry {
   id: number;
   app_id: number | null;
