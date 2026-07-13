@@ -832,4 +832,327 @@ export const api = {
 
   deleteCatalogEntry: (id: number) =>
     request<void>(`/catalog/${id}`, { method: "DELETE" }),
+
+  // ─── OpenCLI Bridge (Pro/Enterprise) ──────────────────────────── //
+  listBridgeImports: (includeDeleted = false) =>
+    request<BridgeImport[]>(`/opencli/imports?include_deleted=${includeDeleted}`),
+
+  createBridgeImport: (data: {
+    source_kind: string;
+    source_ref: string;
+    pii_profile: "exclude" | "anonymize";
+    project_id?: number | null;
+  }) =>
+    request<BridgeImport>(`/opencli/imports`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getBridgeDashboard: () => request<BridgeDashboard>(`/opencli/dashboard`),
+  bridgeChat: (message: string, project_id?: number | null) =>
+    request<{ provider: string; mode: string; reply: string }>(`/opencli/chat`, {
+      method: "POST",
+      body: JSON.stringify({ message, project_id: project_id ?? null }),
+    }),
+
+  analyzeProjectCode: (projectId: number, path: string) =>
+    request<BridgeCodeReport>(`/opencli/projects/${projectId}/analyze-code`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+
+  listBridgeProjects: () => request<BridgeProject[]>(`/opencli/projects`),
+  createBridgeProject: (name: string, description?: string) =>
+    request<{ id: number; name: string; slug: string }>(`/opencli/projects`, {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    }),
+
+  listImportModules: (importId: number) =>
+    request<{ module: string; tables: string[]; commands: number }[]>(
+      `/opencli/imports/${importId}/modules`
+    ),
+  generateModule: (importId: number, module: string, model_id?: number | null) =>
+    request<BridgeRegenResult>(`/opencli/imports/${importId}/regen/module`, {
+      method: "POST",
+      body: JSON.stringify({ module, model_id: model_id ?? null }),
+    }),
+
+  getBridgeLlmModels: () =>
+    request<{
+      models: BridgeLlmModel[];
+      vault_keys: { id: number; name: string; provider: string; category: string }[];
+    }>(`/opencli/llm/models`),
+  createBridgeLlmModel: (data: {
+    label: string;
+    provider: string;
+    model: string;
+    base_url?: string;
+    vault_key_id?: number | null;
+  }) =>
+    request<{ id: number; label: string }>(`/opencli/llm/models`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  testBridgeLlmModel: (id: number) =>
+    request<{ ok: boolean; detail: string }>(`/opencli/llm/models/${id}/test`, {
+      method: "POST",
+    }),
+  deleteBridgeLlmModel: (id: number) =>
+    request<{ ok: boolean }>(`/opencli/llm/models/${id}`, { method: "DELETE" }),
+
+  mergeDeployImport: (importId: number, name: string, deploy: boolean) =>
+    request<{
+      merged_code_id: number;
+      version: number;
+      files: number;
+      deploy: { app_id: number; slug: string; port: number; status: string } | null;
+      deploy_error?: string;
+    }>(`/opencli/imports/${importId}/merge-deploy`, {
+      method: "POST",
+      body: JSON.stringify({ name, deploy }),
+    }),
+
+  listImportCode: (importId: number) =>
+    request<BridgeCodeVersion[]>(`/opencli/imports/${importId}/code`),
+  deployCode: (codeId: number, name: string) =>
+    request<{ app_id: number; slug: string; port: number; status: string }>(
+      `/opencli/code/${codeId}/deploy`,
+      { method: "POST", body: JSON.stringify({ name }) }
+    ),
+  deleteCode: (codeId: number, password: string, reason?: string) =>
+    request<{ ok: boolean }>(`/opencli/code/${codeId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ password, reason }),
+    }),
+  exportCodeUrl: (codeId: number) => `/opencli/code/${codeId}/export`,
+
+  listMcpTokens: (projectId: number) =>
+    request<BridgeMcpToken[]>(`/opencli/projects/${projectId}/tokens`),
+  createMcpToken: (projectId: number, name: string, scope: string) =>
+    request<{ id: number; name: string; scope: string; token: string; note: string }>(
+      `/opencli/projects/${projectId}/tokens`,
+      { method: "POST", body: JSON.stringify({ name, scope }) }
+    ),
+  revokeMcpToken: (tokenId: number) =>
+    request<{ ok: boolean }>(`/opencli/tokens/${tokenId}`, { method: "DELETE" }),
+
+  preflightBridgeImport: (data: { source_kind: string; source_ref: string }) =>
+    request<BridgePreflight>(`/opencli/imports/preflight`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, pii_profile: "exclude" }),
+    }),
+
+  getBridgeManifest: (id: number) =>
+    request<any[]>(`/opencli/imports/${id}/manifest`),
+
+  getBridgeStructure: (id: number) =>
+    request<{ import_id: number; structure_md: string }>(
+      `/opencli/imports/${id}/structure`
+    ),
+
+  getBridgeRoundtrip: (id: number) =>
+    request<BridgeRoundtrip>(`/opencli/imports/${id}/roundtrip`),
+
+  getBridgeLlmConfig: () =>
+    request<BridgeLlmConfig>(`/opencli/llm/config`),
+
+  setBridgeLlmConfig: (data: {
+    provider: string;
+    model?: string;
+    base_url?: string;
+    api_key?: string;
+  }) =>
+    request<BridgeLlmConfig>(`/opencli/llm/config`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  testBridgeLlm: () =>
+    request<{ provider: string; ok: boolean; detail: string }>(
+      `/opencli/llm/test`,
+      { method: "POST" }
+    ),
+
+  generateBridgeRegen: (id: number) =>
+    request<BridgeRegenResult>(`/opencli/imports/${id}/regen/generate`, {
+      method: "POST",
+    }),
+
+  rebuildBridgeIndex: (id: number) =>
+    request<{ import_id: number; backend: string; chunks: number }>(
+      `/opencli/imports/${id}/index/rebuild`,
+      { method: "POST" }
+    ),
+
+  queryBridgeIndex: (id: number, text: string, k = 5) =>
+    request<{ import_id: number; query: string; results: BridgeChunkHit[] }>(
+      `/opencli/imports/${id}/index/query`,
+      { method: "POST", body: JSON.stringify({ text, k }) }
+    ),
+
+  deleteBridgeImport: (id: number, password: string, reason?: string) =>
+    request<BridgeDeletion>(`/opencli/imports/${id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ password, reason }),
+    }),
+
+  listBridgeDeletions: () =>
+    request<BridgeDeletion[]>(`/opencli/deletions`),
 };
+
+// ─── OpenCLI Bridge types ─────────────────────────────────────────── //
+export interface BridgeImport {
+  id: number;
+  importer_id: number | null;
+  source_kind: string;
+  source_ref: string;
+  source_bytes: number;
+  sha256_raw: string;
+  pii_profile: "exclude" | "anonymize";
+  status: string;
+  artifact_dir: string | null;
+  manifest_sha: string | null;
+  command_count: number | null;
+  created_at: string;
+}
+
+export interface BridgeDeletion {
+  id: number;
+  import_id: number;
+  deleted_by: number | null;
+  reason: string | null;
+  sha256_raw: string;
+  deleted_at: string;
+}
+
+export interface BridgeLlmModel {
+  id: number;
+  label: string;
+  provider: string;
+  model: string;
+  base_url: string;
+  vault_key_id: number | null;
+  vault_key_name: string | null;
+}
+
+export interface BridgeCodeReport {
+  root: string;
+  files: number;
+  modules: Record<string, string[]>;
+  tables_referenced: string[];
+  roles: string[];
+  secrets: { file: string; kind: string }[];
+  secret_count: number;
+}
+
+export interface BridgeDashboard {
+  projects: number;
+  imports: number;
+  code_versions: number;
+  deployed: number;
+  active_tokens: number;
+  provider: string;
+  provider_has_key: boolean;
+  edition: string;
+}
+
+export interface BridgeProject {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  owner_id: number | null;
+  imports: number;
+  code_versions: number;
+  created_at: string;
+}
+
+export interface BridgeCodeVersion {
+  id: number;
+  project_id: number;
+  import_id: number;
+  version: number;
+  module?: string | null;
+  provider: string;
+  model: string | null;
+  files_count: number;
+  app_type: string | null;
+  verify_ok: boolean;
+  status: string;
+  deployed_app_id: number | null;
+  sha256: string | null;
+  created_at: string;
+}
+
+export interface BridgeMcpToken {
+  id: number;
+  name: string;
+  prefix: string;
+  scope: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked: boolean;
+}
+
+export interface BridgeLlmConfig {
+  provider: string;
+  model: string;
+  base_url: string;
+  has_key: boolean;
+  available_providers: { name: string; needs_key: boolean }[];
+}
+
+export interface BridgeRegenResult {
+  import_id: number;
+  module?: string | null;
+  provider: string;
+  mode: string;
+  model: string | null;
+  files: number;
+  candidate_dir: string | null;
+  verify: { app_type: string | null; issues: string[]; ok: boolean } | null;
+  note: string;
+  brief: any | null;
+}
+
+export interface BridgeFinding {
+  severity: "critical" | "warn" | "info";
+  code: string;
+  target: string;
+  message: string;
+  recommendation: string;
+}
+
+export interface BridgePreflight {
+  site: string;
+  source_kind: string;
+  tables: number;
+  total_rows: number;
+  recommended_pii_profile: "exclude" | "anonymize";
+  recommended_exclude_tables: string[];
+  findings: BridgeFinding[];
+}
+
+export interface BridgeChunkHit {
+  id: string;
+  kind: string;
+  ref: string;
+  score: number;
+  text: string;
+  metadata: Record<string, any>;
+}
+
+export interface BridgeRoundtrip {
+  import_id: number;
+  site: string;
+  pii_profile: string;
+  tables_total: number;
+  tables_matched: number;
+  columns_expected: number;
+  columns_correct: number;
+  pii_dropped: number;
+  fidelity: number;
+  passed: boolean;
+  defects: { table: string; missing: string[]; extra: string[] }[];
+}

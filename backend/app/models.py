@@ -422,3 +422,148 @@ class MachineRegistry(Base):
     last_seen     = Column(DateTime, nullable=True)
     added_by      = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at    = Column(DateTime, default=utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# OpenCLI Bridge (Pro/Enterprise) — see docs/opencli-bridge-architecture.md
+#
+# Raw imported legacy data is NEVER stored. Only metadata + the SHA-256 of the
+# raw bytes lives here. Transformed artifacts (cli-manifest.json + markdown)
+# live as FILES under deployed_apps/_bridge/<id>/, not in the DB.
+# ---------------------------------------------------------------------------
+
+class OpenCliImportStatus(str, enum.Enum):
+    PENDING     = "pending"       # metadata row created, not yet transformed
+    TRANSFORMED = "transformed"   # manifest + markdown written to artifact_dir
+    PUBLISHED   = "published"     # exposed via MCP (P2)
+    DELETED     = "deleted"       # soft-deleted; see OpenCliImportDeletion
+
+
+class OpenCliPiiProfile(str, enum.Enum):
+    EXCLUDE   = "exclude"     # drop PII-bearing columns/values entirely
+    ANONYMIZE = "anonymize"   # replace via pii_anonymizer (HMAC-stable tokens)
+
+
+class OpenCliImport(Base):
+    __tablename__ = "opencli_imports"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    project_id    = Column(Integer, ForeignKey("opencli_projects.id", ondelete="CASCADE"),
+                           nullable=True, index=True)          # which project/app
+    importer_id   = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"),
+                           nullable=True, index=True)          # WHO imported
+    source_kind   = Column(String(20), nullable=False)         # sqlite | rest | file
+    source_ref    = Column(String(1024), nullable=False)       # path/url only — no data
+    source_bytes  = Column(Integer, nullable=False, default=0) # probed size
+    sha256_raw    = Column(String(64), nullable=False, index=True)  # HASH of raw import
+    pii_profile   = Column(Enum(OpenCliPiiProfile), nullable=False,
+                           default=OpenCliPiiProfile.EXCLUDE)
+    status        = Column(Enum(OpenCliImportStatus), nullable=False,
+                           default=OpenCliImportStatus.PENDING, index=True)
+    artifact_dir  = Column(String(1024), nullable=True)        # files, not blob
+    manifest_sha  = Column(String(64), nullable=True)          # sha256 of cli-manifest.json
+    command_count = Column(Integer, nullable=True)             # #commands emitted
+    created_at    = Column(DateTime, default=utcnow, index=True)
+    # NOTE: raw imported data is intentionally NOT a column here.
+
+    importer   = relationship("User", foreign_keys=[importer_id])
+    deletions  = relationship("OpenCliImportDeletion", back_populates="parent",
+                              cascade="all, delete-orphan")
+
+
+class OpenCliImportDeletion(Base):
+    __tablename__ = "opencli_import_deletions"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    import_id   = Column(Integer, ForeignKey("opencli_imports.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    deleted_by  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"),
+                         nullable=True)                        # WHO deleted
+    reason      = Column(Text, nullable=True)
+    sha256_raw  = Column(String(64), nullable=False)           # preserved for the record
+    deleted_at  = Column(DateTime, default=utcnow, index=True)
+
+    parent  = relationship("OpenCliImport", back_populates="deletions")
+
+
+class OpenCliProject(Base):
+    """A project/app groups many imports (versions) + generated code + MCP tokens.
+    Multiple people can add imports to the same project over time."""
+    __tablename__ = "opencli_projects"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String(200), nullable=False)
+    slug        = Column(String(200), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    owner_id    = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at  = Column(DateTime, default=utcnow, index=True)
+    updated_at  = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    owner    = relationship("User", foreign_keys=[owner_id])
+    imports  = relationship("OpenCliImport", backref="project")
+
+
+class OpenCliCodeStatus(str, enum.Enum):
+    GENERATED = "generated"   # code written, not deployed
+    DEPLOYED  = "deployed"    # pushed to an IVS app
+    DELETED   = "deleted"     # soft-deleted (kept as history until purge)
+
+
+class OpenCliCodeVersion(Base):
+    """One generated code set for a project. Every regeneration is a new version;
+    old versions are kept as history until explicitly deleted (iVS standard)."""
+    __tablename__ = "opencli_code_versions"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    project_id    = Column(Integer, ForeignKey("opencli_projects.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    import_id     = Column(Integer, ForeignKey("opencli_imports.id", ondelete="SET NULL"),
+                           nullable=True)                        # source import version
+    version       = Column(Integer, nullable=False, default=1)   # per-project increment
+    module        = Column(String(60), nullable=True)            # which module (None = whole app)
+    provider      = Column(String(30), nullable=False)           # manual|anthropic|openai
+    model         = Column(String(100), nullable=True)
+    files_count   = Column(Integer, nullable=False, default=0)
+    code_dir      = Column(String(1024), nullable=True)          # files on disk
+    sha256        = Column(String(64), nullable=True)            # hash of the code set
+    app_type      = Column(String(20), nullable=True)            # from verify_candidate
+    verify_ok     = Column(Boolean, default=False)
+    deployed_app_id = Column(Integer, ForeignKey("apps.id", ondelete="SET NULL"), nullable=True)
+    status        = Column(Enum(OpenCliCodeStatus), nullable=False,
+                           default=OpenCliCodeStatus.GENERATED, index=True)
+    created_by    = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at    = Column(DateTime, default=utcnow, index=True)
+
+
+class OpenCliLlmModel(Base):
+    """A configured AI model/agent for code generation. Key comes from the IVS
+    Vault (คลัง API Key), not stored here — Pro/Enterprise. Multiple can be
+    registered so different models build different modules (multi-agent)."""
+    __tablename__ = "opencli_llm_models"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    label        = Column(String(100), nullable=False)     # agent display name
+    provider     = Column(String(30), nullable=False)      # anthropic | openai
+    model        = Column(String(100), nullable=False)
+    base_url     = Column(String(500), nullable=True)
+    vault_key_id = Column(Integer, ForeignKey("vault_keys.id", ondelete="SET NULL"), nullable=True)
+    created_by   = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at   = Column(DateTime, default=utcnow)
+
+
+class OpenCliMcpToken(Base):
+    """A scoped access token an external AI agent uses to connect to the MCP
+    server for one project. Only the hash is stored; the value is shown once."""
+    __tablename__ = "opencli_mcp_tokens"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    project_id  = Column(Integer, ForeignKey("opencli_projects.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    name        = Column(String(200), nullable=False)             # human label
+    token_hash  = Column(String(64), unique=True, nullable=False, index=True)  # sha256(token)
+    prefix      = Column(String(16), nullable=False)              # first chars, for display
+    scope       = Column(String(20), nullable=False, default="read")  # read | read_write
+    created_by  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at  = Column(DateTime, default=utcnow, index=True)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at  = Column(DateTime, nullable=True)

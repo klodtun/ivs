@@ -175,6 +175,7 @@ def _save_bound(data: dict) -> None:
 # database container: Postgres/MySQL/Redis/Mongo). Free/Lite/Std are
 # single-container only.
 EDITIONS_WITH_EXTERNAL_DB = {"PRO", "ENT"}
+EDITIONS_WITH_VECTOR_INDEX = {"ENT"}   # OpenCLI Bridge AI retrieval index
 
 
 def current_edition() -> str:
@@ -192,6 +193,12 @@ def edition_supports_external_db(edition: Optional[str] = None) -> bool:
     """True if the edition may deploy apps that need a separate DB container."""
     ed = (edition or current_edition()).upper()
     return ed in EDITIONS_WITH_EXTERNAL_DB
+
+
+def edition_supports_vector_index(edition: Optional[str] = None) -> bool:
+    """True if the edition may build the Bridge AI retrieval (vector) index."""
+    ed = (edition or current_edition()).upper()
+    return ed in EDITIONS_WITH_VECTOR_INDEX
 
 
 def get_license_info(edition: str = "FREE", region: str = "TH") -> dict:
