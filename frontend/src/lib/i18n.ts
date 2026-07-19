@@ -1008,6 +1008,21 @@ const translations: Record<Locale, Record<string, string>> = {
     "bridge.tab.connect": "เชื่อม AI Agent ภายนอก",
     "bridge.tab.create": "การสร้างสรรค์",
     "bridge.add_data": "เพิ่มข้อมูล",
+    "bridge.search_ph": "ค้นหา (ชื่อโครงการ/ไฟล์)",
+    "bridge.proj.empty": "ยังไม่มีโครงการ — สร้างที่ tab นำเข้าใหม่",
+    "bridge.proj.files": "ไฟล์",
+    "bridge.proj.files_hint": "โมดูลรวมทุกไฟล์ (union ตาราง, ตัดซ้ำ) — ปรับไฟล์ก่อนกด \"โมดูล\" แล้วตรวจก่อนให้ AI สร้าง",
+    "bridge.proj.no_files": "ยังไม่มีไฟล์ในโครงการนี้",
+    "bridge.proj.remove_file": "ลบไฟล์",
+    "bridge.gen.errhist": "ประวัติ error",
+    "bridge.gen.none": "ยังไม่มีประวัติ",
+    "bridge.gen.pick": "เลือกดูรายการ…",
+    "bridge.gen.code": "Error code",
+    "bridge.gen.tip": "แนะนำ: ลองโมเดลที่เก่งกว่า หรือสลับผู้ให้บริการ AI แล้วสร้างเฉพาะโมดูลนี้ใหม่",
+    "bridge.deploy.hist": "ประวัติ Deploy",
+    "bridge.deploy.empty": "ยังไม่มีการรวม+Deploy",
+    "bridge.deploy.notdeployed": "รวมแล้ว (ยังไม่ deploy)",
+    "bridge.deploy.open": "เปิดแอป",
     "bridge.proj.none": "— ไม่ผูกโครงการ —",
     "bridge.proj.new_ph": "ชื่อโครงการ/App ใหม่",
     "bridge.proj.create": "สร้างโครงการ",
@@ -1287,9 +1302,25 @@ frontend/dist/         → Optional (iVS auto-builds if missing)
 - PORT: assigned by iVS automatically
 - Vault keys: injected from iVS Vault
 
+## Data & Database (สำคัญ — อ่านให้ครบ)
+- iVS Free รัน "คอนเทนเนอร์เดียว" ต่อแอป — ห้ามมี service แยก
+  (ห้ามใช้ Postgres/MySQL/Redis เป็น container แยก, ห้าม docker-compose)
+- เก็บข้อมูลได้! ใช้ฐานข้อมูลแบบ "ฝังในแอป" (embedded) เช่น
+  SQLite ไฟล์เดียว หรือไฟล์ JSON — ไม่ต้องมี DB server แยก
+- ข้อมูล "อยู่ครบระหว่างที่แอปทำงาน" (กด refresh ไม่หาย)
+- "หายตอน redeploy" = หายเฉพาะตอน BUILD/DEPLOY ใหม่ทับ (rebuild)
+  ไม่ใช่ตอน refresh — ต้องเก็บถาวรให้ Export แอป (โค้ด+ข้อมูล) ไว้ก่อน
+- ถ้าจำเป็นต้องใช้ Postgres/MySQL แยกจริง = ฟีเจอร์รุ่น Pro/Enterprise
+
+## Architecture Rules (nodejs/fullstack)
+- ต้องรันได้ด้วย "process เดียว" จาก npm start
+- ถ้ามี API + web แยก ให้รวมใน process เดียว (mount API in-process)
+  หรือ server หลัก spawn API เป็น child ที่ 127.0.0.1 ในคอนเทนเนอร์
+- ห้าม proxy ไป host/container อื่น (api:4000, db:5432) — จะได้
+  Bad Gateway เพราะ iVS ไม่ได้รัน service เหล่านั้น
+
 ## Constraints (v1.0)
 - Max upload: ~150MB zip
-- No persistent storage (data lost on redeploy)
 - No custom domain (use IP:PORT)
 - Single container per app`,
 
@@ -2354,6 +2385,21 @@ frontend/dist/         → Optional (iVS auto-builds if missing)
     "bridge.tab.connect": "Connect external AI",
     "bridge.tab.create": "Create",
     "bridge.add_data": "Add data",
+    "bridge.search_ph": "search (project / file)",
+    "bridge.proj.empty": "no projects yet — create one in the Import tab",
+    "bridge.proj.files": "files",
+    "bridge.proj.files_hint": "modules combine every file (union of tables, deduped) — adjust files, then click \"Modules\" and review before AI generates",
+    "bridge.proj.no_files": "no files in this project yet",
+    "bridge.proj.remove_file": "remove file",
+    "bridge.gen.errhist": "error history",
+    "bridge.gen.none": "no history yet",
+    "bridge.gen.pick": "pick an entry…",
+    "bridge.gen.code": "Error code",
+    "bridge.gen.tip": "Tip: try a stronger model or a different AI provider, then regenerate just this module",
+    "bridge.deploy.hist": "Deploy history",
+    "bridge.deploy.empty": "no merge+deploy yet",
+    "bridge.deploy.notdeployed": "merged (not deployed)",
+    "bridge.deploy.open": "open app",
     "bridge.proj.none": "— no project —",
     "bridge.proj.new_ph": "new project/app name",
     "bridge.proj.create": "Create project",
@@ -2633,9 +2679,27 @@ frontend/dist/         → Optional (iVS auto-builds if missing)
 - PORT: assigned by iVS automatically
 - Vault keys: injected from iVS Vault
 
+## Data & Database (IMPORTANT — read fully)
+- iVS Free runs ONE container per app — no separate services
+  (no Postgres/MySQL/Redis as a separate container, no docker-compose)
+- You CAN store data — use an EMBEDDED database inside the app, e.g.
+  a single SQLite file or a JSON file. No separate DB server needed.
+- Data persists WHILE the app runs (a browser refresh does NOT lose it)
+- "Lost on redeploy" means only on a fresh BUILD/DEPLOY (container
+  rebuild), not on refresh — to keep data across redeploys, Export the
+  app (code + data) first
+- If you truly need a separate Postgres/MySQL = Pro/Enterprise feature
+
+## Architecture Rules (nodejs/fullstack)
+- Must run from a SINGLE process via npm start
+- If you have a separate API + web, run them in one process (mount the
+  API in-process) or have the main server spawn the API as a child on
+  127.0.0.1 inside the same container
+- Do NOT proxy to another host/container (api:4000, db:5432) — that
+  yields Bad Gateway because iVS does not run those services
+
 ## Constraints (v1.0)
 - Max upload: ~150MB zip
-- No persistent storage (data lost on redeploy)
 - No custom domain (use IP:PORT)
 - Single container per app`,
 
