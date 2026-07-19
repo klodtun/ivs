@@ -34,6 +34,8 @@ _build_status: dict[str, str] = {}  # "building", "success", "error", "timeout"
 
 DOCKERFILE_TEMPLATES = {
     "nodejs": """FROM node:20-alpine
+# openssl + glibc compat: Prisma and other native modules need them on Alpine
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --production
@@ -75,6 +77,7 @@ COPY dist/ /usr/share/nginx/html
 EXPOSE 80
 """,
     "nodejs_vite": """FROM node:20-alpine
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
@@ -88,6 +91,8 @@ CMD ["npx", "vite", "preview", "--port", "{port}", "--host"]
     # hardcoded port in the app's "start" script can't override the port
     # iVS maps. Binds 0.0.0.0 by default.
     "nodejs_nextjs": """FROM node:20-alpine
+# openssl + glibc compat for Prisma / native modules (common in Next.js apps)
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
