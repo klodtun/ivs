@@ -394,6 +394,8 @@ export const api = {
 
   downloadEContractUrl: (certId: string) => `${BACKEND_DIRECT}/econtract/${certId}/download`,
 
+  evidenceBundleUrl: (certId: string) => `${BACKEND_DIRECT}/econtract/${certId}/evidence`,
+
   revokeTunnel: (id: number) =>
     request<any>(`/tunnels/${id}`, { method: "DELETE" }),
 

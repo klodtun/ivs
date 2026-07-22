@@ -13,7 +13,11 @@ digital signatures for the highest legal tier.)
 """
 import hashlib
 import hmac
+import io
+import json
 import secrets
+import zipfile
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -159,3 +163,63 @@ def detail(db: Session, cert_id: str) -> dict:
     d = to_dict(cert)
     d["signatures"] = list_signatures(db, cert_id)
     return d
+
+
+# ── Evidence bundle (Phase 3) ────────────────────────────────────────────
+
+def build_evidence_bundle(db: Session, cert_id: str) -> bytes:
+    """Build a tamper-evident .zip: certificate + signatures + audit trail +
+    manifest (SHA-256 of each file). Self-contained legal evidence bundle for
+    an electronic transaction. Returns the zip bytes, or raises ValueError."""
+    from app.models import AuditLog  # local to avoid a top-level cycle
+    d = detail(db, cert_id)
+    if not d:
+        raise ValueError("ไม่พบใบรับรอง")
+
+    audits = (
+        db.query(AuditLog)
+        .filter(AuditLog.resource_type == "econtract", AuditLog.resource_id == cert_id)
+        .order_by(AuditLog.created_at.asc())
+        .all()
+    )
+    audit_rows = [{
+        "time": a.created_at.isoformat() if a.created_at else None,
+        "action": a.action, "user": a.username, "ip": a.ip_address,
+        "ntp_server": a.ntp_server, "details": a.details,
+    } for a in audits]
+
+    generated = datetime.now(timezone.utc).isoformat()
+
+    files: dict[str, bytes] = {}
+    files["certificate.json"] = json.dumps(d, ensure_ascii=False, indent=2).encode()
+    files["signatures.json"] = json.dumps(d.get("signatures", []), ensure_ascii=False, indent=2).encode()
+    files["audit_trail.json"] = json.dumps(audit_rows, ensure_ascii=False, indent=2).encode()
+    files["README.txt"] = (
+        "ชุดหลักฐานธุรกรรมทางอิเล็กทรอนิกส์ (iVS e-Contract Evidence Bundle)\n"
+        f"Cert ID     : {d['cert_id']}\n"
+        f"เอกสาร       : {d['filename']}\n"
+        f"ลายนิ้วมือ    : SHA-256 {d['sha256']}\n"
+        f"เวลารับรอง   : {d['ntp_time']}  ({d['ntp_server_name']})\n"
+        f"ลายเซ็นระบบ  : {d['signature']}\n"
+        f"ผู้ลงนาม     : {len(d.get('signatures', []))} ราย\n"
+        f"สร้างบันเดิล : {generated}\n\n"
+        "การตรวจสอบ:\n"
+        "- เทียบ SHA-256 ของเอกสารต้นฉบับกับค่าใน certificate.json\n"
+        "- ตรวจใบรับรอง/ลายเซ็นได้ที่เมนู e-Contract ของ iVS (ใช้ Cert ID หรือไฟล์เดิม)\n"
+        "- manifest.json ระบุ SHA-256 ของทุกไฟล์ในชุดนี้ (ตรวจความครบถ้วน)\n\n"
+        "อ้างอิง: พ.ร.บ. ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์ (integrity §12, ลายมือชื่อ §9/§26)\n"
+    ).encode("utf-8")
+
+    manifest = {
+        "bundle": "iVS e-Contract Evidence Bundle",
+        "cert_id": d["cert_id"],
+        "generated_at": generated,
+        "files": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
+    }
+    files["manifest.json"] = json.dumps(manifest, ensure_ascii=False, indent=2).encode()
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in files.items():
+            zf.writestr(name, data)
+    return buf.getvalue()

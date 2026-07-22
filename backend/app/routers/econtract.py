@@ -123,6 +123,30 @@ async def sign(
     return sig
 
 
+@router.get("/{cert_id}/evidence")
+async def evidence_bundle(
+    cert_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Download a tamper-evident .zip evidence bundle (cert + signatures +
+    audit trail + SHA-256 manifest)."""
+    try:
+        data = econtract_service.build_evidence_bundle(db, cert_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_evidence", resource_type="econtract",
+        resource_id=cert_id, details=f"ส่งออกชุดหลักฐาน {cert_id}",
+    )
+    db.commit()
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{cert_id}_evidence.zip"'},
+    )
+
+
 @router.get("/{cert_id}/download")
 async def download_cert(
     cert_id: str,

@@ -216,7 +216,13 @@ export default function EContractPage() {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <span className="font-mono text-sm font-bold text-brand-700">{detail.cert_id}</span>
-              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+              <div className="flex items-center gap-2">
+                <a href={api.evidenceBundleUrl(detail.cert_id)}
+                  className="text-[10px] px-2 py-1 bg-brand-600 text-white rounded hover:bg-brand-700">
+                  ⬇ {t("ect.evidence")}
+                </a>
+                <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
               <Field label={t("ect.col_file")} value={detail.filename} />
