@@ -18,7 +18,7 @@ import secrets
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import EContractCert
+from app.models import EContractCert, EContractSignature
 from app.services.ntp_service import ntp_service
 
 
@@ -103,3 +103,59 @@ def to_dict(row: EContractCert) -> dict:
         "note": row.note,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+# ── e-Signature (Phase 2) ────────────────────────────────────────────────
+
+def _sign_signature(cert_sha256: str, signer: str, signed_iso: str, method: str) -> str:
+    msg = f"{cert_sha256}|{signer}|{signed_iso}|{method}".encode()
+    return hmac.new(settings.SECRET_KEY.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def sig_to_dict(s: EContractSignature) -> dict:
+    return {
+        "id": s.id,
+        "cert_id": s.cert_id,
+        "signer_name": s.signer_name,
+        "method": s.method,
+        "identity_ref": s.identity_ref,
+        "signed_at": s.signed_at.isoformat() if s.signed_at else None,
+        "ip_address": s.ip_address,
+        "signature": s.signature,
+    }
+
+
+def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "typed",
+                  identity_ref: str = "", ip: str = "", created_by: int = None) -> dict:
+    """Record an electronic signature on a certificate (§9/§26)."""
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise ValueError("ไม่พบใบรับรอง")
+    now = ntp_service.now()
+    row = EContractSignature(
+        cert_id=cert_id, signer_name=signer_name[:200],
+        method=method if method in ("typed", "drawn", "otp") else "typed",
+        identity_ref=(identity_ref or "")[:20000], signed_at=now,
+        ip_address=(ip or "")[:45], signature="", created_by=created_by,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    row.signature = _sign_signature(cert.sha256, row.signer_name, row.signed_at.isoformat(), row.method)
+    db.commit()
+    db.refresh(row)
+    return sig_to_dict(row)
+
+
+def list_signatures(db: Session, cert_id: str) -> list:
+    rows = db.query(EContractSignature).filter(EContractSignature.cert_id == cert_id).order_by(EContractSignature.signed_at.asc()).all()
+    return [sig_to_dict(r) for r in rows]
+
+
+def detail(db: Session, cert_id: str) -> dict:
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        return None
+    d = to_dict(cert)
+    d["signatures"] = list_signatures(db, cert_id)
+    return d

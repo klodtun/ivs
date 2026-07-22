@@ -377,6 +377,21 @@ export const api = {
     return res.json() as Promise<{ valid: boolean; reason: string; cert: any }>;
   },
 
+  getEContract: (certId: string) => request<any>(`/econtract/${certId}`),
+
+  signEContract: async (certId: string, signerName: string, method: string, identityRef: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("signer_name", signerName);
+    fd.append("method", method);
+    fd.append("identity_ref", identityRef);
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/${certId}/sign`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json();
+  },
+
   downloadEContractUrl: (certId: string) => `${BACKEND_DIRECT}/econtract/${certId}/download`,
 
   revokeTunnel: (id: number) =>

@@ -80,6 +80,49 @@ async def verify(
     return econtract_service.verify(db, sha256=sha256, cert_id=cert_id)
 
 
+@router.get("/{cert_id}")
+async def get_detail(
+    cert_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Certificate detail + its electronic signatures."""
+    d = econtract_service.detail(db, cert_id)
+    if not d:
+        raise HTTPException(status_code=404, detail="ไม่พบใบรับรอง")
+    return d
+
+
+@router.post("/{cert_id}/sign")
+async def sign(
+    cert_id: str,
+    request: Request,
+    signer_name: str = Form(...),
+    method: str = Form("typed"),
+    identity_ref: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Record an electronic signature on a certificate (§9/§26)."""
+    if not signer_name.strip():
+        raise HTTPException(status_code=422, detail="ต้องระบุชื่อผู้ลงนาม")
+    ip = request.client.host if request.client else ""
+    try:
+        sig = econtract_service.add_signature(
+            db, cert_id=cert_id, signer_name=signer_name.strip(),
+            method=method, identity_ref=identity_ref, ip=ip, created_by=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_sign", resource_type="econtract",
+        resource_id=cert_id,
+        details=f"ลงนาม {cert_id} โดย {signer_name.strip()} · วิธี {method}",
+    )
+    db.commit()
+    return sig
+
+
 @router.get("/{cert_id}/download")
 async def download_cert(
     cert_id: str,

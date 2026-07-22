@@ -249,6 +249,26 @@ class EContractCert(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class EContractSignature(Base):
+    """
+    ลายมือชื่ออิเล็กทรอนิกส์ต่อใบรับรอง e-Contract (§9 / §26).
+    ระบุตัวผู้ลงนาม + วิธี + เวลา NTP + IP และผูกด้วย HMAC เพื่อตรวจการแก้ไข
+    (ลายเซ็นที่เชื่อถือได้ — reliable e-signature).
+    """
+    __tablename__ = "econtract_signatures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cert_id = Column(String(40), ForeignKey("econtract_certs.cert_id"), index=True, nullable=False)
+    signer_name = Column(String(200), nullable=False)
+    method = Column(String(20), default="typed")   # typed | drawn | otp
+    identity_ref = Column(Text, default="")        # อีเมล/เบอร์ที่ยืนยัน หรือ data URI ลายเซ็นวาด
+    signed_at = Column(DateTime, nullable=False)
+    ip_address = Column(String(45), default="")
+    signature = Column(String(64), nullable=False) # HMAC(cert_sha256|signer|signed_at|method)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class AppPdpa(Base):
     """
     PDPA ROPA (Record of Processing Activities) per app.

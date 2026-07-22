@@ -29,6 +29,28 @@ export default function EContractPage() {
   const [certId, setCertId] = useState("");
   const [vResult, setVResult] = useState<{ valid: boolean; reason: string; cert: Cert | null } | null>(null);
 
+  // detail + sign
+  const [detail, setDetail] = useState<any | null>(null);
+  const [signName, setSignName] = useState("");
+  const [signMethod, setSignMethod] = useState("typed");
+  const [signId, setSignId] = useState("");
+  const [signing, setSigning] = useState(false);
+
+  const openDetail = async (cid: string) => {
+    try { setDetail(await api.getEContract(cid)); setSignName(""); setSignId(""); setSignMethod("typed"); }
+    catch (e) { console.error(e); }
+  };
+  const doSign = async () => {
+    if (!detail || !signName.trim() || signing) return;
+    setSigning(true);
+    try {
+      await api.signEContract(detail.cert_id, signName.trim(), signMethod, signId);
+      setDetail(await api.getEContract(detail.cert_id));
+      setSignName(""); setSignId("");
+    } catch (e: any) { alert(e?.message || "error"); }
+    finally { setSigning(false); }
+  };
+
   const load = useCallback(async () => {
     try { setList(await api.listEContracts()); } catch (e) { console.error(e); }
   }, []);
@@ -178,13 +200,68 @@ export default function EContractPage() {
                   <td className="px-3 py-2 text-gray-700">{c.filename}</td>
                   <td className="px-3 py-2 text-gray-600">{fmt(c.ntp_time)}</td>
                   <td className="px-3 py-2 font-mono text-gray-500">{short(c.sha256)}</td>
-                  <td className="px-3 py-2 text-right">
-                    <a href={api.downloadEContractUrl(c.cert_id)} className="text-[10px] text-brand-600 hover:text-brand-700">.json</a>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <button onClick={() => openDetail(c.cert_id)} className="text-[10px] text-brand-600 hover:text-brand-700 mr-2">{t("ect.view")}</button>
+                    <a href={api.downloadEContractUrl(c.cert_id)} className="text-[10px] text-gray-400 hover:text-gray-600">.json</a>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {detail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6" onClick={() => setDetail(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-mono text-sm font-bold text-brand-700">{detail.cert_id}</span>
+              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+              <Field label={t("ect.col_file")} value={detail.filename} />
+              <Field label={t("ect.field_time")} value={`${fmt(detail.ntp_time)} · ${detail.ntp_server_name || "NTP"}`} />
+              <Field label={t("ect.field_hash")} value={detail.sha256} mono />
+              <Field label={t("ect.field_sig")} value={short(detail.signature)} mono />
+            </div>
+
+            {/* signatures */}
+            <h3 className="text-xs font-semibold text-gray-800 mb-2">{t("ect.sign_title")}</h3>
+            <div className="border border-gray-200 rounded-md overflow-hidden mb-3">
+              {(detail.signatures || []).length === 0 ? (
+                <div className="px-3 py-4 text-center text-gray-400 text-xs">{t("ect.sig_none")}</div>
+              ) : (
+                (detail.signatures || []).map((sg: any) => (
+                  <div key={sg.id} className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
+                    <span className="text-green-600">✓</span>
+                    <span className="font-medium text-gray-800">{sg.signer_name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded">{t(`ect.method_${sg.method}`)}</span>
+                    <span className="ml-auto text-[10px] text-gray-400">{t("ect.sig_at")} {fmt(sg.signed_at)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* sign form */}
+            <div className="bg-gray-50 border border-gray-200 rounded-md p-3 space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input value={signName} onChange={(e) => setSignName(e.target.value)} placeholder={t("ect.signer_name")}
+                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+                <select value={signMethod} onChange={(e) => setSignMethod(e.target.value)}
+                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500">
+                  <option value="typed">{t("ect.method_typed")}</option>
+                  <option value="drawn">{t("ect.method_drawn")}</option>
+                  <option value="otp">{t("ect.method_otp")}</option>
+                </select>
+              </div>
+              <input value={signId} onChange={(e) => setSignId(e.target.value)} placeholder={t("ect.identity")}
+                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+              <button onClick={doSign} disabled={!signName.trim() || signing}
+                className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 disabled:opacity-50">
+                {signing ? t("ect.signing") : t("ect.sign_btn")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
