@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type Cert = {
   cert_id: string; filename: string; size_bytes: number; sha256: string;
   ntp_time: string | null; ntp_server_name: string; signature: string;
-  signer: string; note: string; created_at: string | null;
+  signer: string; note: string; created_at: string | null; signature_count?: number;
 };
 
 const ENDPOINTS = [
@@ -272,7 +272,9 @@ export default function EContractPage() {
                   <td className="px-3 py-2 text-gray-600">{fmt(c.ntp_time)}</td>
                   <td className="px-3 py-2 font-mono text-gray-500">{short(c.sha256)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={() => openDetail(c.cert_id)} className="text-[10px] text-brand-600 hover:text-brand-700 mr-2">{t("ect.view")}</button>
+                    <button onClick={() => openDetail(c.cert_id)} className="text-[10px] text-brand-600 hover:text-brand-700 mr-2">
+                      {t("ect.view")}{c.signature_count ? ` (${c.signature_count})` : ""}
+                    </button>
                     <a href={api.downloadEContractUrl(c.cert_id)} className="text-[10px] text-gray-400 hover:text-gray-600">.json</a>
                   </td>
                 </tr>

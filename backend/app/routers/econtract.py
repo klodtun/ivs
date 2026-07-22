@@ -26,8 +26,19 @@ async def list_certs(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
+    from sqlalchemy import func
+    from app.models import EContractSignature
     rows = db.query(EContractCert).order_by(EContractCert.created_at.desc()).limit(100).all()
-    return [econtract_service.to_dict(r) for r in rows]
+    counts = dict(
+        db.query(EContractSignature.cert_id, func.count(EContractSignature.id))
+        .group_by(EContractSignature.cert_id).all()
+    )
+    out = []
+    for r in rows:
+        d = econtract_service.to_dict(r)
+        d["signature_count"] = counts.get(r.cert_id, 0)
+        out.append(d)
+    return out
 
 
 @router.post("/certify")
