@@ -10,10 +10,44 @@ type Cert = {
   signer: string; note: string; created_at: string | null;
 };
 
+const ENDPOINTS = [
+  ["POST", "/api/econtract/certify", "อัปโหลดไฟล์ → ออกใบรับรอง (hash + เวลา NTP + ลายเซ็นระบบ)"],
+  ["POST", "/api/econtract/{id}/sign", "ลงนามอิเล็กทรอนิกส์ (signer_name, method, identity_ref)"],
+  ["POST", "/api/econtract/verify", "ตรวจสอบ (ไฟล์เดิม หรือ cert_id) → valid/invalid"],
+  ["GET", "/api/econtract/{id}", "รายละเอียดใบรับรอง + ลายเซ็นทั้งหมด"],
+  ["GET", "/api/econtract/{id}/evidence", "ชุดหลักฐาน .zip (cert + signatures + audit + manifest)"],
+];
+
+const ECONTRACT_PROMPT = `Build a web app that runs on iVS (Internal Vibe Server) and implements
+legally-compliant electronic contracts (e-Contract) under Thailand's
+Electronic Transactions Act. Do NOT roll your own crypto/timestamp —
+call the iVS e-Contract API, which provides integrity, a Thai legal-NTP
+trusted timestamp, e-signatures and evidence bundles.
+
+Requirements:
+1. Let the user upload/prepare a contract document.
+2. Certify it: POST {IVS_URL}/api/econtract/certify  (multipart: file, signer, note)
+   -> store the returned cert_id + sha256 with the contract.
+3. Collect signatures: POST {IVS_URL}/api/econtract/{cert_id}/sign
+   (form: signer_name, method = typed|drawn|otp, identity_ref)
+   -> show each signer, method and timestamp.
+4. Verify anytime: POST {IVS_URL}/api/econtract/verify  (file OR cert_id)
+   -> show VALID / INVALID (tampered).
+5. Offer the evidence bundle: link to GET {IVS_URL}/api/econtract/{cert_id}/evidence (.zip).
+
+Rules:
+- Auth: send the iVS bearer token in the Authorization header on every call.
+- Read IVS_URL and the token from environment variables / iVS Vault — never hardcode.
+- Keep all contract data on the iVS host (PDPA §28 — no cross-border transfer).
+- Show the trusted timestamp and SHA-256 to the user as legal evidence.
+- Package for iVS: single container, listen on process.env.PORT, no separate DB
+  service (use SQLite/JSON if you need local storage).`;
+
 export default function EContractPage() {
   const { t } = useLang();
-  const [tab, setTab] = useState<"issue" | "verify" | "list">("issue");
+  const [tab, setTab] = useState<"issue" | "verify" | "list" | "api">("issue");
   const [list, setList] = useState<Cert[]>([]);
+  const [copied, setCopied] = useState(false);
 
   // issue
   const [file, setFile] = useState<File | null>(null);
@@ -91,7 +125,7 @@ export default function EContractPage() {
       </div>
 
       <div className="flex gap-1 border-b border-gray-200">
-        {(["issue", "verify", "list"] as const).map((k) => (
+        {(["issue", "verify", "list", "api"] as const).map((k) => (
           <button key={k} onClick={() => setTab(k)}
             className={cn("px-3 py-1.5 text-xs font-medium -mb-px border-b-2 transition",
               tab === k ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-800")}>
@@ -208,6 +242,43 @@ export default function EContractPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === "api" && (
+        <div className="space-y-4 max-w-3xl">
+          <p className="text-xs text-gray-500">{t("ect.api_desc")}</p>
+
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-3 py-2 text-[11px] font-semibold text-gray-600 bg-gray-50 border-b border-gray-200">{t("ect.api_endpoints")}</div>
+            {ENDPOINTS.map(([m, path, desc]) => (
+              <div key={path} className="flex items-start gap-3 px-3 py-2 border-b border-gray-100 last:border-0">
+                <span className={cn("text-[10px] font-bold font-mono px-1.5 py-0.5 rounded flex-shrink-0",
+                  m === "GET" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700")}>{m}</span>
+                <span className="text-[11px] font-mono text-gray-800 flex-shrink-0">{path}</span>
+                <span className="text-[11px] text-gray-500">{desc}</span>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">{t("ect.api_prompt")}</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { const b = new Blob([ECONTRACT_PROMPT], { type: "text/markdown" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "ivs-econtract-prompt.md"; a.click(); URL.revokeObjectURL(u); }}
+                  className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-brand-100 hover:text-brand-700">
+                  ⬇ {t("ect.download_md")}
+                </button>
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(ECONTRACT_PROMPT); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                  className={cn("text-[10px] px-2 py-1 rounded", copied ? "bg-green-100 text-green-700" : "bg-brand-600 text-white hover:bg-brand-700")}>
+                  {copied ? `✓ ${t("ect.copied")}` : `⧉ ${t("ect.copy")}`}
+                </button>
+              </div>
+            </div>
+            <pre className="bg-gray-900 text-gray-100 text-[10.5px] rounded-lg p-3 whitespace-pre-wrap font-mono max-h-[420px] overflow-y-auto">{ECONTRACT_PROMPT}</pre>
+          </div>
         </div>
       )}
 
