@@ -62,6 +62,7 @@ export default function EContractPage() {
   const [vfile, setVfile] = useState<File | null>(null);
   const [certId, setCertId] = useState("");
   const [vResult, setVResult] = useState<{ valid: boolean; reason: string; cert: Cert | null } | null>(null);
+  const [vdrag, setVdrag] = useState(false);
 
   // detail + sign
   const [detail, setDetail] = useState<any | null>(null);
@@ -180,10 +181,16 @@ export default function EContractPage() {
 
       {tab === "verify" && (
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3 max-w-2xl">
-          <label className="block border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg p-6 text-center cursor-pointer">
+          <label
+            onDragOver={(e) => { e.preventDefault(); setVdrag(true); }}
+            onDragLeave={() => setVdrag(false)}
+            onDrop={(e) => { e.preventDefault(); setVdrag(false); setVfile(e.dataTransfer.files?.[0] ?? null); setVResult(null); }}
+            className={cn("block border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition",
+              vdrag ? "border-brand-500 bg-brand-50" : "border-gray-300 bg-gray-50")}>
             <input type="file" className="hidden"
-              onChange={(e) => { setVfile(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }} />
+              onChange={(e) => { setVfile(e.target.files?.[0] ?? null); setVResult(null); e.currentTarget.value = ""; }} />
             <p className="text-xs font-medium text-gray-700">{vfile ? vfile.name : t("ect.drop")}</p>
+            <p className="text-[10px] text-gray-400 mt-1">{t("ect.drop_hint")}</p>
           </label>
           <input value={certId} onChange={(e) => setCertId(e.target.value)} placeholder={t("ect.verify_by_id") + " (ECT-…)"}
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-mono outline-none focus:ring-2 focus:ring-brand-500" />
