@@ -349,6 +349,36 @@ export const api = {
       }),
     }),
 
+  // e-Contract certificates (integrity + trusted timestamp)
+  listEContracts: () => request<any[]>("/econtract"),
+
+  certifyEContract: async (file: File, signer: string, note: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("signer", signer);
+    fd.append("note", note);
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/certify`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json();
+  },
+
+  verifyEContract: async (file: File | null, certId: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    if (file) fd.append("file", file);
+    if (certId) fd.append("cert_id", certId);
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/verify`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json() as Promise<{ valid: boolean; reason: string; cert: any }>;
+  },
+
+  downloadEContractUrl: (certId: string) => `${BACKEND_DIRECT}/econtract/${certId}/download`,
+
   revokeTunnel: (id: number) =>
     request<any>(`/tunnels/${id}`, { method: "DELETE" }),
 
@@ -862,6 +892,40 @@ export const api = {
     }),
 
   listBridgeProjects: () => request<BridgeProject[]>(`/opencli/projects`),
+  deleteBridgeProject: (id: number) =>
+    request<{ ok: boolean }>(`/opencli/projects/${id}`, { method: "DELETE" }),
+  // project-level ops (P16) — one project/app is the unit of work
+  projectModules: (id: number) =>
+    request<{ module: string; tables: string[]; commands: number }[]>(
+      `/opencli/projects/${id}/modules`
+    ),
+  projectGenerateModule: (id: number, module: string, model_id?: number | null) =>
+    request<BridgeRegenResult>(`/opencli/projects/${id}/regen/module`, {
+      method: "POST",
+      body: JSON.stringify({ module, model_id: model_id ?? null }),
+    }),
+  projectCode: (id: number) => request<BridgeCodeVersion[]>(`/opencli/projects/${id}/code`),
+  projectStructure: (id: number) =>
+    request<{ project_id: number; structure_md: string }>(`/opencli/projects/${id}/structure`),
+  projectRoundtrip: (id: number) =>
+    request<BridgeRoundtrip & { imports: number }>(`/opencli/projects/${id}/roundtrip`),
+  projectMergeDeploy: (id: number, name: string, deploy: boolean) =>
+    request<{
+      merged_code_id: number; version: number; files: number;
+      deploy: { app_id: number; slug: string; port: number; status: string } | null;
+      deploy_error?: string;
+    }>(`/opencli/projects/${id}/merge-deploy`, {
+      method: "POST",
+      body: JSON.stringify({ name, deploy }),
+    }),
+  projectGenAttempts: (id: number) =>
+    request<BridgeGenAttempt[]>(`/opencli/projects/${id}/gen-attempts`),
+  projectDeploys: (id: number) =>
+    request<BridgeDeploy[]>(`/opencli/projects/${id}/deploys`),
+  importGenAttempts: (id: number) =>
+    request<BridgeGenAttempt[]>(`/opencli/imports/${id}/gen-attempts`),
+  importDeploys: (id: number) =>
+    request<BridgeDeploy[]>(`/opencli/imports/${id}/deploys`),
   createBridgeProject: (name: string, description?: string) =>
     request<{ id: number; name: string; slug: string }>(`/opencli/projects`, {
       method: "POST",
@@ -1004,6 +1068,7 @@ export const api = {
 // ─── OpenCLI Bridge types ─────────────────────────────────────────── //
 export interface BridgeImport {
   id: number;
+  project_id: number | null;
   importer_id: number | null;
   source_kind: string;
   source_ref: string;
@@ -1082,6 +1147,32 @@ export interface BridgeCodeVersion {
   status: string;
   deployed_app_id: number | null;
   sha256: string | null;
+  created_at: string;
+}
+
+export interface BridgeGenAttempt {
+  id: number;
+  module: string | null;
+  provider: string | null;
+  model: string | null;
+  model_id: number | null;
+  ok: boolean;
+  files: number;
+  error_code: string | null;
+  note: string | null;
+  created_at: string | null;
+}
+
+export interface BridgeDeploy {
+  id: number;
+  version: number;
+  files_count: number;
+  status: string;
+  deployed_app_id: number | null;
+  app_slug: string | null;
+  app_port: number | null;
+  app_domain: string | null;
+  app_status: string | null;
   created_at: string;
 }
 

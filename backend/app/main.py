@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import engine, SessionLocal, Base
 from app.models import User, UserRole
 from app.middleware.auth import hash_password
-from app.routers import auth, apps, system, tunnels, vault, pdpa, enterprise, api_catalog, opencli
+from app.routers import auth, apps, system, tunnels, vault, pdpa, enterprise, api_catalog, opencli, econtract
 from app.services.tunnel_service import tunnel_service
 from app.services.ntp_service import ntp_service
 from app.services.resource_service import collect_snapshot
@@ -286,6 +286,7 @@ app.include_router(pdpa.router)
 app.include_router(enterprise.router)
 app.include_router(api_catalog.router)
 app.include_router(opencli.router)
+app.include_router(econtract.router)
 
 
 @app.get("/api/health")

@@ -223,6 +223,32 @@ class SystemConfig(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class EContractCert(Base):
+    """
+    หลักฐานรับรองเวลา + ความครบถ้วน ของเอกสาร/สัญญาอิเล็กทรอนิกส์
+    ตาม พ.ร.บ. ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์ (integrity §12, เวลาที่เชื่อถือได้).
+    - sha256: ลายนิ้วมือเนื้อหา (ความครบถ้วน)
+    - ntp_time + ntp_server: เวลาที่เชื่อถือได้จาก NTP ราชการไทย
+    - signature: HMAC-SHA256(sha256|ntp_time) ด้วย SECRET_KEY ของเครื่อง
+      -> ตรวจสอบได้ว่าใบรับรองออกโดย iVS เครื่องนี้และไม่ถูกแก้
+    """
+    __tablename__ = "econtract_certs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cert_id = Column(String(40), unique=True, index=True, nullable=False)  # ECT-...
+    filename = Column(String(400), nullable=False)
+    size_bytes = Column(Integer, default=0)
+    sha256 = Column(String(64), index=True, nullable=False)
+    ntp_time = Column(DateTime, nullable=False)
+    ntp_server = Column(String(120), default="")
+    ntp_server_name = Column(String(200), default="")
+    signature = Column(String(64), nullable=False)
+    signer = Column(String(120), default="")       # ผู้ขอออกใบรับรอง (ชื่อผู้ใช้)
+    note = Column(Text, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class AppPdpa(Base):
     """
     PDPA ROPA (Record of Processing Activities) per app.
@@ -567,3 +593,24 @@ class OpenCliMcpToken(Base):
     created_at  = Column(DateTime, default=utcnow, index=True)
     last_used_at = Column(DateTime, nullable=True)
     revoked_at  = Column(DateTime, nullable=True)
+
+
+class OpenCliGenAttempt(Base):
+    """History of every module generation attempt (success OR error). Lets the UI
+    show past failures (500/428/parse/save) per module so the operator can pick a
+    better AI. Kept forever as an audit of what each model produced."""
+    __tablename__ = "opencli_gen_attempts"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    project_id  = Column(Integer, index=True, nullable=True)   # project-combined gen
+    import_id   = Column(Integer, index=True, nullable=True)   # per-import gen
+    module      = Column(String(60), nullable=True)
+    provider    = Column(String(30), nullable=True)
+    model       = Column(String(100), nullable=True)
+    model_id    = Column(Integer, nullable=True)               # chosen OpenCliLlmModel
+    ok          = Column(Boolean, default=False, index=True)
+    files       = Column(Integer, default=0)
+    error_code  = Column(String(20), nullable=True)            # "500" | "428" | "parse" | "save"
+    note        = Column(Text, nullable=True)                  # short explanation
+    created_by  = Column(Integer, nullable=True)
+    created_at  = Column(DateTime, default=utcnow, index=True)
