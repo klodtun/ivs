@@ -70,6 +70,31 @@ export default function EContractPage() {
   const [signMethod, setSignMethod] = useState("typed");
   const [signId, setSignId] = useState("");
   const [signing, setSigning] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingRef = useRef(false);
+  const hasInkRef = useRef(false);
+
+  const canvasPos = (e: React.PointerEvent) => {
+    const c = canvasRef.current!; const r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) };
+  };
+  const startDraw = (e: React.PointerEvent) => {
+    const c = canvasRef.current; if (!c) return;
+    drawingRef.current = true; hasInkRef.current = true;
+    const ctx = c.getContext("2d")!; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#1c1a29";
+    const p = canvasPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    c.setPointerCapture(e.pointerId);
+  };
+  const moveDraw = (e: React.PointerEvent) => {
+    if (!drawingRef.current) return;
+    const ctx = canvasRef.current!.getContext("2d")!; const p = canvasPos(e);
+    ctx.lineTo(p.x, p.y); ctx.stroke();
+  };
+  const endDraw = () => { drawingRef.current = false; };
+  const clearCanvas = () => {
+    const c = canvasRef.current; if (!c) return;
+    c.getContext("2d")!.clearRect(0, 0, c.width, c.height); hasInkRef.current = false;
+  };
 
   const openDetail = async (cid: string) => {
     try { setDetail(await api.getEContract(cid)); setSignName(""); setSignId(""); setSignMethod("typed"); }
@@ -77,11 +102,16 @@ export default function EContractPage() {
   };
   const doSign = async () => {
     if (!detail || !signName.trim() || signing) return;
+    let identity = signId;
+    if (signMethod === "drawn") {
+      if (!hasInkRef.current) { alert(t("ect.draw_empty")); return; }
+      identity = canvasRef.current!.toDataURL("image/png");
+    }
     setSigning(true);
     try {
-      await api.signEContract(detail.cert_id, signName.trim(), signMethod, signId);
+      await api.signEContract(detail.cert_id, signName.trim(), signMethod, identity);
       setDetail(await api.getEContract(detail.cert_id));
-      setSignName(""); setSignId("");
+      setSignName(""); setSignId(""); clearCanvas();
     } catch (e: any) { alert(e?.message || "error"); }
     finally { setSigning(false); }
   };
@@ -316,11 +346,16 @@ export default function EContractPage() {
                 <div className="px-3 py-4 text-center text-gray-400 text-xs">{t("ect.sig_none")}</div>
               ) : (
                 (detail.signatures || []).map((sg: any) => (
-                  <div key={sg.id} className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
-                    <span className="text-green-600">✓</span>
-                    <span className="font-medium text-gray-800">{sg.signer_name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded">{t(`ect.method_${sg.method}`)}</span>
-                    <span className="ml-auto text-[10px] text-gray-400">{t("ect.sig_at")} {fmt(sg.signed_at)}</span>
+                  <div key={sg.id} className="px-3 py-2 border-b border-gray-100 last:border-0 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span>
+                      <span className="font-medium text-gray-800">{sg.signer_name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded">{t(`ect.method_${sg.method}`)}</span>
+                      <span className="ml-auto text-[10px] text-gray-400">{t("ect.sig_at")} {fmt(sg.signed_at)}</span>
+                    </div>
+                    {sg.method === "drawn" && typeof sg.identity_ref === "string" && sg.identity_ref.startsWith("data:image") && (
+                      <img src={sg.identity_ref} alt="signature" className="mt-1.5 h-12 border border-gray-200 rounded bg-white" />
+                    )}
                   </div>
                 ))
               )}
@@ -338,8 +373,20 @@ export default function EContractPage() {
                   <option value="otp">{t("ect.method_otp")}</option>
                 </select>
               </div>
-              <input value={signId} onChange={(e) => setSignId(e.target.value)} placeholder={t("ect.identity")}
-                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+              {signMethod === "drawn" ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-gray-500">{t("ect.draw_here")}</span>
+                    <button onClick={clearCanvas} className="text-[10px] text-gray-500 hover:text-red-600">{t("ect.clear")}</button>
+                  </div>
+                  <canvas ref={canvasRef} width={560} height={140}
+                    onPointerDown={startDraw} onPointerMove={moveDraw} onPointerUp={endDraw} onPointerLeave={endDraw}
+                    className="w-full h-[140px] bg-white border-2 border-dashed border-gray-300 rounded-md touch-none cursor-crosshair" />
+                </div>
+              ) : (
+                <input value={signId} onChange={(e) => setSignId(e.target.value)} placeholder={t("ect.identity")}
+                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+              )}
               <button onClick={doSign} disabled={!signName.trim() || signing}
                 className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 disabled:opacity-50">
                 {signing ? t("ect.signing") : t("ect.sign_btn")}

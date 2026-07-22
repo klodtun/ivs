@@ -139,7 +139,7 @@ def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "ty
     row = EContractSignature(
         cert_id=cert_id, signer_name=signer_name[:200],
         method=method if method in ("typed", "drawn", "otp") else "typed",
-        identity_ref=(identity_ref or "")[:20000], signed_at=now,
+        identity_ref=(identity_ref or "")[:300000], signed_at=now,  # allow a drawn-signature PNG data URI
         ip_address=(ip or "")[:45], signature="", created_by=created_by,
     )
     db.add(row)
