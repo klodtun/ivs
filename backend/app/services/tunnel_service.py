@@ -30,6 +30,34 @@ CFG_NGROK_TOKEN = "tunnel.ngrok_authtoken"    # encrypted
 CFG_CF_TOKEN = "tunnel.cloudflare_token"      # encrypted
 
 
+# Common install dirs to search beyond PATH. A backend launched from a
+# minimal-PATH shell (or a GUI launcher) often can't see Homebrew/nvm, so
+# `shutil.which` alone would wrongly report ngrok/cloudflared as missing.
+_EXTRA_BIN_DIRS = [
+    "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+    os.path.expanduser("~/.nvm/versions/node"),  # nvm (searched shallowly below)
+]
+
+
+def _which(name: str) -> Optional[str]:
+    """Resolve a binary via PATH, then common install dirs (Homebrew, nvm)."""
+    p = shutil.which(name)
+    if p:
+        return p
+    for d in _EXTRA_BIN_DIRS:
+        cand = os.path.join(d, name)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    # nvm keeps binaries under versions/node/<ver>/bin — scan one level deep
+    nvm = os.path.expanduser("~/.nvm/versions/node")
+    if os.path.isdir(nvm):
+        for ver in sorted(os.listdir(nvm), reverse=True):
+            cand = os.path.join(nvm, ver, "bin", name)
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                return cand
+    return None
+
+
 def _get_cfg(db: Session, key: str) -> str:
     row = db.query(SystemConfig).filter(SystemConfig.key == key).first()
     return row.value if row and row.value else ""
@@ -167,8 +195,9 @@ class TunnelService:
         to THIS process — it never touches the machine's global ngrok config,
         which is what previously made every iVS share one free account.
         """
-        if not shutil.which("ngrok"):
-            logger.info("ngrok not found in PATH, skipping")
+        ngrok_bin = _which("ngrok")
+        if not ngrok_bin:
+            logger.info("ngrok not found in PATH or common dirs, skipping")
             return None, None
 
         # Per-instance env: inherit PATH etc., override the authtoken.
@@ -179,7 +208,7 @@ class TunnelService:
         proc = None
         try:
             proc = await asyncio.create_subprocess_exec(
-                "ngrok", "http", str(port),
+                ngrok_bin, "http", str(port),
                 "--log", "stdout", "--log-format", "json",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -239,14 +268,15 @@ class TunnelService:
         hostname. Without a token -> an ephemeral quick tunnel
         (`--url http://localhost:PORT`) on trycloudflare.com, no account.
         """
-        if not shutil.which("cloudflared"):
-            logger.info("cloudflared not found in PATH, skipping")
+        cf_bin = _which("cloudflared")
+        if not cf_bin:
+            logger.info("cloudflared not found in PATH or common dirs, skipping")
             return None, None
 
         if token:
-            args = ["cloudflared", "tunnel", "--no-autoupdate", "run", "--token", token]
+            args = [cf_bin, "tunnel", "--no-autoupdate", "run", "--token", token]
         else:
-            args = ["cloudflared", "tunnel", "--no-autoupdate",
+            args = [cf_bin, "tunnel", "--no-autoupdate",
                     "--url", f"http://localhost:{port}"]
 
         proc = None
@@ -300,9 +330,9 @@ class TunnelService:
         self, port: int
     ) -> Tuple[Optional[asyncio.subprocess.Process], Optional[str]]:
         """Start a localtunnel via npx and extract the public URL."""
-        npx_path = shutil.which("npx")
+        npx_path = _which("npx")
         if not npx_path:
-            logger.info("npx not found in PATH, skipping localtunnel")
+            logger.info("npx not found in PATH or common dirs, skipping localtunnel")
             return None, None
 
         proc = None
