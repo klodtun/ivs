@@ -15,6 +15,8 @@ import json
 import logging
 import os
 import shutil
+import signal
+import subprocess
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
@@ -97,6 +99,9 @@ def set_tunnel_config(db: Session, provider: str = None,
 class TunnelService:
     def __init__(self):
         self._processes: dict[int, asyncio.subprocess.Process] = {}
+        # Human-readable reason the last provider attempt failed (surfaced to
+        # the user instead of the generic "configure a token" message).
+        self._last_error: Optional[str] = None
 
     async def create_tunnel(
         self,
@@ -117,6 +122,8 @@ class TunnelService:
         proc, public_url, provider = await self._try_providers(app.port, cfg)
 
         if not public_url:
+            if self._last_error:
+                raise RuntimeError(f"Failed to create tunnel: {self._last_error}")
             raise RuntimeError(
                 "Failed to create tunnel. Configure an ngrok authtoken or "
                 "Cloudflare token in Settings → Tunnel, or ensure npx is "
@@ -155,6 +162,7 @@ class TunnelService:
         provider == "auto" -> ngrok (if token) -> cloudflare (if token)
         -> localtunnel.
         """
+        self._last_error = None
         provider = (cfg.get("provider") or "auto").lower()
         ngrok_token = cfg.get("ngrok_token") or ""
         cf_token = cfg.get("cf_token") or ""
@@ -197,6 +205,7 @@ class TunnelService:
         """
         ngrok_bin = _which("ngrok")
         if not ngrok_bin:
+            self._last_error = "ngrok binary not found on this server"
             logger.info("ngrok not found in PATH or common dirs, skipping")
             return None, None
 
@@ -205,36 +214,53 @@ class TunnelService:
         if authtoken:
             env["NGROK_AUTHTOKEN"] = authtoken
 
-        proc = None
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                ngrok_bin, "http", str(port),
-                "--log", "stdout", "--log-format", "json",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )
+        # ngrok's free tier allows ONE online endpoint per account. A tunnel
+        # that iVS lost track of (stale process from a crash/restart) keeps the
+        # endpoint online and makes every new tunnel fail with ERR_NGROK_334.
+        # Try once; if we hit that, reap orphan ngrok processes and retry.
+        for attempt in range(2):
+            proc = None
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    ngrok_bin, "http", str(port),
+                    "--log", "stdout", "--log-format", "json",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env,
+                )
 
-            url = await asyncio.wait_for(self._parse_ngrok_url(proc), timeout=15)
+                url = await asyncio.wait_for(self._parse_ngrok_url(proc), timeout=15)
 
-            if url:
-                logger.info(f"ngrok tunnel ready: {url} (pid={proc.pid})")
-                return proc, url
-            else:
-                logger.warning("ngrok started but no URL obtained")
-                proc.terminate()
+                if url:
+                    logger.info(f"ngrok tunnel ready: {url} (pid={proc.pid})")
+                    return proc, url
+
+                if proc.returncode is None:
+                    proc.terminate()
+
+                already_online = self._last_error and "ERR_NGROK_334" in self._last_error
+                if attempt == 0 and already_online and self._reap_orphan_ngrok(env):
+                    logger.info("reaped orphan ngrok endpoint, retrying tunnel")
+                    await asyncio.sleep(1)
+                    continue
+
+                logger.warning(f"ngrok started but no URL obtained: {self._last_error}")
                 return None, None
 
-        except asyncio.TimeoutError:
-            logger.warning("ngrok timed out waiting for tunnel URL")
-            if proc:
-                proc.terminate()
-            return None, None
-        except Exception as e:
-            logger.warning(f"ngrok failed: {e}")
-            if proc and proc.returncode is None:
-                proc.terminate()
-            return None, None
+            except asyncio.TimeoutError:
+                self._last_error = "ngrok timed out waiting for tunnel URL"
+                logger.warning(self._last_error)
+                if proc:
+                    proc.terminate()
+                return None, None
+            except Exception as e:
+                self._last_error = f"ngrok failed: {e}"
+                logger.warning(self._last_error)
+                if proc and proc.returncode is None:
+                    proc.terminate()
+                return None, None
+
+        return None, None
 
     async def _parse_ngrok_url(self, proc: asyncio.subprocess.Process) -> Optional[str]:
         """Read ngrok JSON log lines until we find the tunnel URL or an error."""
@@ -250,11 +276,56 @@ class TunnelService:
                 # Error: {"err":"...", "msg":"..."}
                 err = data.get("err")
                 if err and err != "<nil>":
+                    self._last_error = self._humanize_ngrok_err(err)
                     logger.warning(f"ngrok error: {err}")
                     return None
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
         return None
+
+    @staticmethod
+    def _humanize_ngrok_err(err: str) -> str:
+        """Turn a raw ngrok error into a short, user-facing reason."""
+        if "ERR_NGROK_334" in err:
+            return ("an ngrok tunnel is already online for this account "
+                    "(free tier allows one) [ERR_NGROK_334]")
+        if "ERR_NGROK_108" in err or "authtoken" in err.lower():
+            return "the ngrok authtoken is invalid or unauthorized"
+        if "ERR_NGROK_105" in err or "ERR_NGROK_107" in err:
+            return "ngrok could not authenticate — check the authtoken"
+        # Keep it to the first line, trimmed.
+        return err.strip().splitlines()[0][:200]
+
+    def _reap_orphan_ngrok(self, env: dict) -> bool:
+        """Kill ngrok endpoint processes that iVS is no longer tracking.
+
+        The free tier's single-endpoint limit means a stale ngrok (left over
+        from a crash/restart) blocks every new tunnel. We only reap ngrok
+        processes NOT in self._processes so live iVS tunnels are untouched.
+        """
+        tracked = {p.pid for p in self._processes.values() if p and p.pid}
+        killed = False
+        try:
+            out = subprocess.run(
+                ["pgrep", "-f", "ngrok http"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+        except Exception:
+            return False
+        for line in out.split():
+            try:
+                pid = int(line)
+            except ValueError:
+                continue
+            if pid == os.getpid() or pid in tracked:
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+                logger.info(f"reaped orphan ngrok pid={pid}")
+            except (ProcessLookupError, PermissionError):
+                continue
+        return killed
 
     # ── cloudflare ──────────────────────────────────────────────
 
