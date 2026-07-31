@@ -33,7 +33,7 @@ _build_logs: dict[str, list[str]] = {}
 _build_status: dict[str, str] = {}  # "building", "success", "error", "timeout"
 
 DOCKERFILE_TEMPLATES = {
-    "nodejs": """FROM node:20-alpine
+    "nodejs": """FROM node:22-alpine
 # openssl + glibc compat: Prisma and other native modules need them on Alpine
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
@@ -80,7 +80,7 @@ EXPOSE 80
 COPY dist/ /usr/share/nginx/html
 EXPOSE 80
 """,
-    "nodejs_vite": """FROM node:20-alpine
+    "nodejs_vite": """FROM node:22-alpine
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
@@ -96,7 +96,7 @@ CMD ["npx", "vite", "preview", "--port", "{port}", "--host"]
     # before `next start`. We invoke `next start -p {port}` directly so a
     # hardcoded port in the app's "start" script can't override the port
     # iVS maps. Binds 0.0.0.0 by default.
-    "nodejs_nextjs": """FROM node:20-alpine
+    "nodejs_nextjs": """FROM node:22-alpine
 # openssl + glibc compat for Prisma / native modules (common in Next.js apps)
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
@@ -589,9 +589,9 @@ nginx -g 'daemon off;'
             builder_stage = ""
             frontend_copy = "COPY frontend/dist/ /usr/share/nginx/html/"
         else:
-            # Auto-build path: multi-stage build runs `npm run build` in node:20-alpine
+            # Auto-build path: multi-stage build runs `npm run build` in node:22-alpine
             builder_stage = """# ===== Stage 1: Build frontend (Vite/React/etc.) =====
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /build
 COPY frontend/package*.json ./
 RUN npm install
