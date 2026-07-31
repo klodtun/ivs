@@ -38,7 +38,11 @@ DOCKERFILE_TEMPLATES = {
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --production
+# python3/make/g++ let native modules (better-sqlite3, bcrypt, ...) compile.
+# Installed as a virtual package and removed after install to keep the image small.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \\
+ && npm install --production \\
+ && apk del .build-deps
 COPY . .
 EXPOSE {port}
 CMD ["npm", "start"]
@@ -80,7 +84,9 @@ EXPOSE 80
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \\
+ && npm install \\
+ && apk del .build-deps
 COPY . .
 RUN npm run build
 EXPOSE {port}
@@ -95,7 +101,9 @@ CMD ["npx", "vite", "preview", "--port", "{port}", "--host"]
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \\
+ && npm install \\
+ && apk del .build-deps
 COPY . .
 RUN npm run build
 EXPOSE {port}
