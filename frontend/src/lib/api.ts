@@ -289,8 +289,10 @@ export const api = {
   restartApp: (id: number) =>
     request<any>(`/apps/${id}/restart`, { method: "POST" }),
 
-  deleteApp: (id: number) =>
-    request<any>(`/apps/${id}`, { method: "DELETE" }),
+  // deleteData also destroys the app's persistent data volume; omit it and the
+  // volume survives, so redeploying under the same name restores the data.
+  deleteApp: (id: number, deleteData = false) =>
+    request<any>(`/apps/${id}?delete_data=${deleteData}`, { method: "DELETE" }),
 
   exportApp: (id: number) =>
     request<{

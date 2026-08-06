@@ -5,7 +5,8 @@ import { App } from "@/types";
 
 interface Props {
   app: App;
-  onConfirm: () => void | Promise<void>;
+  /** `deleteData` destroys the app's persistent volume as well. */
+  onConfirm: (deleteData: boolean) => void | Promise<void>;
   onCancel: () => void;
   /** Optional handler: switch user to the export flow before deleting. */
   onExportFirst?: () => void;
@@ -14,6 +15,7 @@ interface Props {
 export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Props) {
   const { t } = useLang();
   const [typedName, setTypedName] = useState("");
+  const [deleteData, setDeleteData] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -33,7 +35,7 @@ export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Prop
     if (!canDelete) return;
     setSubmitting(true);
     try {
-      await onConfirm();
+      await onConfirm(deleteData);
     } finally {
       setSubmitting(false);
     }
@@ -102,10 +104,6 @@ export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Prop
                 </li>
                 <li className="flex gap-2">
                   <span className="text-red-500 font-bold mt-px">•</span>
-                  <span>{t("delete.lost.data")}</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-red-500 font-bold mt-px">•</span>
                   <span>{t("delete.lost.logs")}</span>
                 </li>
                 <li className="flex gap-2">
@@ -117,6 +115,27 @@ export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Prop
                   <span>{t("delete.lost.access")}</span>
                 </li>
               </ul>
+            </div>
+
+            {/* Persistent data volume — kept unless explicitly destroyed */}
+            <div className={`rounded-lg p-2.5 border ${deleteData ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+              <p className={`text-[11px] font-semibold flex items-center gap-1.5 ${deleteData ? "text-red-800" : "text-green-800"}`}>
+                <span>{deleteData ? "🗑️" : "💾"}</span>
+                {deleteData ? t("delete.data_destroy_title") : t("delete.data_keep_title")}
+              </p>
+              <p className={`text-[10px] mt-1 leading-relaxed ${deleteData ? "text-red-700" : "text-green-700"}`}>
+                {deleteData ? t("delete.data_destroy_desc") : t("delete.data_keep_desc")}
+              </p>
+              <label className="mt-2 flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deleteData}
+                  onChange={(e) => setDeleteData(e.target.checked)}
+                  disabled={submitting}
+                  className="mt-px accent-red-600"
+                />
+                <span className="text-[10px] font-medium text-gray-700">{t("delete.data_delete_label")}</span>
+              </label>
             </div>
 
             {/* Irreversible warning */}

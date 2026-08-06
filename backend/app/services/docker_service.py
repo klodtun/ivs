@@ -146,6 +146,75 @@ class DockerService:
         """Check if Docker daemon is available."""
         return self._ensure_client()
 
+    # ── Persistent per-app data volume ──────────────────────────────
+
+    @staticmethod
+    def volume_name(app_slug: str) -> str:
+        return f"ivs-{app_slug}-data"
+
+    @staticmethod
+    def data_mount_path(app_type: str) -> str:
+        """Where the app's writable data lives inside the container.
+
+        Matches the paths `copy_app_data` already looks for, so an app that
+        was exportable before keeps working. Fullstack images run the backend
+        out of /app/backend, everything else out of /app.
+        """
+        return "/app/backend/data" if app_type == "fullstack" else "/app/data"
+
+    def ensure_volume(self, app_slug: str) -> Optional[str]:
+        """Create the app's data volume if it doesn't exist yet. Returns its name.
+
+        The volume outlives the container, so a delete+redeploy (the documented
+        way to update an app) keeps the database and uploads. Docker seeds a new
+        named volume from whatever the image already has at the mount point, so
+        first-run fixtures still land.
+        """
+        if not self._ensure_client():
+            return None
+        name = self.volume_name(app_slug)
+        try:
+            self.client.volumes.get(name)
+        except NotFound:
+            self.client.volumes.create(
+                name=name,
+                labels={"ivs.managed": "true", "ivs.app": app_slug},
+            )
+            logger.info(f"Created data volume {name}")
+        except Exception as e:
+            logger.warning(f"Could not ensure volume {name}: {e}")
+            return None
+        return name
+
+    def remove_volume(self, app_slug: str) -> bool:
+        """Delete the app's data volume. Destroys the app's data — callers must
+        have explicit confirmation from the user."""
+        if not self._ensure_client():
+            return False
+        name = self.volume_name(app_slug)
+        try:
+            self.client.volumes.get(name).remove(force=True)
+            logger.info(f"Removed data volume {name}")
+            return True
+        except NotFound:
+            return False
+        except Exception as e:
+            logger.warning(f"Could not remove volume {name}: {e}")
+            return False
+
+    def volume_info(self, app_slug: str) -> dict:
+        """Report whether the app has a data volume, for the UI."""
+        info = {"exists": False, "name": self.volume_name(app_slug), "mountpoint": None}
+        if not self._ensure_client():
+            return info
+        try:
+            v = self.client.volumes.get(info["name"])
+            info["exists"] = True
+            info["mountpoint"] = (v.attrs or {}).get("Mountpoint")
+        except Exception:
+            pass
+        return info
+
     def start_daemon(self) -> dict:
         """Attempt to start the Docker daemon on the host.
 
@@ -752,6 +821,17 @@ CMD ["/start-app.sh"]
         environment = env_vars or {}
         environment["PORT"] = str(port)
 
+        # Persistent data volume — survives delete+redeploy so app databases and
+        # uploads aren't lost every time the app is updated.
+        mount_path = self.data_mount_path(app_type)
+        volume = self.ensure_volume(app_slug)
+        volumes = {volume: {"bind": mount_path, "mode": "rw"}} if volume else {}
+        if volume:
+            environment.setdefault("IVS_DATA_DIR", mount_path)
+            self._append_build_log(
+                app_slug, f"[IVS] Data volume {volume} mounted at {mount_path} (survives redeploy)"
+            )
+
         try:
             self._append_build_log(app_slug, f"[IVS] Starting container {container_name} on port {port}...")
             container = self.client.containers.run(
@@ -761,6 +841,7 @@ CMD ["/start-app.sh"]
                 restart_policy={"Name": "unless-stopped"},
                 ports={f"{internal_port}/tcp": port},
                 environment=environment,
+                volumes=volumes,
                 network=settings.DOCKER_NETWORK,
                 labels={
                     "ivs.managed": "true",

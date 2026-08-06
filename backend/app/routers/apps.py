@@ -486,6 +486,9 @@ async def validate_app(
         # them at deploy time (apps that require an env var otherwise crash-loop
         # silently after a successful deploy).
         result["env_schema"] = _parse_env_example(extract_dir)
+        # Where this app's writable data will be mounted — anything the app
+        # writes here survives a delete+redeploy.
+        result["data_mount"] = docker_service.data_mount_path(result.get("app_type", ""))
         return result
 
     finally:
@@ -1152,6 +1155,7 @@ async def download_app_export(
 async def delete_app(
     app_id: int,
     request: Request,
+    delete_data: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ):
@@ -1165,6 +1169,17 @@ async def delete_app(
             docker_service.stop_and_remove(f"ivs-{app.slug}")
         except Exception as e:
             logger.warning(f"Could not remove container for {app.slug}: {e}")
+
+    # The data volume is KEPT by default: delete+redeploy is the documented way
+    # to update an app, and dropping the database on every update would defeat
+    # the point of having a persistent volume. Only an explicit delete_data=true
+    # destroys it.
+    data_deleted = False
+    if delete_data:
+        try:
+            data_deleted = docker_service.remove_volume(app.slug)
+        except Exception as e:
+            logger.warning(f"Could not remove data volume for {app.slug}: {e}")
 
     # Remove DNS/Caddy entries (gracefully handles services being down)
     try:
@@ -1183,10 +1198,14 @@ async def delete_app(
     db.query(UserAppAccess).filter(UserAppAccess.app_id == app_id).delete()
     db.query(AppVersion).filter(AppVersion.app_id == app_id).delete()
     db.delete(app)
+    data_note = (
+        "data volume destroyed" if data_deleted
+        else "data volume kept — redeploying under the same name restores it"
+    )
     create_audit_log(
         db, request, user=user, action="delete_app", resource_type="app",
-        resource_id=str(app_id), details=f"Deleted app {app_name}",
+        resource_id=str(app_id), details=f"Deleted app {app_name} ({data_note})",
         log_level="WARNING",
     )
     db.commit()
-    return {"message": f"{app_name} deleted"}
+    return {"message": f"{app_name} deleted", "data_deleted": data_deleted}
