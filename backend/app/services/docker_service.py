@@ -33,10 +33,16 @@ _build_logs: dict[str, list[str]] = {}
 _build_status: dict[str, str] = {}  # "building", "success", "error", "timeout"
 
 DOCKERFILE_TEMPLATES = {
-    "nodejs": """FROM node:20-alpine
+    "nodejs": """FROM node:22-alpine
+# openssl + glibc compat: Prisma and other native modules need them on Alpine
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --production
+# python3/make/g++ let native modules (better-sqlite3, bcrypt, ...) compile.
+# Installed as a virtual package and removed after install to keep the image small.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \\
+ && npm install --production \\
+ && apk del .build-deps
 COPY . .
 EXPOSE {port}
 CMD ["npm", "start"]
@@ -74,10 +80,13 @@ EXPOSE 80
 COPY dist/ /usr/share/nginx/html
 EXPOSE 80
 """,
-    "nodejs_vite": """FROM node:20-alpine
+    "nodejs_vite": """FROM node:22-alpine
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \\
+ && npm install \\
+ && apk del .build-deps
 COPY . .
 RUN npm run build
 EXPOSE {port}
@@ -87,10 +96,14 @@ CMD ["npx", "vite", "preview", "--port", "{port}", "--host"]
     # before `next start`. We invoke `next start -p {port}` directly so a
     # hardcoded port in the app's "start" script can't override the port
     # iVS maps. Binds 0.0.0.0 by default.
-    "nodejs_nextjs": """FROM node:20-alpine
+    "nodejs_nextjs": """FROM node:22-alpine
+# openssl + glibc compat for Prisma / native modules (common in Next.js apps)
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \\
+ && npm install \\
+ && apk del .build-deps
 COPY . .
 RUN npm run build
 EXPOSE {port}
@@ -132,6 +145,99 @@ class DockerService:
     def is_available(self) -> bool:
         """Check if Docker daemon is available."""
         return self._ensure_client()
+
+    # ── Persistent per-app data volume ──────────────────────────────
+
+    @staticmethod
+    def volume_name(app_slug: str) -> str:
+        return f"ivs-{app_slug}-data"
+
+    @staticmethod
+    def data_mount_path(app_type: str) -> str:
+        """Where the app's writable data lives inside the container.
+
+        Matches the paths `copy_app_data` already looks for, so an app that
+        was exportable before keeps working. Fullstack images run the backend
+        out of /app/backend, everything else out of /app.
+        """
+        return "/app/backend/data" if app_type == "fullstack" else "/app/data"
+
+    def ensure_volume(self, app_slug: str) -> Optional[str]:
+        """Create the app's data volume if it doesn't exist yet. Returns its name.
+
+        The volume outlives the container, so a delete+redeploy (the documented
+        way to update an app) keeps the database and uploads. Docker seeds a new
+        named volume from whatever the image already has at the mount point, so
+        first-run fixtures still land.
+        """
+        if not self._ensure_client():
+            return None
+        name = self.volume_name(app_slug)
+        try:
+            self.client.volumes.get(name)
+        except NotFound:
+            self.client.volumes.create(
+                name=name,
+                labels={"ivs.managed": "true", "ivs.app": app_slug},
+            )
+            logger.info(f"Created data volume {name}")
+        except Exception as e:
+            logger.warning(f"Could not ensure volume {name}: {e}")
+            return None
+        return name
+
+    def remove_volume(self, app_slug: str) -> bool:
+        """Delete the app's data volume. Destroys the app's data — callers must
+        have explicit confirmation from the user."""
+        if not self._ensure_client():
+            return False
+        name = self.volume_name(app_slug)
+        try:
+            self.client.volumes.get(name).remove(force=True)
+            logger.info(f"Removed data volume {name}")
+            return True
+        except NotFound:
+            return False
+        except Exception as e:
+            logger.warning(f"Could not remove volume {name}: {e}")
+            return False
+
+    def is_published_to_network(self, container_name: str) -> Optional[bool]:
+        """True if the container's port is published on a public interface.
+
+        A protected app whose container still carries a 0.0.0.0 binding is
+        reachable without the iVS login no matter what the database says, so
+        callers use this to catch a container that predates the setting.
+        Returns None when Docker can't answer.
+        """
+        if not self._ensure_client():
+            return None
+        try:
+            c = self.client.containers.get(container_name)
+            ports = (c.attrs.get("NetworkSettings") or {}).get("Ports") or {}
+        except NotFound:
+            return None
+        except Exception:
+            return None
+        for bindings in ports.values():
+            for b in bindings or []:
+                host_ip = b.get("HostIp") or ""
+                if host_ip not in ("127.0.0.1", "::1"):
+                    return True
+        return False
+
+    def volume_info(self, app_slug: str) -> dict:
+        """Report whether the app has a data volume, for the UI."""
+        info = {"exists": False, "name": self.volume_name(app_slug), "mountpoint": None}
+        if not self._ensure_client():
+            return info
+        try:
+            v = self.client.volumes.get(info["name"])
+            info["exists"] = True
+            info["mountpoint"] = (v.attrs or {}).get("Mountpoint")
+        except Exception:
+            pass
+        return info
 
     def start_daemon(self) -> dict:
         """Attempt to start the Docker daemon on the host.
@@ -576,9 +682,9 @@ nginx -g 'daemon off;'
             builder_stage = ""
             frontend_copy = "COPY frontend/dist/ /usr/share/nginx/html/"
         else:
-            # Auto-build path: multi-stage build runs `npm run build` in node:20-alpine
+            # Auto-build path: multi-stage build runs `npm run build` in node:22-alpine
             builder_stage = """# ===== Stage 1: Build frontend (Vite/React/etc.) =====
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /build
 COPY frontend/package*.json ./
 RUN npm install
@@ -649,6 +755,7 @@ CMD ["/start-app.sh"]
         app_type: str,
         port: int,
         env_vars: Optional[dict] = None,
+        access_mode: str = "public",
     ) -> Optional[str]:
         if not self._ensure_client():
             raise RuntimeError("Docker Desktop is not running. Please start Docker Desktop and try again.")
@@ -739,6 +846,31 @@ CMD ["/start-app.sh"]
         environment = env_vars or {}
         environment["PORT"] = str(port)
 
+        # Persistent data volume — survives delete+redeploy so app databases and
+        # uploads aren't lost every time the app is updated.
+        mount_path = self.data_mount_path(app_type)
+        volume = self.ensure_volume(app_slug)
+        volumes = {volume: {"bind": mount_path, "mode": "rw"}} if volume else {}
+        if volume:
+            environment.setdefault("IVS_DATA_DIR", mount_path)
+            self._append_build_log(
+                app_slug, f"[IVS] Data volume {volume} mounted at {mount_path} (survives redeploy)"
+            )
+
+        # Protected apps must not be reachable straight from the network: bind
+        # them to loopback on a shadow port and let the iVS gate own the public
+        # one (see services/app_gate_service.py).
+        if access_mode == "protected":
+            from app.services.app_gate_service import internal_port as gate_shadow_port
+            port_binding = ("127.0.0.1", gate_shadow_port(port))
+            self._append_build_log(
+                app_slug,
+                f"[IVS] Protected app — container bound to 127.0.0.1:{port_binding[1]}, "
+                f"iVS serves port {port} behind the login",
+            )
+        else:
+            port_binding = port
+
         try:
             self._append_build_log(app_slug, f"[IVS] Starting container {container_name} on port {port}...")
             container = self.client.containers.run(
@@ -746,8 +878,9 @@ CMD ["/start-app.sh"]
                 name=container_name,
                 detach=True,
                 restart_policy={"Name": "unless-stopped"},
-                ports={f"{internal_port}/tcp": port},
+                ports={f"{internal_port}/tcp": port_binding},
                 environment=environment,
+                volumes=volumes,
                 network=settings.DOCKER_NETWORK,
                 labels={
                     "ivs.managed": "true",

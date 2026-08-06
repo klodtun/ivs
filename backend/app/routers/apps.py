@@ -16,6 +16,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.services.docker_service import docker_service
 from app.services.dns_service import dns_service
 from app.services.vault_service import vault_service
+from app.services.app_gate_service import app_gate_manager
 from app.config import settings
 from app.services.audit_service import create_audit_log
 from app.services import license_service
@@ -482,10 +483,84 @@ async def validate_app(
 
         # Validate structure
         result = _validate_zip_structure(extract_dir)
+        # Surface env vars declared in .env.example so the UI can prompt for
+        # them at deploy time (apps that require an env var otherwise crash-loop
+        # silently after a successful deploy).
+        result["env_schema"] = _parse_env_example(extract_dir)
+        # Where this app's writable data will be mounted — anything the app
+        # writes here survives a delete+redeploy.
+        result["data_mount"] = docker_service.data_mount_path(result.get("app_type", ""))
         return result
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _parse_env_example(source_path: str) -> list[dict]:
+    """Parse a .env.example (or .sample/.template) into a prompt schema.
+
+    Each active `KEY=value` line becomes {key, default, required, hint, secret}.
+    The comment block directly above a key is its hint; a key is `required`
+    when that comment says REQUIRED or the key has no default value. PORT is
+    skipped — the platform assigns it. Commented-out keys (`# KEY=`) are hints,
+    not fields.
+    """
+    candidates = [".env.example", ".env.sample", ".env.template", "env.example"]
+    path = next(
+        (os.path.join(source_path, c) for c in candidates
+         if os.path.isfile(os.path.join(source_path, c))),
+        None,
+    )
+    if not path:
+        return []
+
+    SECRET_HINTS = ("PASSWORD", "SECRET", "TOKEN", "PEPPER", "APIKEY", "API_KEY", "_KEY", "PIN")
+    out: list[dict] = []
+    seen: set[str] = set()
+    comment_buf: list[str] = []
+    try:
+        with open(path, "r", errors="ignore") as f:
+            for raw in f:
+                s = raw.strip()
+                if not s:
+                    comment_buf = []
+                    continue
+                if s.startswith("#"):
+                    comment_buf.append(s.lstrip("#").strip())
+                    continue
+                if "=" not in s:
+                    comment_buf = []
+                    continue
+                key, _, val = s.partition("=")
+                key, val = key.strip(), val.strip()
+                if not key or not all(c.isalnum() or c == "_" for c in key):
+                    comment_buf = []
+                    continue
+                if key.upper() == "PORT" or key in seen:
+                    comment_buf = []
+                    continue
+                hint = " ".join(comment_buf).strip()
+                hint_upper = hint.upper()
+                # Required only when the comment explicitly says so (EN or TH).
+                # An empty default alone is NOT enough — many optional vars ship
+                # blank with a "ไม่ตั้ง = ..." (leave unset to ...) note.
+                required = any(m in hint_upper for m in ("REQUIRED", "จำเป็น", "ต้องตั้ง", "ต้องระบุ"))
+                # Explicit optional markers win over a REQUIRED elsewhere in the block.
+                if any(m in hint for m in ("ไม่ตั้ง", "ปกติไม่ต้อง", "optional", "Optional", "OPTIONAL")):
+                    required = False
+                secret = any(h in key.upper() for h in SECRET_HINTS)
+                out.append({
+                    "key": key,
+                    "default": val,
+                    "required": required,
+                    "hint": hint[:300],
+                    "secret": secret,
+                })
+                seen.add(key)
+                comment_buf = []
+    except Exception:
+        return []
+    return out[:40]
 
 
 @router.get("", response_model=list[AppResponse])
@@ -531,6 +606,7 @@ async def deploy_app(
     name: str = Form(...),
     description: str = Form(""),
     env_vars: str = Form("{}"),
+    access_mode: str = Form("public"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -549,6 +625,7 @@ async def deploy_app(
         port=port,
         status=AppStatus.BUILDING,
         env_vars=env_vars,
+        access_mode="protected" if access_mode == "protected" else "public",
     )
     db.add(app)
     db.commit()
@@ -591,9 +668,13 @@ async def deploy_app(
         injected_env = vault_service.build_env_dict(vault_keys)
         injected_env.update(parsed_env)
 
-        container_id = docker_service.build_and_run(slug, source_path, app_type, port, injected_env)
+        container_id = docker_service.build_and_run(
+            slug, source_path, app_type, port, injected_env, access_mode=app.access_mode
+        )
         app.container_id = container_id
         app.status = AppStatus.RUNNING
+        if app.access_mode == "protected":
+            await app_gate_manager.start_gate(app)
 
         domain_url = await dns_service.register_app(slug, port)
         app.domain = domain_url
@@ -654,10 +735,14 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
         injected_env = vault_service.build_env_dict(vault_keys)
         injected_env.update(parsed_env)
 
-        container_id = docker_service.build_and_run(slug, source_path, app_type, app.port, injected_env)
+        container_id = docker_service.build_and_run(
+            slug, source_path, app_type, app.port, injected_env, access_mode=app.access_mode
+        )
         app.container_id = container_id
         app.status = AppStatus.RUNNING
         app.current_version += 1
+        if app.access_mode == "protected":
+            await app_gate_manager.start_gate(app)
 
         version = AppVersion(
             app_id=app.id, version=app.current_version, commit_message=f"Redeployment v{app.current_version}"
@@ -724,6 +809,95 @@ async def set_app_logo(
     return {"message": "Logo updated", "has_logo": bool(value)}
 
 
+def _rebuild_for_access_mode(app: App, db: Session, mode: str) -> bool:
+    """Recreate the app's container so its port binding matches `mode`.
+
+    The binding is fixed when the container is created, so the mode only
+    becomes real on a rebuild — without this, a "protected" app could still be
+    sitting on 0.0.0.0 and answer anyone who asks.
+    """
+    if not app.source_path or not os.path.isdir(app.source_path):
+        return False
+    injected_env = vault_service.build_env_dict(db.query(VaultKey).all())
+    try:
+        injected_env.update(json.loads(app.env_vars or "{}"))
+    except Exception:
+        pass
+    app_type = docker_service.detect_app_type(app.source_path)
+    app.container_id = docker_service.build_and_run(
+        app.slug, app.source_path, app_type, app.port, injected_env, access_mode=mode
+    )
+    db.commit()
+    return True
+
+
+@router.post("/{app_id}/access-mode")
+async def set_access_mode(
+    app_id: int,
+    request: Request,
+    mode: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Switch an app between open access and iVS-login-only.
+
+    The port binding is decided when the container starts (0.0.0.0 for public,
+    loopback for protected), so the container has to be recreated for the
+    change to mean anything — otherwise the old, directly reachable binding
+    would still be live and the setting would be a lie.
+    """
+    if mode not in ("public", "protected"):
+        raise HTTPException(status_code=422, detail="mode must be 'public' or 'protected'")
+
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    if app.access_mode == mode:
+        return {"message": "unchanged", "access_mode": mode, "restarted": False}
+
+    app.access_mode = mode
+    db.commit()
+
+    # Take the old listener down before the new binding claims the port.
+    await app_gate_manager.stop_gate(app.id)
+
+    restarted = False
+    if app.status == AppStatus.RUNNING:
+        try:
+            restarted = _rebuild_for_access_mode(app, db, mode)
+        except Exception as e:
+            logger.error(f"Could not rebind {app.slug} for access_mode={mode}: {e}")
+            # Don't leave the row claiming a protection that isn't in force.
+            app.access_mode = "public" if mode == "protected" else app.access_mode
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Could not apply access mode: {e}")
+        if not restarted and mode == "protected":
+            app.access_mode = "public"
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Source files for this app are missing, so its container cannot be "
+                       "rebound to loopback. Redeploy the app to protect it.",
+            )
+
+    if mode == "protected" and app.status == AppStatus.RUNNING:
+        await app_gate_manager.start_gate(app)
+
+    create_audit_log(
+        db, request, user=user, action="set_access_mode", resource_type="app",
+        resource_id=str(app.id),
+        details=(
+            f"{app.name}: การเข้าถึงเปลี่ยนเป็น "
+            + ("ต้องเข้าสู่ระบบ iVS ก่อน (protected)" if mode == "protected"
+               else "เปิดสาธารณะ ไม่ต้องเข้าสู่ระบบ (public)")
+        ),
+        log_level="WARNING",
+    )
+    db.commit()
+    return {"message": "updated", "access_mode": mode, "restarted": restarted}
+
+
 @router.post("/{app_id}/start")
 async def start_app(
     app_id: int,
@@ -740,6 +914,14 @@ async def start_app(
         docker_service.start_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
+
+    if app.access_mode == "protected":
+        # A container created while the app was public still holds a 0.0.0.0
+        # binding, which would leave the app reachable without a login and
+        # occupy the port the gate needs. Rebuild it before opening the gate.
+        if docker_service.is_published_to_network(f"ivs-{app.slug}") and app.source_path:
+            _rebuild_for_access_mode(app, db, "protected")
+        await app_gate_manager.start_gate(app)
     return {"message": f"{app.name} started"}
 
 
@@ -759,6 +941,7 @@ async def stop_app(
         docker_service.stop_container(live_id)
     app.status = AppStatus.STOPPED
     db.commit()
+    await app_gate_manager.stop_gate(app.id)
     return {"message": f"{app.name} stopped"}
 
 
@@ -1081,6 +1264,7 @@ async def download_app_export(
 async def delete_app(
     app_id: int,
     request: Request,
+    delete_data: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ):
@@ -1088,12 +1272,26 @@ async def delete_app(
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
 
+    # Free the gate's listening port before the app row disappears
+    await app_gate_manager.stop_gate(app.id)
+
     # Stop and remove Docker container (gracefully handle Docker being down)
     if app.container_id:
         try:
             docker_service.stop_and_remove(f"ivs-{app.slug}")
         except Exception as e:
             logger.warning(f"Could not remove container for {app.slug}: {e}")
+
+    # The data volume is KEPT by default: delete+redeploy is the documented way
+    # to update an app, and dropping the database on every update would defeat
+    # the point of having a persistent volume. Only an explicit delete_data=true
+    # destroys it.
+    data_deleted = False
+    if delete_data:
+        try:
+            data_deleted = docker_service.remove_volume(app.slug)
+        except Exception as e:
+            logger.warning(f"Could not remove data volume for {app.slug}: {e}")
 
     # Remove DNS/Caddy entries (gracefully handles services being down)
     try:
@@ -1112,10 +1310,14 @@ async def delete_app(
     db.query(UserAppAccess).filter(UserAppAccess.app_id == app_id).delete()
     db.query(AppVersion).filter(AppVersion.app_id == app_id).delete()
     db.delete(app)
+    data_note = (
+        "data volume destroyed" if data_deleted
+        else "data volume kept — redeploying under the same name restores it"
+    )
     create_audit_log(
         db, request, user=user, action="delete_app", resource_type="app",
-        resource_id=str(app_id), details=f"Deleted app {app_name}",
+        resource_id=str(app_id), details=f"Deleted app {app_name} ({data_note})",
         log_level="WARNING",
     )
     db.commit()
-    return {"message": f"{app_name} deleted"}
+    return {"message": f"{app_name} deleted", "data_deleted": data_deleted}

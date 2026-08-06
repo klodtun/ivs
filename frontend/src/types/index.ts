@@ -21,6 +21,8 @@ export interface App {
   domain: string | null;
   current_version: number;
   logo_data: string | null;
+  /** "public" = reachable at IP:PORT by anyone; "protected" = iVS login required. */
+  access_mode: "public" | "protected";
   created_at: string;
   updated_at: string;
 }

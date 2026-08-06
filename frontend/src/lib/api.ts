@@ -289,8 +289,22 @@ export const api = {
   restartApp: (id: number) =>
     request<any>(`/apps/${id}/restart`, { method: "POST" }),
 
-  deleteApp: (id: number) =>
-    request<any>(`/apps/${id}`, { method: "DELETE" }),
+  // "protected" puts the iVS login in front of the app: the container stops
+  // publishing its port to the network and iVS serves it instead. Recreates
+  // the container, so it takes a few seconds.
+  setAccessMode: (id: number, mode: "public" | "protected") => {
+    const fd = new FormData();
+    fd.append("mode", mode);
+    return request<{ message: string; access_mode: string; restarted: boolean }>(
+      `/apps/${id}/access-mode`,
+      { method: "POST", body: fd }
+    );
+  },
+
+  // deleteData also destroys the app's persistent data volume; omit it and the
+  // volume survives, so redeploying under the same name restores the data.
+  deleteApp: (id: number, deleteData = false) =>
+    request<any>(`/apps/${id}?delete_data=${deleteData}`, { method: "DELETE" }),
 
   exportApp: (id: number) =>
     request<{

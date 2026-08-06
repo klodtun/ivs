@@ -4,12 +4,22 @@ import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { DeployGuide } from "@/components/deploy-guide";
 
+type EnvVar = {
+  key: string;
+  default: string;
+  required: boolean;
+  hint: string;
+  secret: boolean;
+};
+
 type ValidationResult = {
   valid: boolean;
   app_type: string;
   issues: string[];
   warnings: string[];
   files: string[];
+  env_schema?: EnvVar[];
+  data_mount?: string;
 };
 
 const TYPE_PROMPT_MAP: Record<string, string> = {
@@ -44,6 +54,11 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [status, setStatus] = useState("");
   const [validation, setValidation] = useState<ValidationResult | null>(null);
+  const [envValues, setEnvValues] = useState<Record<string, string>>({});
+  // Default to protected: an app nobody has to log into is the exception, not
+  // the rule — that is what makes the audit log and PDPA notice meaningful.
+  const [accessMode, setAccessMode] = useState<"protected" | "public">("protected");
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   const [promptCopied, setPromptCopied] = useState(false);
   const [showSizeWarning, setShowSizeWarning] = useState(false);
   const [buildLogs, setBuildLogs] = useState<string[]>([]);
@@ -58,6 +73,23 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [buildLogs, showBuildLog]);
+
+  // Seed env inputs from the .env.example schema (defaults pre-filled)
+  useEffect(() => {
+    const schema = validation?.env_schema;
+    if (schema && schema.length) {
+      const init: Record<string, string> = {};
+      for (const e of schema) init[e.key] = e.default || "";
+      setEnvValues(init);
+    } else {
+      setEnvValues({});
+    }
+    setRevealedSecrets({});
+  }, [validation]);
+
+  const missingRequiredEnv = (validation?.env_schema || [])
+    .filter((e) => e.required && !(envValues[e.key] || "").trim())
+    .map((e) => e.key);
 
   const validateFile = async (file: File) => {
     setValidating(true);
@@ -138,6 +170,9 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
   const handleReselect = () => {
     setSelectedFile(null);
     setValidation(null);
+    setEnvValues({});
+    setRevealedSecrets({});
+    setAccessMode("protected");
     setAppName("");
     setDescription("");
     setStatus("");
@@ -151,6 +186,10 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
 
   const handleDeploy = async () => {
     if (!selectedFile || !appName.trim()) return;
+    if (missingRequiredEnv.length > 0) {
+      setStatus(t("deploy.env_missing").replace("{keys}", missingRequiredEnv.join(", ")));
+      return;
+    }
     setDeploying(true);
     setStatus(t("deploy.uploading"));
     setBuildLogs([]);
@@ -161,7 +200,13 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
       formData.append("file", selectedFile);
       formData.append("name", appName.trim());
       formData.append("description", description);
-      formData.append("env_vars", "{}");
+      // Only send non-empty values; app defaults cover the rest.
+      const env: Record<string, string> = {};
+      for (const [k, v] of Object.entries(envValues)) {
+        if (v.trim()) env[k] = v;
+      }
+      formData.append("env_vars", JSON.stringify(env));
+      formData.append("access_mode", accessMode);
 
       // Start deploy — this triggers build on backend
       const result = await api.deployApp(formData);
@@ -443,8 +488,105 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
             placeholder={t("deploy.desc")}
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+
+          {/* Access mode */}
+          <div className="border border-gray-200 rounded-lg p-2.5">
+            <p className="text-[11px] font-semibold text-gray-700 mb-1.5">{t("deploy.access_title")}</p>
+            <div className="space-y-1.5">
+              {(["protected", "public"] as const).map((mode) => (
+                <label key={mode} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="access_mode"
+                    checked={accessMode === mode}
+                    onChange={() => setAccessMode(mode)}
+                    className="mt-0.5 accent-brand-600"
+                  />
+                  <span className="flex-1">
+                    <span className="text-[11px] font-medium text-gray-800">
+                      {mode === "protected" ? `🔒 ${t("deploy.access_protected")}` : `🌐 ${t("deploy.access_public")}`}
+                    </span>
+                    <span className="block text-[10px] text-gray-500 leading-snug">
+                      {mode === "protected" ? t("deploy.access_protected_desc") : t("deploy.access_public_desc")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {accessMode === "protected" && (
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <p className="text-[10px] text-gray-600">{t("deploy.access_identity")}</p>
+                <pre className="mt-1 text-[9px] font-mono text-gray-500 bg-gray-50 rounded p-1.5 overflow-x-auto">
+{`X-IVS-User: <username>
+X-IVS-User-Id: <id>
+X-IVS-Role: admin | developer | viewer
+X-IVS-Email: <email>`}
+                </pre>
+                <p className="text-[9px] text-gray-400 mt-1 leading-snug">{t("deploy.access_identity_note")}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Persistent data mount */}
+          {validation?.data_mount && (
+            <div className="border border-green-200 bg-green-50/70 rounded-lg p-2.5">
+              <p className="text-[11px] font-semibold text-green-800 flex items-center gap-1.5">
+                <span>💾</span>{t("deploy.data_mount_title")}
+              </p>
+              <p className="text-[10px] text-green-700 mt-1 leading-relaxed">
+                {t("deploy.data_mount_desc").replace("{path}", validation.data_mount)}
+              </p>
+            </div>
+          )}
+
+          {/* Environment variables from .env.example */}
+          {validation?.env_schema && validation.env_schema.length > 0 && (
+            <div className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/60">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-[11px]">🔧</span>
+                <p className="text-[11px] font-semibold text-gray-700">{t("deploy.env_title")}</p>
+                <span className="text-[10px] text-gray-400">({validation.env_schema.length})</span>
+              </div>
+              <p className="text-[10px] text-gray-500 mb-2">{t("deploy.env_from_example")}</p>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {validation.env_schema.map((e) => {
+                  const isMissing = e.required && !(envValues[e.key] || "").trim();
+                  const reveal = revealedSecrets[e.key];
+                  return (
+                    <div key={e.key}>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <label className="text-[10px] font-mono font-medium text-gray-700">{e.key}</label>
+                        {e.required ? (
+                          <span className="text-[9px] px-1 py-px rounded bg-red-100 text-red-600 font-medium">{t("deploy.env_required")}</span>
+                        ) : (
+                          <span className="text-[9px] px-1 py-px rounded bg-gray-100 text-gray-500">{t("deploy.env_optional")}</span>
+                        )}
+                        {e.secret && (
+                          <button type="button" onClick={() => setRevealedSecrets((p) => ({ ...p, [e.key]: !p[e.key] }))}
+                            className="text-[9px] text-brand-600 hover:underline ml-auto">
+                            {reveal ? t("deploy.env_hide") : t("deploy.env_show")}
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type={e.secret && !reveal ? "password" : "text"}
+                        value={envValues[e.key] ?? ""}
+                        onChange={(ev) => setEnvValues((p) => ({ ...p, [e.key]: ev.target.value }))}
+                        placeholder={e.default || e.key}
+                        className={`w-full px-2 py-1 border rounded text-[11px] font-mono outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent ${
+                          isMissing ? "border-red-300 bg-red-50" : "border-gray-300"
+                        }`}
+                      />
+                      {e.hint && <p className="text-[9px] text-gray-400 mt-0.5 leading-snug line-clamp-2">{e.hint}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2">
-            <button onClick={handleDeploy} disabled={deploying || !appName.trim()}
+            <button onClick={handleDeploy} disabled={deploying || !appName.trim() || missingRequiredEnv.length > 0}
               className="flex-1 py-1.5 bg-brand-600 text-white font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50 text-xs">
               {deploying ? t("deploy.deploying") : t("deploy.submit")}
             </button>
