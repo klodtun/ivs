@@ -19,6 +19,7 @@ type ValidationResult = {
   warnings: string[];
   files: string[];
   env_schema?: EnvVar[];
+  data_mount?: string;
 };
 
 const TYPE_PROMPT_MAP: Record<string, string> = {
@@ -482,6 +483,18 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
             placeholder={t("deploy.desc")}
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+
+          {/* Persistent data mount */}
+          {validation?.data_mount && (
+            <div className="border border-green-200 bg-green-50/70 rounded-lg p-2.5">
+              <p className="text-[11px] font-semibold text-green-800 flex items-center gap-1.5">
+                <span>💾</span>{t("deploy.data_mount_title")}
+              </p>
+              <p className="text-[10px] text-green-700 mt-1 leading-relaxed">
+                {t("deploy.data_mount_desc").replace("{path}", validation.data_mount)}
+              </p>
+            </div>
+          )}
 
           {/* Environment variables from .env.example */}
           {validation?.env_schema && validation.env_schema.length > 0 && (

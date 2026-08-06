@@ -319,8 +319,8 @@ export function AppCard({
         <DeleteAppModal
           app={app}
           onCancel={() => setShowDeleteModal(false)}
-          onConfirm={async () => {
-            await action(() => api.deleteApp(app.id), "delete");
+          onConfirm={async (deleteData) => {
+            await action(() => api.deleteApp(app.id, deleteData), "delete");
             setShowDeleteModal(false);
           }}
           // Only suggest "Export first" if the user is allowed to export
