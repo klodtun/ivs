@@ -79,6 +79,10 @@ export function AppCard({
   const [loading, setLoading] = useState("");
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
   const [showPrivacyReview, setShowPrivacyReview] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
+  // Turning protection OFF exposes the app to the whole network, so the button
+  // asks a second time before doing it.
+  const [confirmedPublic, setConfirmedPublic] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [logo, setLogo] = useState<string | null>(app.logo_data ?? null);
@@ -230,6 +234,59 @@ export function AppCard({
           </button>
         </div>
       )}
+
+      {/*
+        Access mode. A "public" app is reachable at IP:PORT by anyone on the
+        network — no iVS login, so nothing about the visit reaches the audit
+        log. Admins can put the login in front of it here.
+      */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-[9px] px-1.5 py-px rounded-full font-medium",
+            app.access_mode === "protected"
+              ? "bg-green-100 text-green-700"
+              : "bg-amber-100 text-amber-700"
+          )}
+          title={app.access_mode === "protected" ? t("app.access.protected_hint") : t("app.access.public_hint")}
+        >
+          <span>{app.access_mode === "protected" ? "🔒" : "🌐"}</span>
+          {app.access_mode === "protected" ? t("app.access.protected") : t("app.access.public")}
+        </span>
+        {userRole === "admin" && (
+          <button
+            type="button"
+            disabled={accessBusy}
+            onClick={async () => {
+              const next = app.access_mode === "protected" ? "public" : "protected";
+              if (next === "public" && !confirmedPublic) {
+                setConfirmedPublic(true);
+                return;
+              }
+              setAccessBusy(true);
+              try {
+                await api.setAccessMode(app.id, next);
+                setConfirmedPublic(false);
+                onRefresh();
+              } finally {
+                setAccessBusy(false);
+              }
+            }}
+            className={cn(
+              "text-[9px] px-2 py-0.5 rounded transition disabled:opacity-50",
+              app.access_mode === "protected"
+                ? "text-gray-600 bg-gray-100 hover:bg-gray-200"
+                : "text-white bg-green-600 hover:bg-green-700"
+            )}
+          >
+            {accessBusy
+              ? t("app.access.applying")
+              : app.access_mode === "protected"
+                ? (confirmedPublic ? t("app.access.confirm_open") : t("app.access.make_public"))
+                : t("app.access.make_protected")}
+          </button>
+        )}
+      </div>
 
       <div className="flex items-center justify-between text-[9px] text-gray-400 mb-2">
         <span className={cn("font-medium", statusColor[app.status])}>{t(statusKey)}</span>

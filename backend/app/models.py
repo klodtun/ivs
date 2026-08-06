@@ -75,6 +75,13 @@ class App(Base):
     current_version = Column(Integer, default=1)
     source_path = Column(String(500), nullable=True)
     env_vars = Column(Text, default="{}")
+    # "public"    — the container publishes its port on 0.0.0.0; anyone who can
+    #               reach IP:PORT reaches the app, with no iVS login involved.
+    # "protected" — the container is bound to loopback only and iVS listens on
+    #               the public port itself, forwarding a connection only after
+    #               checking the iVS session (see services/app_gate_service.py).
+    #               Access is audit-logged, so PDPA/§26 records cover the app too.
+    access_mode = Column(String(20), default="public", nullable=False)
     # Small logo as a data URI (data:image/png;base64,...). Stored inline so
     # no static mount / file management is needed. Downscaled client-side to
     # keep it tiny and the cards uniform. Null -> render initials avatar.

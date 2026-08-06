@@ -19,8 +19,14 @@ from app.models import AuditLog, User
 from app.services.ntp_service import ntp_service
 
 
-def _extract_client_ip(request: Request) -> str:
-    """Extract real client IP (supports reverse proxy X-Forwarded-For)."""
+def _extract_client_ip(request: Optional[Request]) -> str:
+    """Extract real client IP (supports reverse proxy X-Forwarded-For).
+
+    `request` is None for callers outside the HTTP stack (background loops,
+    the app gate), which pass their own context instead.
+    """
+    if request is None:
+        return "unknown"
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -29,8 +35,10 @@ def _extract_client_ip(request: Request) -> str:
     return "unknown"
 
 
-def _extract_session_id(request: Request) -> Optional[str]:
+def _extract_session_id(request: Optional[Request]) -> Optional[str]:
     """Hash JWT token to create a trackable session ID."""
+    if request is None:
+        return None
     token = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -44,7 +52,7 @@ def _extract_session_id(request: Request) -> Optional[str]:
 
 def create_audit_log(
     db: Session,
-    request: Request,
+    request: Optional[Request],
     user: Optional[User],
     action: str,
     resource_type: str,
@@ -66,7 +74,7 @@ def create_audit_log(
         log_level: INFO / WARNING / ERROR / DEBUG
     """
     ip_address = _extract_client_ip(request)
-    user_agent = (request.headers.get("User-Agent") or "")[:500]
+    user_agent = ((request.headers.get("User-Agent") if request else "") or "")[:500]
     request_id = str(uuid.uuid4())
     session_id = _extract_session_id(request)
 

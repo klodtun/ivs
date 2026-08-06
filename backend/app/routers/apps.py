@@ -16,6 +16,7 @@ from app.middleware.auth import get_current_user, require_role
 from app.services.docker_service import docker_service
 from app.services.dns_service import dns_service
 from app.services.vault_service import vault_service
+from app.services.app_gate_service import app_gate_manager
 from app.config import settings
 from app.services.audit_service import create_audit_log
 from app.services import license_service
@@ -605,6 +606,7 @@ async def deploy_app(
     name: str = Form(...),
     description: str = Form(""),
     env_vars: str = Form("{}"),
+    access_mode: str = Form("public"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -623,6 +625,7 @@ async def deploy_app(
         port=port,
         status=AppStatus.BUILDING,
         env_vars=env_vars,
+        access_mode="protected" if access_mode == "protected" else "public",
     )
     db.add(app)
     db.commit()
@@ -665,9 +668,13 @@ async def deploy_app(
         injected_env = vault_service.build_env_dict(vault_keys)
         injected_env.update(parsed_env)
 
-        container_id = docker_service.build_and_run(slug, source_path, app_type, port, injected_env)
+        container_id = docker_service.build_and_run(
+            slug, source_path, app_type, port, injected_env, access_mode=app.access_mode
+        )
         app.container_id = container_id
         app.status = AppStatus.RUNNING
+        if app.access_mode == "protected":
+            await app_gate_manager.start_gate(app)
 
         domain_url = await dns_service.register_app(slug, port)
         app.domain = domain_url
@@ -728,10 +735,14 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
         injected_env = vault_service.build_env_dict(vault_keys)
         injected_env.update(parsed_env)
 
-        container_id = docker_service.build_and_run(slug, source_path, app_type, app.port, injected_env)
+        container_id = docker_service.build_and_run(
+            slug, source_path, app_type, app.port, injected_env, access_mode=app.access_mode
+        )
         app.container_id = container_id
         app.status = AppStatus.RUNNING
         app.current_version += 1
+        if app.access_mode == "protected":
+            await app_gate_manager.start_gate(app)
 
         version = AppVersion(
             app_id=app.id, version=app.current_version, commit_message=f"Redeployment v{app.current_version}"
@@ -798,6 +809,73 @@ async def set_app_logo(
     return {"message": "Logo updated", "has_logo": bool(value)}
 
 
+@router.post("/{app_id}/access-mode")
+async def set_access_mode(
+    app_id: int,
+    request: Request,
+    mode: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Switch an app between open access and iVS-login-only.
+
+    The port binding is decided when the container starts (0.0.0.0 for public,
+    loopback for protected), so the container has to be recreated for the
+    change to mean anything — otherwise the old, directly reachable binding
+    would still be live and the setting would be a lie.
+    """
+    if mode not in ("public", "protected"):
+        raise HTTPException(status_code=422, detail="mode must be 'public' or 'protected'")
+
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    if app.access_mode == mode:
+        return {"message": "unchanged", "access_mode": mode, "restarted": False}
+
+    app.access_mode = mode
+    db.commit()
+
+    # Take the old listener down before the new binding claims the port.
+    await app_gate_manager.stop_gate(app.id)
+
+    restarted = False
+    if app.source_path and os.path.isdir(app.source_path) and app.status == AppStatus.RUNNING:
+        vault_keys = db.query(VaultKey).all()
+        injected_env = vault_service.build_env_dict(vault_keys)
+        try:
+            injected_env.update(json.loads(app.env_vars or "{}"))
+        except Exception:
+            pass
+        app_type = docker_service.detect_app_type(app.source_path)
+        try:
+            app.container_id = docker_service.build_and_run(
+                app.slug, app.source_path, app_type, app.port, injected_env,
+                access_mode=mode,
+            )
+            restarted = True
+        except Exception as e:
+            logger.error(f"Could not rebind {app.slug} for access_mode={mode}: {e}")
+            raise HTTPException(status_code=500, detail=f"Could not apply access mode: {e}")
+
+    if mode == "protected" and app.status == AppStatus.RUNNING:
+        await app_gate_manager.start_gate(app)
+
+    create_audit_log(
+        db, request, user=user, action="set_access_mode", resource_type="app",
+        resource_id=str(app.id),
+        details=(
+            f"{app.name}: การเข้าถึงเปลี่ยนเป็น "
+            + ("ต้องเข้าสู่ระบบ iVS ก่อน (protected)" if mode == "protected"
+               else "เปิดสาธารณะ ไม่ต้องเข้าสู่ระบบ (public)")
+        ),
+        log_level="WARNING",
+    )
+    db.commit()
+    return {"message": "updated", "access_mode": mode, "restarted": restarted}
+
+
 @router.post("/{app_id}/start")
 async def start_app(
     app_id: int,
@@ -814,6 +892,8 @@ async def start_app(
         docker_service.start_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
+    if app.access_mode == "protected":
+        await app_gate_manager.start_gate(app)
     return {"message": f"{app.name} started"}
 
 
@@ -833,6 +913,7 @@ async def stop_app(
         docker_service.stop_container(live_id)
     app.status = AppStatus.STOPPED
     db.commit()
+    await app_gate_manager.stop_gate(app.id)
     return {"message": f"{app.name} stopped"}
 
 
@@ -1162,6 +1243,9 @@ async def delete_app(
     app = db.query(App).filter(App.id == app_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="App not found")
+
+    # Free the gate's listening port before the app row disappears
+    await app_gate_manager.stop_gate(app.id)
 
     # Stop and remove Docker container (gracefully handle Docker being down)
     if app.container_id:
