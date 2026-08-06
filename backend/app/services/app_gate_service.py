@@ -25,6 +25,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
+from urllib.parse import quote
 
 from jose import JWTError
 
@@ -142,7 +143,7 @@ class AppGate:
             )
             return
 
-        up_writer.write(head)
+        up_writer.write(self._inject_identity(head, user))
         try:
             await up_writer.drain()
         except Exception:
@@ -154,6 +155,39 @@ class AppGate:
             self._pipe(up_reader, writer),
             return_exceptions=True,
         )
+
+    def _inject_identity(self, head: bytes, user: User) -> bytes:
+        """Tell the app who is visiting, over headers it can trust.
+
+        Any X-IVS-* header the client sent is dropped first — otherwise anyone
+        could claim to be another user simply by setting the header themselves,
+        which would be worse than sending no identity at all. What the app
+        receives is therefore always this gate's own verdict.
+
+        Values are percent-encoded because HTTP headers are latin-1 and iVS
+        usernames may be Thai; apps decode with decodeURIComponent / unquote.
+        """
+        sep = b"\r\n\r\n"
+        idx = head.find(sep)
+        if idx == -1:
+            return head
+        raw_head, body = head[:idx], head[idx + len(sep):]
+        lines = raw_head.split(b"\r\n")
+        if not lines:
+            return head
+
+        request_line, rest = lines[0], lines[1:]
+        kept = [l for l in rest if not l.lower().startswith(b"x-ivs-")]
+
+        role = user.role.value if hasattr(user.role, "value") else str(user.role)
+        identity = {
+            "X-IVS-User": quote(user.username or "", safe=""),
+            "X-IVS-User-Id": str(user.id),
+            "X-IVS-Role": quote(role or "", safe=""),
+            "X-IVS-Email": quote(user.email or "", safe=""),
+        }
+        injected = [f"{k}: {v}".encode("latin-1", "ignore") for k, v in identity.items()]
+        return b"\r\n".join([request_line] + kept + injected) + sep + body
 
     async def _read_head(self, reader: asyncio.StreamReader) -> Optional[bytes]:
         """Read up to and including the blank line that ends the request head."""

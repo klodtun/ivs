@@ -513,6 +513,18 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
                 </label>
               ))}
             </div>
+            {accessMode === "protected" && (
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <p className="text-[10px] text-gray-600">{t("deploy.access_identity")}</p>
+                <pre className="mt-1 text-[9px] font-mono text-gray-500 bg-gray-50 rounded p-1.5 overflow-x-auto">
+{`X-IVS-User: <username>
+X-IVS-User-Id: <id>
+X-IVS-Role: admin | developer | viewer
+X-IVS-Email: <email>`}
+                </pre>
+                <p className="text-[9px] text-gray-400 mt-1 leading-snug">{t("deploy.access_identity_note")}</p>
+              </div>
+            )}
           </div>
 
           {/* Persistent data mount */}

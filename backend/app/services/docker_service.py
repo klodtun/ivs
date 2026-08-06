@@ -202,6 +202,30 @@ class DockerService:
             logger.warning(f"Could not remove volume {name}: {e}")
             return False
 
+    def is_published_to_network(self, container_name: str) -> Optional[bool]:
+        """True if the container's port is published on a public interface.
+
+        A protected app whose container still carries a 0.0.0.0 binding is
+        reachable without the iVS login no matter what the database says, so
+        callers use this to catch a container that predates the setting.
+        Returns None when Docker can't answer.
+        """
+        if not self._ensure_client():
+            return None
+        try:
+            c = self.client.containers.get(container_name)
+            ports = (c.attrs.get("NetworkSettings") or {}).get("Ports") or {}
+        except NotFound:
+            return None
+        except Exception:
+            return None
+        for bindings in ports.values():
+            for b in bindings or []:
+                host_ip = b.get("HostIp") or ""
+                if host_ip not in ("127.0.0.1", "::1"):
+                    return True
+        return False
+
     def volume_info(self, app_slug: str) -> dict:
         """Report whether the app has a data volume, for the UI."""
         info = {"exists": False, "name": self.volume_name(app_slug), "mountpoint": None}
