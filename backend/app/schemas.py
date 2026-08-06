@@ -81,6 +81,7 @@ class AppResponse(BaseModel):
     domain: Optional[str]
     current_version: int
     logo_data: Optional[str] = None
+    access_mode: str = "public"
     created_at: datetime
     updated_at: datetime
 

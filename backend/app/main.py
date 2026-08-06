@@ -133,6 +133,7 @@ def _apply_lightweight_migrations():
         ("audit_log_exports", "end_date", "DATETIME"),
         ("audit_log_exports", "file_count", "INTEGER DEFAULT 1"),
         ("apps", "logo_data", "TEXT"),
+        ("apps", "access_mode", "VARCHAR(20) DEFAULT 'public'"),
         ("app_pdpa", "anonymization_mode", "TEXT DEFAULT 'none'"),
     ]
     with engine.begin() as conn:
@@ -183,9 +184,21 @@ async def lifespan(app: FastAPI):
         check_on_startup()
     except Exception as e:
         logger.warning(f"Integrity check failed: {e}")
+    # Put the login back in front of every app marked "protected" — the gates
+    # are plain sockets, so they die with the process and must be re-opened.
+    try:
+        from app.services.app_gate_service import app_gate_manager
+        await app_gate_manager.sync_all()
+    except Exception as e:
+        logger.warning(f"Could not start app gates: {e}")
     logger.info(f"IVS Backend started - {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info("Copyright (C) 2026 IVS Project. Licensed under IVS Proprietary EULA.")
     yield
+    try:
+        from app.services.app_gate_service import app_gate_manager
+        await app_gate_manager.stop_all()
+    except Exception:
+        pass
     ntp_service.stop()
     mdns_service.stop()
     task.cancel()

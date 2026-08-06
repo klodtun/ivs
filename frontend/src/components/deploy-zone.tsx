@@ -55,6 +55,9 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
   const [status, setStatus] = useState("");
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [envValues, setEnvValues] = useState<Record<string, string>>({});
+  // Default to protected: an app nobody has to log into is the exception, not
+  // the rule — that is what makes the audit log and PDPA notice meaningful.
+  const [accessMode, setAccessMode] = useState<"protected" | "public">("protected");
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   const [promptCopied, setPromptCopied] = useState(false);
   const [showSizeWarning, setShowSizeWarning] = useState(false);
@@ -169,6 +172,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
     setValidation(null);
     setEnvValues({});
     setRevealedSecrets({});
+    setAccessMode("protected");
     setAppName("");
     setDescription("");
     setStatus("");
@@ -202,6 +206,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
         if (v.trim()) env[k] = v;
       }
       formData.append("env_vars", JSON.stringify(env));
+      formData.append("access_mode", accessMode);
 
       // Start deploy — this triggers build on backend
       const result = await api.deployApp(formData);
@@ -483,6 +488,32 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
             placeholder={t("deploy.desc")}
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+
+          {/* Access mode */}
+          <div className="border border-gray-200 rounded-lg p-2.5">
+            <p className="text-[11px] font-semibold text-gray-700 mb-1.5">{t("deploy.access_title")}</p>
+            <div className="space-y-1.5">
+              {(["protected", "public"] as const).map((mode) => (
+                <label key={mode} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="access_mode"
+                    checked={accessMode === mode}
+                    onChange={() => setAccessMode(mode)}
+                    className="mt-0.5 accent-brand-600"
+                  />
+                  <span className="flex-1">
+                    <span className="text-[11px] font-medium text-gray-800">
+                      {mode === "protected" ? `🔒 ${t("deploy.access_protected")}` : `🌐 ${t("deploy.access_public")}`}
+                    </span>
+                    <span className="block text-[10px] text-gray-500 leading-snug">
+                      {mode === "protected" ? t("deploy.access_protected_desc") : t("deploy.access_public_desc")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
 
           {/* Persistent data mount */}
           {validation?.data_mount && (

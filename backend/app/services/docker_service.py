@@ -731,6 +731,7 @@ CMD ["/start-app.sh"]
         app_type: str,
         port: int,
         env_vars: Optional[dict] = None,
+        access_mode: str = "public",
     ) -> Optional[str]:
         if not self._ensure_client():
             raise RuntimeError("Docker Desktop is not running. Please start Docker Desktop and try again.")
@@ -832,6 +833,20 @@ CMD ["/start-app.sh"]
                 app_slug, f"[IVS] Data volume {volume} mounted at {mount_path} (survives redeploy)"
             )
 
+        # Protected apps must not be reachable straight from the network: bind
+        # them to loopback on a shadow port and let the iVS gate own the public
+        # one (see services/app_gate_service.py).
+        if access_mode == "protected":
+            from app.services.app_gate_service import internal_port as gate_shadow_port
+            port_binding = ("127.0.0.1", gate_shadow_port(port))
+            self._append_build_log(
+                app_slug,
+                f"[IVS] Protected app — container bound to 127.0.0.1:{port_binding[1]}, "
+                f"iVS serves port {port} behind the login",
+            )
+        else:
+            port_binding = port
+
         try:
             self._append_build_log(app_slug, f"[IVS] Starting container {container_name} on port {port}...")
             container = self.client.containers.run(
@@ -839,7 +854,7 @@ CMD ["/start-app.sh"]
                 name=container_name,
                 detach=True,
                 restart_policy={"Name": "unless-stopped"},
-                ports={f"{internal_port}/tcp": port},
+                ports={f"{internal_port}/tcp": port_binding},
                 environment=environment,
                 volumes=volumes,
                 network=settings.DOCKER_NETWORK,
