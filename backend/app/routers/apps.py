@@ -809,6 +809,28 @@ async def set_app_logo(
     return {"message": "Logo updated", "has_logo": bool(value)}
 
 
+def _rebuild_for_access_mode(app: App, db: Session, mode: str) -> bool:
+    """Recreate the app's container so its port binding matches `mode`.
+
+    The binding is fixed when the container is created, so the mode only
+    becomes real on a rebuild — without this, a "protected" app could still be
+    sitting on 0.0.0.0 and answer anyone who asks.
+    """
+    if not app.source_path or not os.path.isdir(app.source_path):
+        return False
+    injected_env = vault_service.build_env_dict(db.query(VaultKey).all())
+    try:
+        injected_env.update(json.loads(app.env_vars or "{}"))
+    except Exception:
+        pass
+    app_type = docker_service.detect_app_type(app.source_path)
+    app.container_id = docker_service.build_and_run(
+        app.slug, app.source_path, app_type, app.port, injected_env, access_mode=mode
+    )
+    db.commit()
+    return True
+
+
 @router.post("/{app_id}/access-mode")
 async def set_access_mode(
     app_id: int,
@@ -841,23 +863,23 @@ async def set_access_mode(
     await app_gate_manager.stop_gate(app.id)
 
     restarted = False
-    if app.source_path and os.path.isdir(app.source_path) and app.status == AppStatus.RUNNING:
-        vault_keys = db.query(VaultKey).all()
-        injected_env = vault_service.build_env_dict(vault_keys)
+    if app.status == AppStatus.RUNNING:
         try:
-            injected_env.update(json.loads(app.env_vars or "{}"))
-        except Exception:
-            pass
-        app_type = docker_service.detect_app_type(app.source_path)
-        try:
-            app.container_id = docker_service.build_and_run(
-                app.slug, app.source_path, app_type, app.port, injected_env,
-                access_mode=mode,
-            )
-            restarted = True
+            restarted = _rebuild_for_access_mode(app, db, mode)
         except Exception as e:
             logger.error(f"Could not rebind {app.slug} for access_mode={mode}: {e}")
+            # Don't leave the row claiming a protection that isn't in force.
+            app.access_mode = "public" if mode == "protected" else app.access_mode
+            db.commit()
             raise HTTPException(status_code=500, detail=f"Could not apply access mode: {e}")
+        if not restarted and mode == "protected":
+            app.access_mode = "public"
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail="Source files for this app are missing, so its container cannot be "
+                       "rebound to loopback. Redeploy the app to protect it.",
+            )
 
     if mode == "protected" and app.status == AppStatus.RUNNING:
         await app_gate_manager.start_gate(app)
@@ -892,7 +914,13 @@ async def start_app(
         docker_service.start_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
+
     if app.access_mode == "protected":
+        # A container created while the app was public still holds a 0.0.0.0
+        # binding, which would leave the app reachable without a login and
+        # occupy the port the gate needs. Rebuild it before opening the gate.
+        if docker_service.is_published_to_network(f"ivs-{app.slug}") and app.source_path:
+            _rebuild_for_access_mode(app, db, "protected")
         await app_gate_manager.start_gate(app)
     return {"message": f"{app.name} started"}
 
