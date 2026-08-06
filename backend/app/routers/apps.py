@@ -482,10 +482,81 @@ async def validate_app(
 
         # Validate structure
         result = _validate_zip_structure(extract_dir)
+        # Surface env vars declared in .env.example so the UI can prompt for
+        # them at deploy time (apps that require an env var otherwise crash-loop
+        # silently after a successful deploy).
+        result["env_schema"] = _parse_env_example(extract_dir)
         return result
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _parse_env_example(source_path: str) -> list[dict]:
+    """Parse a .env.example (or .sample/.template) into a prompt schema.
+
+    Each active `KEY=value` line becomes {key, default, required, hint, secret}.
+    The comment block directly above a key is its hint; a key is `required`
+    when that comment says REQUIRED or the key has no default value. PORT is
+    skipped — the platform assigns it. Commented-out keys (`# KEY=`) are hints,
+    not fields.
+    """
+    candidates = [".env.example", ".env.sample", ".env.template", "env.example"]
+    path = next(
+        (os.path.join(source_path, c) for c in candidates
+         if os.path.isfile(os.path.join(source_path, c))),
+        None,
+    )
+    if not path:
+        return []
+
+    SECRET_HINTS = ("PASSWORD", "SECRET", "TOKEN", "PEPPER", "APIKEY", "API_KEY", "_KEY", "PIN")
+    out: list[dict] = []
+    seen: set[str] = set()
+    comment_buf: list[str] = []
+    try:
+        with open(path, "r", errors="ignore") as f:
+            for raw in f:
+                s = raw.strip()
+                if not s:
+                    comment_buf = []
+                    continue
+                if s.startswith("#"):
+                    comment_buf.append(s.lstrip("#").strip())
+                    continue
+                if "=" not in s:
+                    comment_buf = []
+                    continue
+                key, _, val = s.partition("=")
+                key, val = key.strip(), val.strip()
+                if not key or not all(c.isalnum() or c == "_" for c in key):
+                    comment_buf = []
+                    continue
+                if key.upper() == "PORT" or key in seen:
+                    comment_buf = []
+                    continue
+                hint = " ".join(comment_buf).strip()
+                hint_upper = hint.upper()
+                # Required only when the comment explicitly says so (EN or TH).
+                # An empty default alone is NOT enough — many optional vars ship
+                # blank with a "ไม่ตั้ง = ..." (leave unset to ...) note.
+                required = any(m in hint_upper for m in ("REQUIRED", "จำเป็น", "ต้องตั้ง", "ต้องระบุ"))
+                # Explicit optional markers win over a REQUIRED elsewhere in the block.
+                if any(m in hint for m in ("ไม่ตั้ง", "ปกติไม่ต้อง", "optional", "Optional", "OPTIONAL")):
+                    required = False
+                secret = any(h in key.upper() for h in SECRET_HINTS)
+                out.append({
+                    "key": key,
+                    "default": val,
+                    "required": required,
+                    "hint": hint[:300],
+                    "secret": secret,
+                })
+                seen.add(key)
+                comment_buf = []
+    except Exception:
+        return []
+    return out[:40]
 
 
 @router.get("", response_model=list[AppResponse])
