@@ -159,6 +159,18 @@ def _apply_lightweight_migrations():
             except Exception as e:
                 logger.warning(f"Migration: could not add {table}.{column}: {e}")
 
+    # Indexes on tables that already exist. `create_all` only builds indexes for
+    # tables it creates, so an index added to an existing model needs this pass.
+    indexes = [
+        ("ix_audit_logs_resource", "audit_logs", "resource_type, resource_id"),
+    ]
+    with engine.begin() as conn:
+        for name, table, cols in indexes:
+            try:
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({cols})"))
+            except Exception as e:
+                logger.warning(f"Migration: could not create index {name}: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
