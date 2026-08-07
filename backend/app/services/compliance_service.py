@@ -395,9 +395,12 @@ def _h_stamp_duty(row, cfg, cert, sigs, recorded, audit_count):
     rec = recorded.get("e_stamp_duty")
     deadline_days = cfg.get("deadline_days")
     deadline = None
-    if deadline_days and cert.ntp_time:
+    # กำหนดเวลานับจาก "วันที่ทำตราสาร" ไม่ใช่วันที่ออกใบรับรองร่าง — ร่างอาจถูกออก
+    # ใบรับรองล่วงหน้าหลายวันก่อนตราสารจะสมบูรณ์ ถ้านับจากวันออกใบรับรองจะเร่งเกินจริง
+    basis = cert.instrument_date or cert.ntp_time
+    if deadline_days and basis:
         try:
-            deadline = cert.ntp_time + timedelta(days=int(deadline_days))
+            deadline = basis + timedelta(days=int(deadline_days))
         except Exception:
             deadline = None
 
@@ -419,6 +422,8 @@ def _h_stamp_duty(row, cfg, cert, sigs, recorded, audit_count):
         "paid_at": _fmt(rec.recorded_at) if rec else None,
         # มีใบข้อมูลสำหรับยื่นให้ดาวน์โหลดเมื่อสัญญานี้เข้าข่ายต้องเสียอากร
         "worksheet_available": bool(cfg.get("required")),
+        "deadline_basis": "instrument_date" if cert.instrument_date else "certified_at",
+        "instrument_date": _fmt(cert.instrument_date),
     }
     if rec and rec.status != "waived":
         row["status"] = "done"
@@ -677,6 +682,24 @@ def record_step(db: Session, cert_id: str, step_key: str, actor: str = "",
     row.recorded_by = recorded_by
     db.commit()
     db.refresh(row)
+
+    # ต่อเข้าโซ่หลักฐาน — ขั้นตอนเหล่านี้เป็นเอกสารประกอบที่อ้างถึงต้นฉบับ จึงผนวก
+    # ต่อท้ายได้แม้ตรึงต้นฉบับแล้ว (อากรแสตมป์ต้องชำระหลังตราสารสมบูรณ์อยู่แล้ว)
+    # e_seal ไม่อยู่ในนี้เพราะ apply_seal() ต่อโซ่เองด้วย STEP_SEAL ก่อนตรึงต้นฉบับ
+    from app.services import chain_service
+    chain_step = {
+        "e_stamp_duty": chain_service.STEP_STAMP_DUTY,
+        "print_out": chain_service.STEP_PRINT_OUT,
+        "e_retention": chain_service.STEP_RETENTION,
+    }.get(step_key)
+    if chain_step:
+        try:
+            chain_service.append(db, cert_id, chain_step, {
+                "status": row.status, "actor": row.actor, "ref": row.ref,
+                "note": row.note, "detail": detail or {}, "recorded_at": row.recorded_at,
+            }, created_by=recorded_by)
+        except chain_service.ChainError as e:
+            logger.warning(f"ต่อโซ่ {chain_step} ของ {cert_id} ไม่สำเร็จ: {e}")
     return step_to_dict(row)
 
 

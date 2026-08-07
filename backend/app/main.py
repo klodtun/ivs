@@ -144,6 +144,9 @@ def _apply_lightweight_migrations():
         ("econtract_certs", "effective_profile_json", "TEXT DEFAULT ''"),
         ("econtract_certs", "effective_profile_hash", "VARCHAR(64) DEFAULT ''"),
         ("econtract_certs", "doc_format", "VARCHAR(20) DEFAULT ''"),
+        ("econtract_certs", "instrument_date", "DATETIME"),
+        ("econtract_signatures", "signing_mode", "VARCHAR(20) DEFAULT 'remote'"),
+        ("econtract_signatures", "operator_user_id", "INTEGER"),
     ]
     with engine.begin() as conn:
         for table, column, coldef in additions:

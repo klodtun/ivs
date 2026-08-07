@@ -1,6 +1,9 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey, Boolean, Text, Index
+from sqlalchemy import (
+    Column, Integer, String, DateTime, Enum, ForeignKey, Boolean, Text, Index,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -272,6 +275,11 @@ class EContractCert(Base):
     effective_profile_hash = Column(String(64), default="")
     doc_format = Column(String(20), default="")            # PDF/A-2b | PDF | DOCX | other
 
+    # วันที่ทำตราสาร — ใช้นับกำหนดเวลาเสียอากรแสตมป์ ซึ่งอาจไม่ใช่วันที่ออกใบรับรอง
+    # (สัญญาเกิดที่คำเสนอ–คำสนองตาม ม.13 ซึ่งอาจเกิดหลังการออกใบรับรองร่างหลายวัน)
+    # ว่าง = ยังไม่กำหนด ให้ถอยไปใช้ ntp_time
+    instrument_date = Column(DateTime, nullable=True)
+
 
 class EContractStep(Base):
     """
@@ -297,6 +305,59 @@ class EContractStep(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
+class EContractSeal(Base):
+    """
+    ตราประทับนิติบุคคลอิเล็กทรอนิกส์ (e-Seal) — ม.9 วรรคท้าย
+
+    e-Seal เป็นคนละสิ่งกับลายมือชื่อ: ลายมือชื่อแสดงความสัมพันธ์ระหว่าง **บุคคล**
+    กับข้อมูล ส่วนตราประทับแสดงความสัมพันธ์ระหว่าง **นิติบุคคล** กับข้อมูล จึงตีความ
+    ลายเซ็นของกรรมการเป็นตราประทับบริษัทไม่ได้ (FAQ หมวด eSeal ข้อ 1)
+    ตารางนี้จึงผูกกับองค์กร ไม่ผูกกับผู้ใช้
+    """
+    __tablename__ = "econtract_seals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    seal_id = Column(String(40), unique=True, index=True, nullable=False)  # SEAL-...
+    org_name = Column(String(200), nullable=False)      # ชื่อนิติบุคคลตามที่จดทะเบียน
+    org_tax_id = Column(String(20), default="")         # เลขประจำตัวผู้เสียภาษี (ถ้ามี)
+    image_data = Column(Text, default="")               # data URI ภาพตราประทับ
+    authority_note = Column(Text, default="")           # อ้างอิงระเบียบ/มติที่ให้อำนาจใช้ตรา
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class EContractChainLink(Base):
+    """
+    โซ่หลักฐานของสัญญาหนึ่งฉบับ — หนึ่งแถวคือหนึ่งเหตุการณ์ในวงจร
+
+    ม.11 ให้ชั่งน้ำหนักพยานหลักฐานจาก "วิธีการที่ใช้สร้าง เก็บรักษา สื่อสาร" และ
+    "ความครบถ้วนและไม่มีการเปลี่ยนแปลง" — hash ของเอกสารเพียงอย่างเดียวพิสูจน์ได้แค่
+    เนื้อหา แต่พิสูจน์ลำดับเหตุการณ์ไม่ได้ แต่ละ link จึงผูกกับ link ก่อนหน้า
+    ทำให้การแก้เหตุการณ์ใดเหตุการณ์หนึ่งทำให้ทุก link หลังจากนั้นเปลี่ยนตาม
+
+    ตารางนี้ append-only โดยเจตนา — ไม่มีเส้นทางแก้ไขหรือลบใน service
+    """
+    __tablename__ = "econtract_chain"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cert_id = Column(String(40), ForeignKey("econtract_certs.cert_id"), index=True, nullable=False)
+    seq = Column(Integer, nullable=False)              # 0 = จัดทำร่าง
+    step = Column(String(30), nullable=False)          # document | deliver | ... | print_out
+    version = Column(String(30), default="ivs-econtract-v1")  # เวอร์ชันสูตร hash
+    prev_hash = Column(String(64), nullable=False)     # chain_hash ของ link ก่อนหน้า
+    payload_hash = Column(String(64), nullable=False)  # SHA-256 ของ canonical(payload)
+    chain_hash = Column(String(64), nullable=False)    # SHA-256(version|seq|step|prev|payload)
+    payload_json = Column(Text, default="")            # canonical form ที่ใช้คำนวณ (เก็บดิบ)
+    ntp_time = Column(DateTime, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("cert_id", "seq", name="uq_econtract_chain_cert_seq"),
+    )
+
+
 class EContractSignature(Base):
     """
     ลายมือชื่ออิเล็กทรอนิกส์ต่อใบรับรอง e-Contract (§9 / §26).
@@ -312,6 +373,12 @@ class EContractSignature(Base):
     identity_ref = Column(Text, default="")        # อีเมล/เบอร์ที่ยืนยัน หรือ data URI ลายเซ็นวาด
     signed_at = Column(DateTime, nullable=False)
     ip_address = Column(String(45), default="")
+
+    # ลงนามต่อหน้าบนเครื่องของหน่วยงาน vs ลงนามระยะไกลบนเครื่องของคู่สัญญา —
+    # น้ำหนักพยานต่างกัน กรณีต่อหน้า IP ที่บันทึกได้เป็นของหน่วยงาน ไม่ได้พิสูจน์ตัวคู่สัญญา
+    # จึงต้องบันทึกด้วยว่าใครเป็นผู้ควบคุมเครื่องขณะลงนาม
+    signing_mode = Column(String(20), default="remote")   # in_person | remote
+    operator_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     signature = Column(String(64), nullable=False) # HMAC(cert_sha256|signer|signed_at|method)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=utcnow)

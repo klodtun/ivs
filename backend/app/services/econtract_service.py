@@ -85,6 +85,20 @@ def certify(db: Session, filename: str, data: bytes, signer: str = "",
     row.signature = _sign(row.sha256, row.ntp_time.isoformat())
     db.commit()
     db.refresh(row)
+
+    # เหตุการณ์แรกของโซ่หลักฐาน (H0)
+    from app.services import chain_service
+    chain_service.append(db, row.cert_id, chain_service.STEP_DOCUMENT, {
+        "filename": row.filename,
+        "sha256": row.sha256,
+        "size_bytes": row.size_bytes,
+        "doc_format": row.doc_format,
+        "profile_key": row.profile_key,
+        "profile_version": row.profile_version,
+        "profile_hash": row.effective_profile_hash,
+        "sector": row.profile_sector,
+        "issued_by": signer or "",
+    }, created_by=created_by)
     return to_dict(row)
 
 
@@ -155,17 +169,34 @@ def sig_to_dict(s: EContractSignature) -> dict:
 
 
 def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "typed",
-                  identity_ref: str = "", ip: str = "", created_by: int = None) -> dict:
-    """Record an electronic signature on a certificate (§9/§26)."""
+                  identity_ref: str = "", ip: str = "", created_by: int = None,
+                  signing_mode: str = "remote", user_agent: str = "") -> dict:
+    """Record an electronic signature on a certificate (§9/§26).
+
+    `signing_mode` แยกการลงนามต่อหน้าบนเครื่องของหน่วยงานออกจากการลงนามระยะไกล —
+    กรณีต่อหน้า IP ที่บันทึกได้เป็นของหน่วยงาน ไม่ได้พิสูจน์ตัวคู่สัญญา จึงบันทึกผู้ควบคุม
+    เครื่องไว้ด้วยเพื่อให้ผู้ชั่งน้ำหนักพยานหลักฐาน (ม.11) ตัดสินได้เอง
+    """
+    from app.services import chain_service
+
     cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
     if not cert:
         raise ValueError("ไม่พบใบรับรอง")
+    if chain_service.is_locked(db, cert_id):
+        raise ValueError(
+            "ตรึงต้นฉบับแล้ว จึงลงนามเพิ่มไม่ได้ — ม.10 กำหนดให้ต้นฉบับต้องไม่มีการ"
+            "เปลี่ยนแปลงนับแต่สร้างเสร็จสมบูรณ์"
+        )
+    mode = signing_mode if signing_mode in ("in_person", "remote") else "remote"
     now = ntp_service.now()
     row = EContractSignature(
         cert_id=cert_id, signer_name=signer_name[:200],
         method=method if method in ("typed", "drawn", "otp") else "typed",
         identity_ref=(identity_ref or "")[:300000], signed_at=now,  # allow a drawn-signature PNG data URI
         ip_address=(ip or "")[:45], signature="", created_by=created_by,
+        signing_mode=mode,
+        # ผู้ควบคุมเครื่องมีความหมายเฉพาะกรณีลงนามต่อหน้า
+        operator_user_id=created_by if mode == "in_person" else None,
     )
     db.add(row)
     db.commit()
@@ -173,7 +204,29 @@ def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "ty
     row.signature = _sign_signature(cert.sha256, row.signer_name, row.signed_at.isoformat(), row.method)
     db.commit()
     db.refresh(row)
+
+    from app.services.compliance_service import METHOD_ASSURANCE
+    chain_service.append(db, cert_id, chain_service.STEP_SIGN, {
+        "signer_name": row.signer_name,
+        "method": row.method,
+        "assurance_level": METHOD_ASSURANCE.get(row.method, "general"),
+        "signing_mode": row.signing_mode,
+        "operator_user_id": row.operator_user_id,
+        "identity_evidence": _identity_summary(row),
+        "ip_address": row.ip_address,
+        "user_agent": (user_agent or "")[:300],
+        "signed_at": row.signed_at,
+        "signature_hmac": row.signature,
+    }, created_by=created_by)
     return sig_to_dict(row)
+
+
+def _identity_summary(row) -> str:
+    """สรุปหลักฐานตัวตนโดยไม่เอาภาพลายเซ็นทั้งก้อนเข้าโซ่ (data URI ยาวมาก)"""
+    ref = row.identity_ref or ""
+    if ref.startswith("data:image"):
+        return "drawn-signature-image:sha256=" + hashlib.sha256(ref.encode()).hexdigest()
+    return ref[:200]
 
 
 def list_signatures(db: Session, cert_id: str) -> list:
@@ -195,6 +248,288 @@ def detail(db: Session, cert_id: str) -> dict:
         logging.getLogger(__name__).warning(f"ประเมิน 7 ขั้นตอนของ {cert_id} ไม่สำเร็จ: {e}")
         d["compliance"] = None
     return d
+
+
+# ── e-Seal — ตราประทับนิติบุคคล (ม.9 วรรคท้าย) ───────────────────────────
+
+MAX_SEAL_IMAGE = 400_000  # ~300 KB หลัง base64
+
+
+def seal_to_dict(s) -> dict:
+    return {
+        "seal_id": s.seal_id,
+        "org_name": s.org_name,
+        "org_tax_id": s.org_tax_id,
+        "image_data": s.image_data,
+        "authority_note": s.authority_note,
+        "is_active": bool(s.is_active),
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+def list_seals(db: Session, include_inactive: bool = False) -> list:
+    from app.models import EContractSeal
+    q = db.query(EContractSeal)
+    if not include_inactive:
+        q = q.filter(EContractSeal.is_active == True)  # noqa: E712
+    return [seal_to_dict(s) for s in q.order_by(EContractSeal.created_at.desc()).all()]
+
+
+def create_seal(db: Session, org_name: str, org_tax_id: str = "", image_data: str = "",
+                authority_note: str = "", created_by: int = None) -> dict:
+    from app.models import EContractSeal
+    if not org_name.strip():
+        raise ValueError("ต้องระบุชื่อนิติบุคคล")
+    if image_data and len(image_data) > MAX_SEAL_IMAGE:
+        raise ValueError("ภาพตราประทับใหญ่เกินไป (จำกัด ~300 KB)")
+    row = EContractSeal(
+        seal_id="SEAL-" + secrets.token_hex(5).upper(),
+        org_name=org_name.strip()[:200],
+        org_tax_id=(org_tax_id or "").strip()[:20],
+        image_data=image_data or "",
+        authority_note=authority_note or "",
+        created_by=created_by,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return seal_to_dict(row)
+
+
+def deactivate_seal(db: Session, seal_id: str) -> dict:
+    """เลิกใช้ตรา — ไม่ลบ เพราะสัญญาที่ประทับไปแล้วต้องอ้างอิงกลับได้"""
+    from app.models import EContractSeal
+    row = db.query(EContractSeal).filter(EContractSeal.seal_id == seal_id).first()
+    if not row:
+        raise ValueError("ไม่พบตราประทับ")
+    row.is_active = False
+    db.commit()
+    db.refresh(row)
+    return seal_to_dict(row)
+
+
+def apply_seal(db: Session, cert_id: str, seal_id: str, note: str = "",
+               applied_by: int = None) -> dict:
+    """ประทับตรานิติบุคคลลงบนใบรับรอง แล้วบันทึกเป็นขั้นตอน e_seal
+
+    คู่มือ ETDA ระบุซ้ำในหลายสถานการณ์ว่า "ประทับตรา e-Seal **ควบคู่ไปกับ**ลายมือชื่อ
+    อิเล็กทรอนิกส์" — ตราประทับจึงต้องเกิดในช่วงการลงนาม ไม่ใช่หลังตรึงต้นฉบับ
+    มิฉะนั้นจะเกิดคำถามว่านิติบุคคลผูกพันตามเอกสาร ณ เวลาใด
+    """
+    from app.models import EContractSeal
+    from app.services import compliance_service, chain_service
+
+    seal = db.query(EContractSeal).filter(EContractSeal.seal_id == seal_id).first()
+    if not seal:
+        raise ValueError("ไม่พบตราประทับ")
+    if not seal.is_active:
+        raise ValueError("ตราประทับนี้ถูกเลิกใช้แล้ว")
+    if chain_service.is_locked(db, cert_id):
+        raise ValueError(
+            "ตรึงต้นฉบับแล้ว จึงประทับตราไม่ได้ — คู่มือ ETDA กำหนดให้ประทับตรา"
+            "ควบคู่ไปกับการลงลายมือชื่อ ไม่ใช่หลังจากตรึงต้นฉบับ"
+        )
+
+    ref = seal.seal_id + (f" · เลขผู้เสียภาษี {seal.org_tax_id}" if seal.org_tax_id else "")
+    rec = compliance_service.record_step(
+        db, cert_id=cert_id, step_key="e_seal", actor=seal.org_name,
+        ref=ref, note=note, status="done",
+        detail={"seal_id": seal.seal_id, "org_name": seal.org_name,
+                "org_tax_id": seal.org_tax_id, "authority_note": seal.authority_note},
+        recorded_by=applied_by,
+    )
+    chain_service.append(db, cert_id, chain_service.STEP_SEAL, {
+        "seal_id": seal.seal_id,
+        "org_name": seal.org_name,
+        "org_tax_id": seal.org_tax_id,
+        "authority_note": seal.authority_note,
+        # hash ภาพตรา ให้ตรวจได้ว่าใช้ตราเดียวกัน — แต่ภาพเองไม่ได้พิสูจน์อำนาจ
+        # อำนาจมาจากการที่องค์กรควบคุมการใช้ตราและบันทึกไว้ในโซ่นี้
+        "image_sha256": hashlib.sha256((seal.image_data or "").encode()).hexdigest(),
+        "note": note or "",
+    }, created_by=applied_by)
+    return rec
+
+
+# ── ส่งร่าง และคำเสนอ–คำสนอง (ม.13) ─────────────────────────────────────
+
+def record_delivery(db: Session, cert_id: str, recipients: list, channel: str = "email",
+                    note: str = "", recorded_by: int = None) -> dict:
+    """บันทึกการส่งร่างให้คู่สัญญา
+
+    หมายเหตุ: ขั้นนี้คือ **การส่งไปยังที่อยู่ที่อ้างว่าเป็นของเขา** ไม่ใช่การยืนยันตัวตน
+    การพิสูจน์ตัวตนเกิดตอนคู่สัญญากรอก OTP ในขั้นลงนาม ซึ่งพิสูจน์ว่าคุมกล่องจดหมายได้
+    """
+    from app.services import chain_service
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise ValueError("ไม่พบใบรับรอง")
+    clean = [str(r).strip() for r in recipients if str(r).strip()]
+    if not clean:
+        raise ValueError("ต้องระบุผู้รับอย่างน้อย 1 ราย")
+    return chain_service.append(db, cert_id, chain_service.STEP_DELIVER, {
+        "channel": channel,
+        "doc_sha256": cert.sha256,
+        "recipients": clean,
+        "recipient_count": len(clean),
+        "note": note or "",
+        "identity_verified": False,   # ส่งอีเมล ≠ ยืนยันตัวตน
+    }, created_by=recorded_by)
+
+
+def record_acceptance(db: Session, cert_id: str, party: str, source: str = "first_party",
+                      evidence: str = "", ip: str = "", note: str = "",
+                      recorded_by: int = None) -> dict:
+    """บันทึกคำสนอง — คู่สัญญาตกลงตามร่างที่เสนอ (ม.13)
+
+    `source` แยกหลักฐานที่ระบบบันทึกเอง (first_party) ออกจากหลักฐานที่นำเข้าจากภายนอก
+    (imported) เพราะน้ำหนักต่างกัน — คู่มือ ETDA เตือนว่าภาพหน้าจออย่างเดียวน้ำหนักอ่อน
+    ควรประกอบกับ Log หรือพยานแวดล้อม
+    """
+    from app.services import chain_service
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise ValueError("ไม่พบใบรับรอง")
+    if not party.strip():
+        raise ValueError("ต้องระบุคู่สัญญาผู้ตอบรับ")
+    src = source if source in ("first_party", "imported") else "imported"
+    return chain_service.append(db, cert_id, chain_service.STEP_ACCEPTANCE, {
+        "party": party.strip(),
+        "offer_doc_sha256": cert.sha256,
+        "source": src,
+        "source_note_th": (
+            "ระบบบันทึกเอง — คู่สัญญากดยอมรับในระบบ" if src == "first_party"
+            else "นำเข้าจากภายนอก — น้ำหนักขึ้นกับวิธีที่ได้หลักฐานมา"
+        ),
+        "evidence": (evidence or "")[:2000],
+        "evidence_sha256": hashlib.sha256((evidence or "").encode()).hexdigest() if evidence else "",
+        "ip_address": (ip or "")[:45],
+        "note": note or "",
+    }, created_by=recorded_by)
+
+
+# ── ตรึงต้นฉบับ (ม.10) ───────────────────────────────────────────────────
+
+def lock_original(db: Session, cert_id: str, locked_by: int = None) -> dict:
+    """ตรึงต้นฉบับ — หลังจากนี้เพิ่มลายเซ็น/ตราประทับไม่ได้อีก
+
+    ตรวจก่อนว่าครบเงื่อนไขของโปรไฟล์หรือยัง (`e_original.lock_on`) เพื่อไม่ให้ตรึง
+    เอกสารที่ยังลงนามไม่ครบ ซึ่งจะทำให้ได้ "ต้นฉบับ" ที่ใช้ไม่ได้จริง
+    """
+    from app.services import chain_service, compliance_service
+
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise ValueError("ไม่พบใบรับรอง")
+    if chain_service.is_locked(db, cert_id):
+        raise ValueError("ตรึงต้นฉบับไปแล้ว")
+
+    prof = compliance_service.effective_profile(cert)
+    cfg = (prof.get("steps") or {}).get("e_original") or {}
+    sig_cfg = (prof.get("steps") or {}).get("e_signature") or {}
+    if cfg.get("lock_on") == "all_parties_signed":
+        n = db.query(EContractSignature).filter(EContractSignature.cert_id == cert_id).count()
+        need = int(sig_cfg.get("min_signers", 1) or 1)
+        if sig_cfg.get("required") and n < need:
+            raise ValueError(
+                f"ยังลงนามไม่ครบ ({n} จาก {need} ราย) — โปรไฟล์กำหนดให้ตรึงต้นฉบับ"
+                "เมื่อลงนามครบทุกฝ่าย"
+            )
+
+    now = ntp_service.now()
+    ntp = ntp_service.get_status()
+    link = chain_service.append(db, cert_id, chain_service.STEP_ORIGINAL, {
+        "doc_sha256": cert.sha256,
+        "system_signature": cert.signature,
+        "timestamp_kind": cfg.get("timestamp", "ntp"),
+        "locked_at": now,
+        "ntp_server": ntp.get("ntp_server") or "",
+        "ntp_server_name": ntp.get("ntp_server_name") or "",
+        # เฟส 2 จะเพิ่ม RFC 3161 token จาก TSA ตรงนี้ ซึ่งเป็นเวลาที่บุคคลที่สามยืนยัน
+        "tsa_token": None,
+    }, created_by=locked_by)
+
+    # วันที่ทำตราสาร ใช้นับกำหนดเวลาเสียอากร — ถ้ายังไม่กำหนดไว้ ให้ยึดวันที่ตรึงต้นฉบับ
+    # เพราะเป็นจุดที่ตราสารสมบูรณ์ ไม่ใช่วันที่ออกใบรับรองร่าง
+    if not cert.instrument_date:
+        cert.instrument_date = now
+        db.commit()
+    return link
+
+
+# ── e-Original + e-Retention — ภาพรวมทั้งระบบ ────────────────────────────
+
+def originals_overview(db: Session, limit: int = 200) -> dict:
+    """สถานะความเป็นต้นฉบับ (ม.10) และการเก็บรักษา (ม.12) ของทุกใบรับรอง
+
+    ดึงจากรายงาน 7 ขั้นตอนของแต่ละใบ เพื่อให้ตัวเลขตรงกับหน้ารายละเอียดเสมอ
+    """
+    from app.services import compliance_service
+
+    rows = (
+        db.query(EContractCert)
+        .order_by(EContractCert.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    out, locked, at_risk = [], 0, 0
+    for cert in rows:
+        try:
+            rep = compliance_service.evaluate(db, cert)
+        except Exception:
+            continue
+        orig = next((s for s in rep["steps"] if s["step"] == "e_original"), {})
+        ret = next((s for s in rep["steps"] if s["step"] == "e_retention"), {})
+        od, rd = orig.get("detail", {}), ret.get("detail", {})
+        if orig.get("status") == "done":
+            locked += 1
+        if ret.get("status") in ("partial", "pending"):
+            at_risk += 1
+        out.append({
+            "cert_id": cert.cert_id,
+            "filename": cert.filename,
+            "doc_format": cert.doc_format or "",
+            "profile_key": cert.profile_key or "generic",
+            "profile_name_th": rep["profile"].get("name_th", ""),
+            "sha256": cert.sha256,
+            "system_signature": cert.signature,
+            "ntp_time": cert.ntp_time.isoformat() if cert.ntp_time else None,
+            "ntp_server_name": cert.ntp_server_name,
+            "signature_count": len(rep_signatures(rep)),
+            "original": {
+                "status": orig.get("status"),
+                "summary_th": orig.get("summary_th", ""),
+                "lock_on": od.get("lock_on", ""),
+                "timestamp_kind": od.get("timestamp_kind", ""),
+            },
+            "retention": {
+                "status": ret.get("status"),
+                "summary_th": ret.get("summary_th", ""),
+                "period_years": rd.get("period_years"),
+                "keep_until": rd.get("keep_until"),
+                "must_store": rd.get("must_store", []),
+                "stored": rd.get("stored", {}),
+                "missing": rd.get("missing", []),
+                "audit_entries": rd.get("audit_entries", 0),
+            },
+        })
+    return {
+        "storage_mode": "hash_only",
+        "storage_note_th": (
+            "โหมดปัจจุบันเก็บเฉพาะลายนิ้วมือ (SHA-256) เวลา และหลักฐานประกอบ "
+            "— ตัวไฟล์ไม่ถูกส่งออกจากเครื่องผู้ใช้และไม่ถูกเก็บในระบบ "
+            "จึงยังไม่ครบเงื่อนไข 'เก็บรักษาตัวเอกสาร' ตาม ม.12"
+        ),
+        "total": len(out),
+        "locked_originals": locked,
+        "retention_incomplete": at_risk,
+        "items": out,
+    }
+
+
+def rep_signatures(rep: dict) -> list:
+    sig = next((s for s in rep["steps"] if s["step"] == "e_signature"), {})
+    return (sig.get("detail") or {}).get("signers", [])
 
 
 # ── Evidence bundle (Phase 3) ────────────────────────────────────────────
@@ -232,6 +567,10 @@ def build_evidence_bundle(db: Session, cert_id: str) -> bytes:
         # รายงาน 7 เรื่อง + โปรไฟล์ที่แช่แข็งไว้ — ผู้ตรวจสอบในอนาคตพิสูจน์ได้ว่า
         # ตอนทำสัญญา ระบบยึดกฎชุดไหน (ม.11 การชั่งน้ำหนักพยานหลักฐาน)
         files["compliance_7steps.json"] = json.dumps(compliance, ensure_ascii=False, indent=2).encode()
+        # โซ่หลักฐาน — พิสูจน์ลำดับเหตุการณ์ ไม่ใช่แค่เนื้อหา (ม.11)
+        from app.services import chain_service as _ch
+        files["evidence_chain.json"] = json.dumps(
+            _ch.chain(db, cert_id), ensure_ascii=False, indent=2).encode()
         row = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
         if row and row.effective_profile_json:
             files["contract_profile.json"] = row.effective_profile_json.encode()

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, UserRole, EContractCert
 from app.middleware.auth import require_role, get_current_user
-from app.services import econtract_service, profile_service, compliance_service
+from app.services import econtract_service, profile_service, compliance_service, chain_service
 from app.services.audit_service import create_audit_log
 
 router = APIRouter(prefix="/api/econtract", tags=["e-Contract"])
@@ -107,6 +107,99 @@ async def get_profile(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# ── e-Seal — ตราประทับนิติบุคคล (ม.9 วรรคท้าย) ───────────────────────────
+
+@router.get("/seals")
+async def list_seals(
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ตราประทับนิติบุคคลที่ลงทะเบียนไว้"""
+    return econtract_service.list_seals(db, include_inactive=include_inactive)
+
+
+@router.post("/seals")
+async def create_seal(
+    request: Request,
+    org_name: str = Form(...),
+    org_tax_id: str = Form(""),
+    image_data: str = Form(""),
+    authority_note: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """ลงทะเบียนตราประทับของนิติบุคคล"""
+    try:
+        seal = econtract_service.create_seal(
+            db, org_name=org_name, org_tax_id=org_tax_id, image_data=image_data,
+            authority_note=authority_note, created_by=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_seal_create", resource_type="econtract",
+        resource_id=seal["seal_id"], details=f"ลงทะเบียนตราประทับ {seal['org_name']}",
+    )
+    db.commit()
+    return seal
+
+
+@router.delete("/seals/{seal_id}")
+async def deactivate_seal(
+    seal_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """เลิกใช้ตราประทับ — ไม่ลบ เพราะสัญญาที่ประทับไปแล้วต้องอ้างอิงกลับได้"""
+    try:
+        seal = econtract_service.deactivate_seal(db, seal_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_seal_deactivate", resource_type="econtract",
+        resource_id=seal_id, details=f"เลิกใช้ตราประทับ {seal['org_name']}",
+    )
+    db.commit()
+    return seal
+
+
+@router.post("/{cert_id}/seal")
+async def apply_seal(
+    cert_id: str,
+    request: Request,
+    seal_id: str = Form(...),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """ประทับตรานิติบุคคลลงบนใบรับรอง"""
+    try:
+        rec = econtract_service.apply_seal(
+            db, cert_id=cert_id, seal_id=seal_id, note=note, applied_by=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_seal_apply", resource_type="econtract",
+        resource_id=cert_id, details=f"ประทับตรา {seal_id} · {rec.get('actor', '')}",
+    )
+    db.commit()
+    return rec
+
+
+# ── e-Original + e-Retention ─────────────────────────────────────────────
+
+@router.get("/originals")
+async def originals(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ภาพรวมความเป็นต้นฉบับ (ม.10) และการเก็บรักษา (ม.12) ของทุกใบรับรอง"""
+    return econtract_service.originals_overview(db)
+
+
 # ── Certify / Verify ─────────────────────────────────────────────────────
 
 @router.post("/certify")
@@ -192,6 +285,7 @@ async def sign(
     signer_name: str = Form(...),
     method: str = Form("typed"),
     identity_ref: str = Form(""),
+    signing_mode: str = Form("remote"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -203,16 +297,107 @@ async def sign(
         sig = econtract_service.add_signature(
             db, cert_id=cert_id, signer_name=signer_name.strip(),
             method=method, identity_ref=identity_ref, ip=ip, created_by=user.id,
+            signing_mode=signing_mode,
+            user_agent=request.headers.get("user-agent", ""),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     create_audit_log(
         db, request, user=user, action="econtract_sign", resource_type="econtract",
         resource_id=cert_id,
-        details=f"ลงนาม {cert_id} โดย {signer_name.strip()} · วิธี {method}",
+        details=(f"ลงนาม {cert_id} โดย {signer_name.strip()} · วิธี {method} · "
+                 f"{'ต่อหน้า' if signing_mode == 'in_person' else 'ระยะไกล'}"),
     )
     db.commit()
     return sig
+
+
+@router.get("/{cert_id}/chain")
+async def evidence_chain(
+    cert_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """โซ่หลักฐาน — ทุกเหตุการณ์เรียงตามลำดับ พร้อมผลตรวจความต่อเนื่อง"""
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="ไม่พบใบรับรอง")
+    return chain_service.chain(db, cert_id)
+
+
+@router.post("/{cert_id}/deliver")
+async def record_delivery(
+    cert_id: str,
+    request: Request,
+    recipients: str = Form(...),   # คั่นด้วย comma หรือขึ้นบรรทัดใหม่
+    channel: str = Form("email"),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """บันทึกการส่งร่างให้คู่สัญญา (ไม่ใช่การยืนยันตัวตน)"""
+    parts = [p for chunk in recipients.replace("\n", ",").split(",") if (p := chunk.strip())]
+    try:
+        link = econtract_service.record_delivery(
+            db, cert_id=cert_id, recipients=parts, channel=channel,
+            note=note, recorded_by=user.id,
+        )
+    except (ValueError, chain_service.ChainError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_deliver", resource_type="econtract",
+        resource_id=cert_id, details=f"ส่งร่างให้ {len(parts)} ราย ผ่าน {channel}",
+    )
+    db.commit()
+    return link
+
+
+@router.post("/{cert_id}/acceptance")
+async def record_acceptance(
+    cert_id: str,
+    request: Request,
+    party: str = Form(...),
+    source: str = Form("first_party"),
+    evidence: str = Form(""),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """บันทึกคำสนอง — คู่สัญญาตกลงตามร่าง (ม.13)"""
+    ip = request.client.host if request.client else ""
+    try:
+        link = econtract_service.record_acceptance(
+            db, cert_id=cert_id, party=party, source=source, evidence=evidence,
+            ip=ip, note=note, recorded_by=user.id,
+        )
+    except (ValueError, chain_service.ChainError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_acceptance", resource_type="econtract",
+        resource_id=cert_id, details=f"คำสนองจาก {party} ({source})",
+    )
+    db.commit()
+    return link
+
+
+@router.post("/{cert_id}/lock")
+async def lock_original(
+    cert_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """ตรึงต้นฉบับ (ม.10) — หลังจากนี้ลงนามหรือประทับตราเพิ่มไม่ได้"""
+    try:
+        link = econtract_service.lock_original(db, cert_id=cert_id, locked_by=user.id)
+    except (ValueError, chain_service.ChainError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_lock", resource_type="econtract",
+        resource_id=cert_id, details=f"ตรึงต้นฉบับ {cert_id} · chain {link['chain_hash'][:16]}…",
+    )
+    db.commit()
+    return link
 
 
 @router.get("/{cert_id}/compliance")

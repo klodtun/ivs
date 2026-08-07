@@ -395,6 +395,64 @@ export const api = {
 
   econtractHandbookUrl: () => `${BACKEND_DIRECT}/econtract/handbook/download`,
 
+  // e-Seal — ตราประทับนิติบุคคล (ม.9 วรรคท้าย)
+  listEContractSeals: () => request<any[]>("/econtract/seals"),
+
+  createEContractSeal: async (f: { org_name: string; org_tax_id?: string; image_data?: string; authority_note?: string }) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("org_name", f.org_name);
+    fd.append("org_tax_id", f.org_tax_id || "");
+    fd.append("image_data", f.image_data || "");
+    fd.append("authority_note", f.authority_note || "");
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/seals`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json();
+  },
+
+  deactivateEContractSeal: (sealId: string) =>
+    request<any>(`/econtract/seals/${sealId}`, { method: "DELETE" }),
+
+  applyEContractSeal: async (certId: string, sealId: string, note = "") => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("seal_id", sealId);
+    fd.append("note", note);
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/${certId}/seal`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json();
+  },
+
+  // e-Original + e-Retention — ภาพรวมทั้งระบบ
+  getEContractOriginals: () => request<any>("/econtract/originals"),
+
+  // โซ่หลักฐาน — ลำดับเหตุการณ์ที่ผูกกันด้วย hash (ม.11)
+  getEContractChain: (certId: string) => request<any>(`/econtract/${certId}/chain`),
+
+  postEContractForm: async (path: string, fields: Record<string, string>) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/${path}`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json();
+  },
+
+  deliverEContract: (certId: string, recipients: string, note = "") =>
+    api.postEContractForm(`${certId}/deliver`, { recipients, channel: "email", note }),
+
+  acceptEContract: (certId: string, party: string, source: string, evidence = "") =>
+    api.postEContractForm(`${certId}/acceptance`, { party, source, evidence }),
+
+  lockEContractOriginal: (certId: string) =>
+    api.postEContractForm(`${certId}/lock`, {}),
+
   getEContractCompliance: (certId: string) =>
     request<any>(`/econtract/${certId}/compliance`),
 
@@ -433,7 +491,7 @@ export const api = {
 
   getEContract: (certId: string) => request<any>(`/econtract/${certId}`),
 
-  signEContract: async (certId: string, signerName: string, method: string, identityRef: string) => {
+  signEContract: async (certId: string, signerName: string, method: string, identityRef: string, signingMode = "remote") => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -441,6 +499,7 @@ export const api = {
     fd.append("signer_name", signerName);
     fd.append("method", method);
     fd.append("identity_ref", identityRef);
+    fd.append("signing_mode", signingMode);
     const res = await fetch(`${BACKEND_DIRECT}/econtract/${certId}/sign`, { method: "POST", headers, body: fd });
     if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
     return res.json();
