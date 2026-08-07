@@ -15,6 +15,8 @@ import {
   BridgeDashboard,
   BridgeCodeReport,
   BridgeLlmModel,
+  BridgeGenAttempt,
+  BridgeDeploy,
 } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { cn, formatLegalTimestamp } from "@/lib/utils";
@@ -74,16 +76,25 @@ export default function BridgePage() {
   const [codeRep, setCodeRep] = useState<BridgeCodeReport | null>(null);
   const [codeBusy, setCodeBusy] = useState(false);
 
+  // project-level context (P16) — a project/app is the unit of work
+  const [modProject, setModProject] = useState<BridgeProject | null>(null);
+  const [structMd, setStructMd] = useState<string | null>(null);
+
   // modules (per import) — step-by-step build
   const [modFor, setModFor] = useState<BridgeImport | null>(null);
   const [mods, setMods] = useState<{ module: string; tables: string[]; commands: number }[]>([]);
   const [modBusy, setModBusy] = useState<string | null>(null);
   const [modResult, setModResult] = useState<Record<string, string>>({});
+  const [attempts, setAttempts] = useState<BridgeGenAttempt[]>([]);   // gen error history
+  const [attemptSel, setAttemptSel] = useState<number | "">("");
+  const [deploys, setDeploys] = useState<BridgeDeploy[]>([]);         // merge+deploy history
+  const [deployHistFor, setDeployHistFor] = useState<BridgeProject | BridgeImport | null>(null);
   const [allBusy, setAllBusy] = useState(false);
   const [allProgress, setAllProgress] = useState("");
 
   // merge + deploy whole system
   const [mergeFor, setMergeFor] = useState<BridgeImport | null>(null);
+  const [mergeProject, setMergeProject] = useState<BridgeProject | null>(null);
   const [mergeName, setMergeName] = useState("");
   const [mergeBusy, setMergeBusy] = useState(false);
 
@@ -129,6 +140,8 @@ export default function BridgePage() {
   const [showDeletions, setShowDeletions] = useState(false);
   const [showExplain, setShowExplain] = useState(false);
   const [tab, setTab] = useState<"import" | "ai" | "work" | "connect" | "create">("import");
+  const [histSearch, setHistSearch] = useState("");
+  const [expandedProj, setExpandedProj] = useState<number | null>(null);
 
   // provider-specific placeholders + defaults
   const provPlaceholders: Record<string, { model: string; base: string }> = {
@@ -298,11 +311,23 @@ export default function BridgePage() {
     }
   };
 
+  const loadAttempts = async (opts: { projectId?: number; importId?: number }) => {
+    try {
+      const a = opts.projectId != null
+        ? await api.projectGenAttempts(opts.projectId)
+        : await api.importGenAttempts(opts.importId!);
+      setAttempts(a);
+      setAttemptSel("");
+    } catch { setAttempts([]); }
+  };
+
   const openModules = async (imp: BridgeImport) => {
     setModFor(imp);
     setMods([]);
     setModResult({});
     setAllProgress("");
+    setAttempts([]);
+    loadAttempts({ importId: imp.id });
     try {
       const [ms, codes] = await Promise.all([
         api.listImportModules(imp.id),
@@ -323,10 +348,52 @@ export default function BridgePage() {
     }
   };
 
+  // project-level actions ------------------------------------------------
+  const openProjectModules = async (p: BridgeProject) => {
+    setModProject(p);
+    setModFor(null);
+    setMods([]);
+    setModResult({});
+    setAllProgress("");
+    setAttempts([]);
+    loadAttempts({ projectId: p.id });
+    try {
+      const [ms, codes] = await Promise.all([api.projectModules(p.id), api.projectCode(p.id)]);
+      setMods(ms);
+      const done: Record<string, string> = {};
+      for (const cv of codes) if (cv.module && !done[cv.module]) done[cv.module] = `✅ ${t("bridge.mod.have")} v${cv.version} (${cv.provider})`;
+      setModResult(done);
+    } catch (e: any) {
+      setError(e?.message || "load modules failed");
+    }
+  };
+  const runProjectRoundtrip = async (p: BridgeProject) => {
+    setRt(null); setError(null);
+    try { setRt(await api.projectRoundtrip(p.id) as any); }
+    catch (e: any) { setError(e?.message || "round-trip failed"); }
+  };
+  const openProjectStructure = async (p: BridgeProject) => {
+    setStructMd(""); setModProject(null);
+    try { const r = await api.projectStructure(p.id); setStructMd(r.structure_md); setViewMd(r.structure_md); setViewing({ id: p.id } as any); }
+    catch (e: any) { setError(e?.message || "structure failed"); }
+  };
+  const deleteProject = async (p: BridgeProject) => {
+    if (!confirm(`ลบโครงการ "${p.name}" และข้อมูลนำเข้า/โค้ดทั้งหมด?`)) return;
+    try { await api.deleteBridgeProject(p.id); await load(); }
+    catch (e: any) { setError(e?.message || "delete failed"); }
+  };
+  const openProjectDeploys = async (p: BridgeProject) => {
+    setDeployHistFor(p); setDeploys([]);
+    try { setDeploys(await api.projectDeploys(p.id)); }
+    catch (e: any) { setError(e?.message || "deploy history failed"); }
+  };
+
   const genOne = async (imp: BridgeImport, mod: string) => {
     setModBusy(mod);
     try {
-      const r = await api.generateModule(imp.id, mod, modModelId === "" ? null : Number(modModelId));
+      const r = modProject
+        ? await api.projectGenerateModule(modProject.id, mod, modModelId === "" ? null : Number(modModelId))
+        : await api.generateModule(imp.id, mod, modModelId === "" ? null : Number(modModelId));
       const txt = r.files > 0 ? `✅ ${r.files} files (${r.provider})` : `⚠️ ${r.note}`;
       setModResult((m) => ({ ...m, [mod]: txt }));
       return r.files > 0;
@@ -335,20 +402,23 @@ export default function BridgePage() {
       return false;
     } finally {
       setModBusy(null);
+      // refresh error history so a new failure/success shows in the dropdown
+      if (modProject) loadAttempts({ projectId: modProject.id });
+      else if (modFor) loadAttempts({ importId: modFor.id });
     }
   };
 
   const genModule = async (mod: string) => {
-    if (!modFor || modBusy || allBusy) return;
-    await genOne(modFor, mod);
+    if ((!modFor && !modProject) || modBusy || allBusy) return;
+    await genOne(modFor || ({} as BridgeImport), mod);
   };
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   const genAll = async (force: boolean) => {
-    if (!modFor || allBusy) return;
+    if ((!modFor && !modProject) || allBusy) return;
     setAllBusy(true);
-    const imp = modFor;
+    const imp = modFor || ({} as BridgeImport);
     // force → redo every module; else only those not yet succeeded (resume)
     const todo = mods.filter((mo) => force || !modResult[mo.module]?.startsWith("✅"));
     let done = 0;
@@ -368,12 +438,15 @@ export default function BridgePage() {
   const remainingCount = mods.filter((mo) => !modResult[mo.module]?.startsWith("✅")).length;
 
   const doMergeDeploy = async () => {
-    if (!mergeFor || !mergeName.trim() || mergeBusy) return;
+    if ((!mergeFor && !mergeProject) || !mergeName.trim() || mergeBusy) return;
     setMergeBusy(true);
     setError(null);
     try {
-      const r = await api.mergeDeployImport(mergeFor.id, mergeName.trim(), true);
+      const r = mergeProject
+        ? await api.projectMergeDeploy(mergeProject.id, mergeName.trim(), true)
+        : await api.mergeDeployImport(mergeFor!.id, mergeName.trim(), true);
       setMergeFor(null);
+      setMergeProject(null);
       setMergeName("");
       if (r.deploy) {
         alert(`รวม ${r.files} ไฟล์ → Deploy: ${r.deploy.slug} :${r.deploy.port} (${r.deploy.status})`);
@@ -589,7 +662,17 @@ export default function BridgePage() {
     }
   };
 
-  const impPg = usePagination(imports, 10);
+  const projName = (pid: number | null | undefined): string | null =>
+    pid == null ? null : projects.find((p) => p.id === pid)?.name ?? null;
+  const filteredImports = imports.filter((i) => {
+    if (!histSearch.trim()) return true;
+    const q = histSearch.toLowerCase();
+    return (
+      (projName(i.project_id) || "").toLowerCase().includes(q) ||
+      `${i.source_kind}:${i.source_ref}`.toLowerCase().includes(q)
+    );
+  });
+  const impPg = usePagination(filteredImports, 10);
   const delPg = usePagination(deletions, 10);
 
   if (gated) {
@@ -605,18 +688,16 @@ export default function BridgePage() {
 
   const importHistoryCard = (withActions: boolean) => (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900 text-sm">
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+        <h3 className="font-semibold text-gray-900 text-sm whitespace-nowrap">
           {withActions ? t("bridge.col.project") : t("bridge.history")}
         </h3>
-        {!withActions && (
-          <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="text-xs text-brand-600 hover:underline"
-          >
-            + {t("bridge.add_data")}
-          </button>
-        )}
+        <input
+          value={histSearch}
+          onChange={(e) => setHistSearch(e.target.value)}
+          placeholder={t("bridge.search_ph")}
+          className="w-48 rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+        />
       </div>
       {loading ? (
         <p className="p-8 text-center text-gray-400 text-xs">…</p>
@@ -642,7 +723,14 @@ export default function BridgePage() {
                 {impPg.paged.map((imp) => (
                   <tr key={imp.id} className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="px-4 py-2.5 font-medium text-gray-900">{imp.id}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{imp.source_kind}:{imp.source_ref}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium text-gray-900">
+                        {projName(imp.project_id) || <span className="text-gray-400 font-normal">{t("bridge.proj.none")}</span>}
+                      </div>
+                      <div className="font-mono text-[10px] text-gray-400 truncate max-w-xs" title={`${imp.source_kind}:${imp.source_ref}`}>
+                        {imp.source_kind}:{imp.source_ref.split("/").pop()}
+                      </div>
+                    </td>
                     {withActions && (
                       <td className="px-4 py-2.5 whitespace-nowrap">
                         <button onClick={() => openModules(imp)} className="text-indigo-700 font-medium hover:underline mr-3">{t("bridge.mod.btn")}</button>
@@ -745,7 +833,7 @@ export default function BridgePage() {
             { label: t("bridge.dash.tokens"), value: dash.active_tokens },
           ].map((c) => (
             <div key={c.label} className="bg-white rounded-lg border border-gray-200 p-3">
-              <div className="text-2xl font-bold text-gray-900">{c.value}</div>
+              <div className="text-xl font-bold text-gray-900">{c.value}</div>
               <div className="text-[11px] text-gray-500 mt-0.5">{c.label}</div>
             </div>
           ))}
@@ -765,7 +853,7 @@ export default function BridgePage() {
             key={tb.id}
             onClick={() => setTab(tb.id)}
             className={cn(
-              "px-4 py-2 text-sm font-medium -mb-px border-b-2 transition",
+              "px-3 py-1.5 text-xs font-medium -mb-px border-b-2 transition",
               tab === tb.id
                 ? "border-brand-600 text-brand-700"
                 : "border-transparent text-gray-500 hover:text-gray-800"
@@ -804,12 +892,12 @@ export default function BridgePage() {
             onChange={(e) => setChatMsg(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendChat()}
             placeholder={t("bridge.chat.ph")}
-            className="flex-1 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+            className="flex-1 rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
           />
           <button
             onClick={sendChat}
             disabled={chatBusy || !chatMsg.trim()}
-            className="rounded-lg px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {chatBusy ? "…" : t("bridge.chat.send")}
           </button>
@@ -842,7 +930,7 @@ export default function BridgePage() {
           <select
             value={projectId}
             onChange={(e) => setProjectId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             <option value="">{t("bridge.proj.none")}</option>
             {projects.map((p) => (
@@ -856,12 +944,12 @@ export default function BridgePage() {
               value={newProjName}
               onChange={(e) => setNewProjName(e.target.value)}
               placeholder={t("bridge.proj.new_ph")}
-              className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+              className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
             />
             <button
               onClick={createProject}
               disabled={!newProjName.trim()}
-              className="rounded-lg px-3 py-2 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+              className="rounded-lg px-2.5 py-1.5 text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
             >
               {t("bridge.proj.create")}
             </button>
@@ -878,12 +966,12 @@ export default function BridgePage() {
                 onDrop={onDropPath(setCodePath)}
                 onDragOver={allowDrop}
                 placeholder={t("bridge.code2.ph")}
-                className="flex-1 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+                className="flex-1 rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
               />
               <button
                 onClick={analyzeCode}
                 disabled={codeBusy || !codePath.trim()}
-                className="rounded-lg px-3 py-2 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+                className="rounded-lg px-2.5 py-1.5 text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
               >
                 {codeBusy ? "…" : t("bridge.code2.analyze")}
               </button>
@@ -912,7 +1000,7 @@ export default function BridgePage() {
           <select
             value={sourceKind}
             onChange={(e) => setSourceKind(e.target.value)}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             <option value="sqlite">SQLite</option>
             <option value="postgres">PostgreSQL</option>
@@ -928,12 +1016,12 @@ export default function BridgePage() {
             onDrop={onDropPath(setSourceRef)}
             onDragOver={allowDrop}
             placeholder={sourcePlaceholders[sourceKind] || t("bridge.source_ref_ph")}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
           />
           <select
             value={pii}
             onChange={(e) => setPii(e.target.value as any)}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             <option value="exclude">{t("bridge.pii.exclude")}</option>
             <option value="anonymize">{t("bridge.pii.anonymize")}</option>
@@ -941,7 +1029,7 @@ export default function BridgePage() {
           <button
             onClick={runPreflight}
             disabled={pfBusy || !sourceRef.trim()}
-            className="rounded-lg px-3 py-2 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg px-2.5 py-1.5 text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             {pfBusy ? "…" : t("bridge.pf.check")}
           </button>
@@ -949,7 +1037,7 @@ export default function BridgePage() {
             onClick={doImport}
             disabled={submitting || !sourceRef.trim()}
             className={cn(
-              "rounded-lg px-4 py-2 text-sm font-medium transition",
+              "rounded-lg px-3 py-1.5 text-xs font-medium transition",
               submitting || !sourceRef.trim()
                 ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                 : "bg-brand-600 text-white hover:bg-brand-700"
@@ -1031,7 +1119,7 @@ export default function BridgePage() {
           <select
             value={llmProvider}
             onChange={(e) => onProviderChange(e.target.value)}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             {(llm?.available_providers ?? [{ name: "manual", needs_key: false }]).map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
@@ -1043,13 +1131,13 @@ export default function BridgePage() {
                 value={llmModel}
                 onChange={(e) => setLlmModel(e.target.value)}
                 placeholder={provPlaceholders[llmProvider]?.model || "model"}
-                className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+                className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
               />
               <input
                 value={llmBaseUrl}
                 onChange={(e) => setLlmBaseUrl(e.target.value)}
                 placeholder={provPlaceholders[llmProvider]?.base || "base_url"}
-                className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+                className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
               />
             </>
           )}
@@ -1061,7 +1149,7 @@ export default function BridgePage() {
               onChange={(e) => setLlmKey(e.target.value)}
               type="password"
               placeholder={llm?.has_key ? t("bridge.llm.key_set") : t("bridge.llm.key_ph")}
-              className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+              className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
             />
           ) : (
             <div />
@@ -1069,14 +1157,14 @@ export default function BridgePage() {
           <button
             onClick={testLlm}
             disabled={llmTestBusy}
-            className="rounded-lg px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             {llmTestBusy ? "…" : t("bridge.llm.test")}
           </button>
           <button
             onClick={saveLlm}
             disabled={llmBusy}
-            className="rounded-lg px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {t("bridge.llm.save")}
           </button>
@@ -1128,7 +1216,7 @@ export default function BridgePage() {
             1. {t("bridge.mm.pick_key")}
             <select value={mmKeyId === "" ? "" : String(mmKeyId)}
               onChange={(e) => setMmKeyId(e.target.value === "" ? "" : Number(e.target.value))}
-              className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none">
+              className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none">
               <option value="">{t("bridge.mm.no_key")}</option>
               {vaultKeys.map((k) => (
                 <option key={k.id} value={String(k.id)}>
@@ -1141,17 +1229,17 @@ export default function BridgePage() {
             <span>2. model — <span className="text-gray-400">{providerOfKey(mmKeyId)}</span></span>
             <input value={mmModel} onChange={(e) => setMmModel(e.target.value)}
               placeholder={t("bridge.mm.model_ph")}
-              className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none" />
+              className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none" />
           </label>
         </div>
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
           {providerOfKey(mmKeyId) === "openai" && (
             <input value={mmBaseUrl} onChange={(e) => setMmBaseUrl(e.target.value)}
               placeholder={t("bridge.mm.base_ph")}
-              className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none" />
+              className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none" />
           )}
           <button onClick={addModel} disabled={!mmModel.trim()}
-            className="rounded-lg px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 sm:col-start-2">
+            className="rounded-lg px-3 py-1.5 text-xs font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 sm:col-start-2">
             {t("bridge.mm.add")}
           </button>
         </div>
@@ -1213,7 +1301,70 @@ export default function BridgePage() {
         </div>
       )}
 
-      {importHistoryCard(true)}
+      {/* Projects/Apps — the unit of work; actions run at project level */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+          <h3 className="font-semibold text-gray-900 text-sm whitespace-nowrap">{t("bridge.col.project")}</h3>
+          <input value={histSearch} onChange={(e) => setHistSearch(e.target.value)}
+            placeholder={t("bridge.search_ph")}
+            className="w-48 rounded-lg bg-white border border-gray-300 px-2.5 py-1 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none" />
+        </div>
+        {projects.filter((p) => !histSearch.trim() || p.name.toLowerCase().includes(histSearch.toLowerCase())).length === 0 ? (
+          <p className="p-8 text-center text-gray-400 text-xs">{t("bridge.proj.empty")}</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {projects.filter((p) => !histSearch.trim() || p.name.toLowerCase().includes(histSearch.toLowerCase())).map((p) => {
+              const files = imports.filter((i) => i.project_id === p.id);
+              return (
+                <li key={p.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <button onClick={() => setExpandedProj(expandedProj === p.id ? null : p.id)}
+                      className="min-w-0 text-left flex items-start gap-1.5 group">
+                      <span className={`text-gray-400 mt-0.5 transition-transform ${expandedProj === p.id ? "rotate-90" : ""}`}>▸</span>
+                      <span className="min-w-0">
+                        <span className="font-medium text-sm text-gray-900 group-hover:underline">{p.name}</span>
+                        <span className="text-gray-400 font-normal text-sm"> · {files.length} {t("bridge.proj.files")}</span>
+                        {expandedProj !== p.id && (
+                          <span className="block text-[10px] text-gray-400 font-mono truncate max-w-md">
+                            {files.map((f) => `${f.source_kind}:${f.source_ref.split("/").pop()}`).join("  ·  ") || "—"}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    <div className="whitespace-nowrap text-xs flex-shrink-0">
+                      <button onClick={() => openProjectModules(p)} className="text-indigo-700 font-medium hover:underline mr-3">{t("bridge.mod.btn")}</button>
+                      <button onClick={() => { setMergeProject(p); setMergeName(""); }} className="text-green-700 font-medium hover:underline mr-3">{t("bridge.merge.btn")}</button>
+                      <button onClick={() => openProjectDeploys(p)} className="text-green-700 hover:underline mr-3">{t("bridge.deploy.hist")}</button>
+                      <button onClick={() => runProjectRoundtrip(p)} className="text-green-700 hover:underline mr-3">{t("bridge.roundtrip")}</button>
+                      <button onClick={() => openProjectStructure(p)} className="text-brand-600 hover:underline mr-3">{t("bridge.view")}</button>
+                      <button onClick={() => deleteProject(p)} className="text-red-600 hover:underline">{t("bridge.delete")}</button>
+                    </div>
+                  </div>
+                  {expandedProj === p.id && (
+                    <div className="mt-2 ml-5 border-l-2 border-gray-100 pl-3 space-y-1.5">
+                      <div className="text-[10px] text-gray-400">{t("bridge.proj.files_hint")}</div>
+                      {files.length === 0 ? (
+                        <div className="text-[11px] text-gray-400">— {t("bridge.proj.no_files")} —</div>
+                      ) : files.map((f) => (
+                        <div key={f.id} className="flex items-center justify-between gap-3 py-0.5">
+                          <span className="min-w-0 text-[11px] text-gray-700 font-mono truncate">
+                            {f.source_kind}:{f.source_ref.split("/").pop()}
+                            <span className="text-gray-400"> · {f.command_count ?? "?"} cmd</span>
+                          </span>
+                          <span className="whitespace-nowrap text-[11px] flex-shrink-0">
+                            <button onClick={() => openStructure(f)} className="text-brand-600 hover:underline mr-3">{t("bridge.view")}</button>
+                            <button onClick={() => setToDelete(f)} className="text-red-600 hover:underline">{t("bridge.proj.remove_file")}</button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
       {deletionCard()}
       </>
       )}
@@ -1238,7 +1389,7 @@ export default function BridgePage() {
               setTokenProject(v);
               if (v !== "") loadTokens(Number(v));
             }}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             <option value="">{t("bridge.tok.pick")}</option>
             {projects.map((p) => (
@@ -1249,12 +1400,12 @@ export default function BridgePage() {
             value={tokName}
             onChange={(e) => setTokName(e.target.value)}
             placeholder={t("bridge.tok.name_ph")}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
           />
           <select
             value={tokScope}
             onChange={(e) => setTokScope(e.target.value)}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             <option value="read">read</option>
             <option value="read_write">read_write</option>
@@ -1262,7 +1413,7 @@ export default function BridgePage() {
           <button
             onClick={mintToken}
             disabled={tokBusy || tokenProject === "" || !tokName.trim()}
-            className="rounded-lg px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:bg-gray-100 disabled:text-gray-400"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:bg-gray-100 disabled:text-gray-400"
           >
             {t("bridge.tok.mint")}
           </button>
@@ -1309,7 +1460,7 @@ export default function BridgePage() {
           <select
             value={aiId}
             onChange={(e) => setAiId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 focus:border-brand-500 focus:outline-none"
           >
             <option value="">{t("bridge.ai.pick")}</option>
             {imports.map((i) => (
@@ -1321,19 +1472,19 @@ export default function BridgePage() {
             onChange={(e) => setAiQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && aiSearch()}
             placeholder={t("bridge.ai.q_ph")}
-            className="rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
+            className="rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-brand-500 focus:outline-none"
           />
           <button
             onClick={aiSearch}
             disabled={aiBusy || aiId === "" || !aiQ.trim()}
-            className="rounded-lg px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:bg-gray-100 disabled:text-gray-400"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium bg-brand-600 text-white hover:bg-brand-700 disabled:bg-gray-100 disabled:text-gray-400"
           >
             {t("bridge.ai.search")}
           </button>
           <button
             onClick={aiRebuild}
             disabled={aiBusy || aiId === ""}
-            className="rounded-lg px-3 py-2 text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg px-2.5 py-1.5 text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             {t("bridge.ai.rebuild")}
           </button>
@@ -1356,11 +1507,11 @@ export default function BridgePage() {
       </>
       )}
 
-      {/* Merge + Deploy whole system */}
-      {mergeFor && (
+      {/* Merge + Deploy whole system (import OR project) */}
+      {(mergeFor || mergeProject) && (
         <div
           className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-          onClick={() => setMergeFor(null)}
+          onClick={() => { setMergeFor(null); setMergeProject(null); }}
         >
           <div className="bg-white border border-gray-200 rounded-xl max-w-md w-full p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}>
@@ -1370,16 +1521,16 @@ export default function BridgePage() {
               value={mergeName}
               onChange={(e) => setMergeName(e.target.value)}
               placeholder={t("bridge.code.appname_ph")}
-              className="w-full rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 mb-3"
+              className="w-full rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 mb-3"
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => setMergeFor(null)} className="px-3 py-2 text-sm text-gray-600">
+              <button onClick={() => { setMergeFor(null); setMergeProject(null); }} className="px-2.5 py-1.5 text-xs text-gray-600">
                 {t("bridge.cancel")}
               </button>
               <button
                 onClick={doMergeDeploy}
                 disabled={mergeBusy || !mergeName.trim()}
-                className="px-4 py-2 text-sm font-medium bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50"
+                className="px-3 py-1.5 text-xs font-medium bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50"
               >
                 {mergeBusy ? "…" : t("bridge.merge.go")}
               </button>
@@ -1388,11 +1539,11 @@ export default function BridgePage() {
         </div>
       )}
 
-      {/* Modules — step-by-step build */}
-      {modFor && (
+      {/* Modules — step-by-step build (import OR project) */}
+      {(modFor || modProject) && (
         <div
           className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4"
-          onClick={() => setModFor(null)}
+          onClick={() => { setModFor(null); setModProject(null); }}
         >
           <div
             className="bg-white border border-gray-200 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-auto p-5 shadow-xl"
@@ -1400,7 +1551,7 @@ export default function BridgePage() {
           >
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-gray-900 font-semibold text-sm">
-                {t("bridge.mod.title")} #{modFor.id}
+                {t("bridge.mod.title")} {modProject ? modProject.name : `#${modFor?.id}`}
               </h3>
               <div className="flex items-center gap-2">
                 {Object.keys(modResult).length > 0 && remainingCount > 0 && (
@@ -1419,25 +1570,66 @@ export default function BridgePage() {
                 >
                   {allBusy ? t("bridge.mod.all_busy") : t("bridge.mod.all")}
                 </button>
-                <button onClick={() => setModFor(null)} className="text-gray-400 hover:text-gray-700">✕</button>
+                <button onClick={() => { setModFor(null); setModProject(null); }} className="text-gray-400 hover:text-gray-700">✕</button>
               </div>
             </div>
             <p className="text-xs text-gray-400 mb-1">{t("bridge.mod.desc")}</p>
-            {aiModels.length > 0 && (
-              <div className="flex items-center gap-2 mb-2 text-xs">
-                <span className="text-gray-500">{t("bridge.mod.use_model")}:</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 text-xs">
+              {aiModels.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500">{t("bridge.mod.use_model")}:</span>
+                  <select
+                    value={modModelId}
+                    onChange={(e) => setModModelId(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="rounded-lg bg-white border border-gray-300 px-2 py-1 text-xs text-gray-900"
+                  >
+                    <option value="">{t("bridge.mod.default_model")}</option>
+                    {aiModels.map((mo) => (
+                      <option key={mo.id} value={mo.id}>{mo.label} ({mo.model})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {/* error history — pick a past failure to see why + choose a better AI */}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">
+                  {t("bridge.gen.errhist")}
+                  {attempts.filter((a) => !a.ok).length > 0 && (
+                    <span className="text-red-600 font-medium"> ({attempts.filter((a) => !a.ok).length})</span>
+                  )}:
+                </span>
                 <select
-                  value={modModelId}
-                  onChange={(e) => setModModelId(e.target.value === "" ? "" : Number(e.target.value))}
-                  className="rounded-lg bg-white border border-gray-300 px-2 py-1 text-xs text-gray-900"
+                  value={attemptSel}
+                  onChange={(e) => setAttemptSel(e.target.value === "" ? "" : Number(e.target.value))}
+                  disabled={attempts.length === 0}
+                  className="rounded-lg bg-white border border-gray-300 px-2 py-1 text-xs text-gray-900 max-w-[22rem] disabled:opacity-50"
                 >
-                  <option value="">{t("bridge.mod.default_model")}</option>
-                  {aiModels.map((mo) => (
-                    <option key={mo.id} value={mo.id}>{mo.label} ({mo.model})</option>
+                  <option value="">
+                    {attempts.length === 0 ? t("bridge.gen.none") : t("bridge.gen.pick")}
+                  </option>
+                  {attempts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.ok ? "✅" : `🔴 ${a.error_code || "err"}`} · {a.module || "-"} · {a.model || a.provider || "?"} · {(a.created_at || "").slice(5, 16).replace("T", " ")}
+                    </option>
                   ))}
                 </select>
               </div>
-            )}
+            </div>
+            {attemptSel !== "" && (() => {
+              const a = attempts.find((x) => x.id === attemptSel);
+              if (!a) return null;
+              return (
+                <div className={cn("rounded-lg border px-3 py-2 mb-2 text-[11px]",
+                  a.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800")}>
+                  <div className="font-medium">
+                    {a.ok ? "✅" : `🔴 ${t("bridge.gen.code")} ${a.error_code || "?"}`} — {a.module || "-"}
+                    <span className="font-normal"> · {a.model || a.provider || "?"}{a.model_id ? "" : ` (${t("bridge.mod.default_model")})`}</span>
+                  </div>
+                  {a.note && <div className="mt-0.5 whitespace-pre-wrap break-words">{a.note}</div>}
+                  {!a.ok && <div className="mt-1 text-red-700/80">{t("bridge.gen.tip")}</div>}
+                </div>
+              );
+            })()}
             {allProgress && (
               <p className="text-xs text-indigo-700 mb-2 font-medium">⏳ {allProgress}</p>
             )}
@@ -1477,6 +1669,54 @@ export default function BridgePage() {
               </ul>
             )}
             <p className="text-[11px] text-gray-400 mt-3">{t("bridge.mod.note")}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Merge + Deploy history modal */}
+      {deployHistFor && (
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => setDeployHistFor(null)}>
+          <div className="bg-white border border-gray-200 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-auto p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-gray-900 font-semibold text-sm">
+                {t("bridge.deploy.hist")} — {("name" in deployHistFor) ? (deployHistFor as BridgeProject).name : `#${(deployHistFor as BridgeImport).id}`}
+              </h3>
+              <button onClick={() => setDeployHistFor(null)} className="text-gray-400 hover:text-gray-700">✕</button>
+            </div>
+            {deploys.length === 0 ? (
+              <p className="text-gray-500 text-xs">{t("bridge.deploy.empty")}</p>
+            ) : (
+              <ul className="divide-y divide-gray-100">
+                {deploys.map((d) => (
+                  <li key={d.id} className="py-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm text-gray-900 font-medium">
+                        v{d.version} · {d.files_count} {t("bridge.proj.files")}
+                        <span className={cn("ml-2 text-[10px] px-1.5 py-0.5 rounded-full",
+                          d.status === "deployed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>
+                          {d.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 font-mono truncate">
+                        {d.app_slug
+                          ? <>{d.app_slug} :{d.app_port} · {d.app_status}{d.app_domain ? ` · ${d.app_domain}` : ""}</>
+                          : t("bridge.deploy.notdeployed")}
+                        <span className="text-gray-400"> · {(d.created_at || "").slice(0, 16).replace("T", " ")}</span>
+                      </div>
+                    </div>
+                    {d.app_domain && (
+                      <a href={d.app_domain.startsWith("http") ? d.app_domain : `http://${d.app_domain}`}
+                        target="_blank" rel="noreferrer"
+                        className="text-brand-600 hover:underline text-xs whitespace-nowrap flex-shrink-0">
+                        {t("bridge.deploy.open")}
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}
@@ -1559,16 +1799,16 @@ export default function BridgePage() {
               value={deployName}
               onChange={(e) => setDeployName(e.target.value)}
               placeholder={t("bridge.code.appname_ph")}
-              className="w-full rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 mb-3"
+              className="w-full rounded-lg bg-white border border-gray-300 px-2.5 py-1.5 text-xs text-gray-900 placeholder-gray-400 mb-3"
             />
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeployFor(null)} className="px-3 py-2 text-sm text-gray-600">
+              <button onClick={() => setDeployFor(null)} className="px-2.5 py-1.5 text-xs text-gray-600">
                 {t("bridge.cancel") || "Cancel"}
               </button>
               <button
                 onClick={doDeploy}
                 disabled={!deployName.trim()}
-                className="px-4 py-2 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                className="px-3 py-1.5 text-xs font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
               >
                 {t("bridge.code.deploy")}
               </button>

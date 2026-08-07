@@ -30,7 +30,7 @@ from app.services import license_service, audit_service
 from app.services.opencli import (
     pipeline, reader, roundtrip, vector, regen, preflight, regen_service, project_service,
     code_service, mcp_token_service, chat_service, code_analyzer, modules as modules_svc,
-    llm_models_service,
+    llm_models_service, project_ops,
 )
 from app.models import VaultKey
 from app.models import (
@@ -86,6 +86,17 @@ class ImportCreate(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
+
+
+class ModuleGenRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
+    module: str
+    model_id: Optional[int] = None   # which registered AI builds it (multi-agent)
+
+
+class MergeDeployRequest(BaseModel):
+    name: str
+    deploy: bool = True
 
 
 class ImportOut(BaseModel):
@@ -185,6 +196,192 @@ async def chat(
         return chat_service.chat(db, project_id=body.project_id, message=body.message)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)[:200])
+
+
+# --------------------------------------------------------------------------- #
+# Project-level operations (P16) — one project/app is the unit of work.
+# Additive: per-import endpoints above are untouched (fallback).
+# --------------------------------------------------------------------------- #
+
+def _load_project(db: Session, project_id: int):
+    p = project_service.get(db, project_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    return p
+
+
+@router.get("/projects/{project_id}/modules")
+async def project_modules(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Modules of the whole project (union of all its imports' manifests)."""
+    _require_bridge_edition()
+    p = _load_project(db, project_id)
+    try:
+        return modules_svc.list_modules(project_ops.build_combined(db, p))
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/projects/{project_id}/regen/module")
+async def project_regen_module(
+    project_id: int,
+    body: ModuleGenRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Generate ONE module at project scope (combined manifest)."""
+    _require_bridge_edition()
+    p = _load_project(db, project_id)
+    try:
+        combined = project_ops.build_combined(db, p)
+        result = regen_service.generate_module(
+            db, combined, body.module, created_by=user.id, model_id=body.model_id)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"module gen failed: {str(e)[:300]}")
+    try:
+        audit_service.create_audit_log(
+            db, request, user, action="opencli_project_regen_module",
+            resource_type="opencli", resource_id=str(project_id),
+            details=f"project={project_id} module={body.module} files={result['files']}",
+            log_level="WARNING")
+    except Exception:
+        db.rollback()
+    return result
+
+
+@router.get("/projects/{project_id}/code")
+async def project_code(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Project-level code versions (import_id NULL)."""
+    _require_bridge_edition()
+    _load_project(db, project_id)
+    rows = code_service.list_versions(db, project_id=project_id)
+    return [r for r in rows if r["import_id"] is None]
+
+
+@router.get("/projects/{project_id}/gen-attempts")
+async def project_gen_attempts(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Module-generation attempt history (errors + successes) for a project."""
+    _require_bridge_edition()
+    _load_project(db, project_id)
+    return regen_service.list_attempts(db, project_id=project_id)
+
+
+@router.get("/projects/{project_id}/deploys")
+async def project_deploys(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Merge+Deploy history for a project."""
+    _require_bridge_edition()
+    _load_project(db, project_id)
+    return code_service.list_deploys(db, project_id=project_id)
+
+
+@router.get("/projects/{project_id}/structure")
+async def project_structure(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _require_bridge_edition()
+    p = _load_project(db, project_id)
+    try:
+        combined = project_ops.build_combined(db, p)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"project_id": project_id, "structure_md": reader.read_structure_md(combined) or ""}
+
+
+@router.get("/projects/{project_id}/roundtrip")
+async def project_roundtrip(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Aggregate round-trip fidelity across the project's imports."""
+    _require_bridge_edition()
+    p = _load_project(db, project_id)
+    imps = project_ops.project_imports(db, project_id)
+    if not imps:
+        raise HTTPException(status_code=409, detail="no transformed imports")
+    reports, tt, tm, ce, cc, pii, defects = [], 0, 0, 0, 0, 0, []
+    for imp in imps:
+        r = roundtrip.run(db, imp)
+        reports.append({"import_id": imp.id, "fidelity": round(r.fidelity, 4),
+                        "tables": f"{r.tables_matched}/{r.tables_total}"})
+        tt += r.tables_total; tm += r.tables_matched
+        ce += r.columns_expected; cc += r.columns_correct; pii += r.pii_dropped
+        defects += [d for d in r.as_dict()["defects"]]
+    return {
+        "site": p.slug, "project_id": project_id, "imports": len(imps),
+        "fidelity": round(cc / ce, 4) if ce else 1.0,
+        "tables_matched": tm, "tables_total": tt,
+        "columns_correct": cc, "columns_expected": ce, "pii_dropped": pii,
+        "passed": tm == tt and cc == ce, "defects": defects, "per_import": reports,
+    }
+
+
+@router.post("/projects/{project_id}/merge-deploy")
+async def project_merge_deploy(
+    project_id: int,
+    body: MergeDeployRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Merge the project's module code into one app, then (optionally) deploy."""
+    _require_bridge_edition()
+    p = _load_project(db, project_id)
+    try:
+        combined = project_ops.build_combined(db, p)
+        cv = code_service.merge_modules(db, combined, created_by=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    result = {"merged_code_id": cv.id, "version": cv.version,
+              "files": cv.files_count, "deploy": None}
+    if body.deploy:
+        try:
+            result["deploy"] = await code_service.deploy(
+                db, cv, name=body.name, user=user, request=request)
+        except Exception as e:
+            result["deploy_error"] = str(e)[:300]
+    audit_service.create_audit_log(
+        db, request, user, action="opencli_project_merge", resource_type="opencli",
+        resource_id=str(project_id), details=f"merged project {project_id} → v{cv.version}",
+        log_level="WARNING")
+    return result
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Delete a project (cascades to its imports/code/tokens)."""
+    _require_bridge_edition()
+    p = _load_project(db, project_id)
+    db.delete(p)
+    db.commit()
+    audit_service.create_audit_log(
+        db, request, user, action="opencli_project_delete", resource_type="opencli",
+        resource_id=str(project_id), details=f"deleted project '{p.name}'", log_level="WARNING")
+    return {"ok": True}
 
 
 @router.get("/projects")
@@ -587,12 +784,6 @@ async def test_llm(
     return regen_service.test_config(db)
 
 
-class ModuleGenRequest(BaseModel):
-    model_config = {"protected_namespaces": ()}
-    module: str
-    model_id: Optional[int] = None   # which registered AI builds it (multi-agent)
-
-
 @router.get("/imports/{import_id}/modules")
 async def list_import_modules(
     import_id: int,
@@ -662,11 +853,6 @@ class DeployCodeRequest(BaseModel):
     name: str
 
 
-class MergeDeployRequest(BaseModel):
-    name: str
-    deploy: bool = True
-
-
 @router.post("/imports/{import_id}/merge-deploy")
 async def merge_deploy(
     import_id: int,
@@ -716,6 +902,28 @@ async def list_import_code(
     """Code versions generated from this import (history, newest first)."""
     _require_bridge_edition()
     return code_service.list_versions(db, import_id=import_id)
+
+
+@router.get("/imports/{import_id}/gen-attempts")
+async def import_gen_attempts(
+    import_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Module-generation attempt history (errors + successes) for an import."""
+    _require_bridge_edition()
+    return regen_service.list_attempts(db, import_id=import_id)
+
+
+@router.get("/imports/{import_id}/deploys")
+async def import_deploys(
+    import_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Merge+Deploy history for an import."""
+    _require_bridge_edition()
+    return code_service.list_deploys(db, import_id=import_id)
 
 
 @router.post("/code/{code_id}/deploy")

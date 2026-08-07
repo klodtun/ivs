@@ -89,6 +89,34 @@ def list_versions(db: Session, *, project_id: Optional[int] = None,
     } for c in rows]
 
 
+def list_deploys(db: Session, *, project_id: Optional[int] = None,
+                 import_id: Optional[int] = None) -> list[dict]:
+    """Merge+Deploy history: every merged app build (module='_all'), newest first,
+    with its deploy status and the running app's slug/port/domain when deployed."""
+    from app.models import App
+    q = db.query(OpenCliCodeVersion).filter(
+        OpenCliCodeVersion.module == "_all",
+        OpenCliCodeVersion.status != OpenCliCodeStatus.DELETED)
+    if project_id is not None:
+        q = q.filter(OpenCliCodeVersion.project_id == project_id)
+    if import_id is not None:
+        q = q.filter(OpenCliCodeVersion.import_id == import_id)
+    rows = q.order_by(OpenCliCodeVersion.version.desc()).all()
+    out = []
+    for c in rows:
+        app = db.query(App).filter(App.id == c.deployed_app_id).first() if c.deployed_app_id else None
+        out.append({
+            "id": c.id, "version": c.version, "files_count": c.files_count,
+            "status": c.status.value, "deployed_app_id": c.deployed_app_id,
+            "app_slug": app.slug if app else None,
+            "app_port": app.port if app else None,
+            "app_domain": app.domain if app else None,
+            "app_status": app.status.value if app else None,
+            "created_at": c.created_at.isoformat(),
+        })
+    return out
+
+
 def export_zip(cv: OpenCliCodeVersion) -> tuple[str, bytes]:
     """Zip the code version's files in memory. Returns (filename, bytes)."""
     if not cv.code_dir or not os.path.isdir(cv.code_dir):
@@ -121,13 +149,19 @@ def merge_modules(db: Session, imp: OpenCliImport, *, created_by: Optional[int])
     """Combine the latest code of every module into ONE deployable app dir.
     Each module's files go under modules/<module>/; a top-level index.html lists
     them so iVS deploys it as a static app. Recorded as a code version module='_all'."""
-    # latest non-deleted version per module
-    rows = (db.query(OpenCliCodeVersion)
-            .filter(OpenCliCodeVersion.import_id == imp.id,
-                    OpenCliCodeVersion.module.isnot(None),
-                    OpenCliCodeVersion.module != "_all",
-                    OpenCliCodeVersion.status != OpenCliCodeStatus.DELETED)
-            .order_by(OpenCliCodeVersion.version.desc()).all())
+    # latest non-deleted module version — per-import, or project-scoped when this
+    # is the combined project import (imp.id is None → the project's own module
+    # code, which carries import_id NULL + project_id).
+    q = db.query(OpenCliCodeVersion).filter(
+        OpenCliCodeVersion.module.isnot(None),
+        OpenCliCodeVersion.module != "_all",
+        OpenCliCodeVersion.status != OpenCliCodeStatus.DELETED)
+    if imp.id is None:
+        q = q.filter(OpenCliCodeVersion.project_id == imp.project_id,
+                     OpenCliCodeVersion.import_id.is_(None))
+    else:
+        q = q.filter(OpenCliCodeVersion.import_id == imp.id)
+    rows = q.order_by(OpenCliCodeVersion.version.desc()).all()
     latest: dict[str, OpenCliCodeVersion] = {}
     for r in rows:
         latest.setdefault(r.module, r)

@@ -132,7 +132,68 @@ def test_cfg(cfg) -> dict:
     return {"provider": provider, "ok": False, "detail": "unknown provider"}
 
 
-def _run(db: Session, imp: OpenCliImport, brief: dict, *, created_by, module, cfg=None):
+import re as _re
+
+# human-readable meaning for the common HTTP / pipeline error codes
+_ERR_EXPLAIN = {
+    "400": "คำขอไม่ถูกต้อง — มักเป็นพารามิเตอร์ผิด (เช่น max_tokens ไม่รองรับในโมเดล reasoning)",
+    "401": "คีย์ API ไม่ถูกต้อง/หมดอายุ — ตรวจ Vault key",
+    "403": "ไม่มีสิทธิ์เข้าถึงโมเดลนี้ด้วยคีย์ปัจจุบัน",
+    "404": "ไม่พบโมเดล — ชื่อโมเดลผิด (เช่นใส่ prefix ซ้ำ)",
+    "408": "หมดเวลา — โมเดลตอบช้าเกินไป",
+    "422": "โมเดลไม่รับรูปแบบคำขอ",
+    "428": "โมเดลต้องการเงื่อนไขก่อน (Precondition) — มักคือ context/โควตา/ต้องยืนยันก่อนใช้",
+    "429": "เรียกถี่เกินโควตา (rate limit) — รอสักครู่หรือสลับโมเดล",
+    "500": "โมเดล/เซิร์ฟเวอร์ผู้ให้บริการ error ภายใน — ลองใหม่หรือสลับ AI",
+    "502": "เกตเวย์ผู้ให้บริการล่ม",
+    "503": "บริการโมเดลไม่พร้อม (overloaded) — สลับ AI",
+    "504": "เกตเวย์หมดเวลา",
+    "parse": "โมเดลตอบไม่ใช่ JSON ไฟล์ที่อ่านได้ — โมเดลเล็ก/ไม่ทำตามรูปแบบ ลองโมเดลเก่งกว่า",
+    "save": "สร้างไฟล์ได้แต่เขียนลงดิสก์ไม่สำเร็จ",
+    "provider": "เรียกผู้ให้บริการไม่สำเร็จ (network/auth)",
+}
+
+
+def _error_code(note: Optional[str]) -> Optional[str]:
+    """Extract a short error code from a provider note string."""
+    if not note:
+        return None
+    m = _re.search(r"\b(4\d\d|5\d\d)\b", note)
+    if m:
+        return m.group(1)
+    low = note.lower()
+    if "save error" in low:
+        return "save"
+    if "parse" in low or "no files" in low or "files=0" in low:
+        return "parse"
+    if "provider error" in low:
+        return "provider"
+    return None
+
+
+def _log_attempt(db: Session, imp: OpenCliImport, module, result: dict,
+                 *, model_id, created_by) -> None:
+    """Persist a generation attempt (success or error) for later review."""
+    from app.models import OpenCliGenAttempt
+    ok = result.get("files", 0) > 0 and result.get("mode") != "error"
+    code = None if ok else _error_code(result.get("note"))
+    try:
+        db.add(OpenCliGenAttempt(
+            project_id=imp.project_id or None, import_id=imp.id, module=module,
+            provider=result.get("provider"), model=result.get("model"),
+            model_id=model_id, ok=ok, files=result.get("files", 0),
+            error_code=code,
+            note=((_ERR_EXPLAIN.get(code) + " — ") if code and _ERR_EXPLAIN.get(code) else "")
+                 + (result.get("note") or "")[:400] if not ok else (result.get("note") or "")[:200],
+            created_by=created_by,
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()  # logging must never break generation
+
+
+def _run(db: Session, imp: OpenCliImport, brief: dict, *, created_by, module,
+         cfg=None, model_id=None):
     from . import code_service  # lazy: code_service imports models heavily
 
     cfg = cfg or _resolve(db)
@@ -141,12 +202,14 @@ def _run(db: Session, imp: OpenCliImport, brief: dict, *, created_by, module, cf
         result = provider.generate(brief, cfg)
     except Exception as e:
         # surface the real provider error (auth/model/network) instead of a 500
-        return {
+        r = {
             "import_id": imp.id, "module": module, "provider": cfg.provider,
             "mode": "error", "model": cfg.model, "files": 0,
             "candidate_dir": None, "code_version_id": None, "verify": None,
             "note": f"provider error: {str(e)[:300]}", "brief": None,
         }
+        _log_attempt(db, imp, module, r, model_id=model_id, created_by=created_by)
+        return r
 
     verify = None
     candidate_dir = None
@@ -176,20 +239,43 @@ def _run(db: Session, imp: OpenCliImport, brief: dict, *, created_by, module, cf
             code_version_id = cv.id
         except Exception as e:
             db.rollback()
-            return {
+            r = {
                 "import_id": imp.id, "module": module, "provider": result.provider,
                 "mode": "error", "model": result.model, "files": len(result.files),
                 "candidate_dir": candidate_dir, "code_version_id": None, "verify": None,
                 "note": f"save error: {str(e)[:300]}", "brief": None,
             }
+            _log_attempt(db, imp, module, r, model_id=model_id, created_by=created_by)
+            return r
 
-    return {
+    r = {
         "import_id": imp.id, "module": module,
         "provider": result.provider, "mode": result.mode, "model": result.model,
         "files": len(result.files), "candidate_dir": candidate_dir,
         "code_version_id": code_version_id, "verify": verify,
         "note": result.note, "brief": result.brief,
     }
+    _log_attempt(db, imp, module, r, model_id=model_id, created_by=created_by)
+    return r
+
+
+def list_attempts(db: Session, *, project_id=None, import_id=None,
+                  limit: int = 100) -> list[dict]:
+    """Recent generation attempts (newest first) for a project or import.
+    Powers the error-history dropdown so operators pick a better AI."""
+    from app.models import OpenCliGenAttempt
+    q = db.query(OpenCliGenAttempt)
+    if project_id is not None:
+        q = q.filter(OpenCliGenAttempt.project_id == project_id)
+    if import_id is not None:
+        q = q.filter(OpenCliGenAttempt.import_id == import_id)
+    rows = q.order_by(OpenCliGenAttempt.created_at.desc()).limit(limit).all()
+    return [{
+        "id": a.id, "module": a.module, "provider": a.provider, "model": a.model,
+        "model_id": a.model_id, "ok": a.ok, "files": a.files,
+        "error_code": a.error_code, "note": a.note,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+    } for a in rows]
 
 
 def generate(db: Session, imp: OpenCliImport, *, created_by=None) -> dict:
@@ -208,4 +294,4 @@ def generate_module(db: Session, imp: OpenCliImport, module: str, *,
         from . import llm_models_service
         cfg = llm_models_service.resolve(db, model_id)
     return _run(db, imp, build_module_brief(imp, module),
-                created_by=created_by, module=module, cfg=cfg)
+                created_by=created_by, module=module, cfg=cfg, model_id=model_id)

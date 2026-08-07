@@ -21,8 +21,8 @@ def _module_of(table: str) -> str:
     return re.sub(r"\d+$", "", head) or head
 
 
-def list_modules(imp) -> list[dict]:
-    """Modules for an import's manifest, with their tables + command count."""
+def _prefix_modules(imp) -> list[dict]:
+    """Baseline grouping by table-name prefix (the original P14 heuristic)."""
     manifest = reader.read_manifest(imp) or []
     groups: dict[str, list[str]] = {}
     for cmd in manifest:
@@ -34,6 +34,22 @@ def list_modules(imp) -> list[dict]:
         {"module": m, "tables": sorted(set(t)), "commands": len(t)}
         for m, t in sorted(groups.items())
     ]
+
+
+def list_modules(imp) -> list[dict]:
+    """Modules for an import's manifest, with their tables + command count.
+
+    Prefers relationship-based clustering (P17, module_graph) which groups tables by
+    implied foreign keys, not just name prefix. Falls back to the prefix heuristic
+    when there is no relational signal — so this is never worse than P14."""
+    try:
+        from . import module_graph
+        clustered = module_graph.graph_modules(imp)
+        if clustered:
+            return clustered
+    except Exception:
+        pass  # any failure → safe fallback below
+    return _prefix_modules(imp)
 
 
 def build_module_brief(imp, module: str) -> dict:
