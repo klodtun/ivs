@@ -49,6 +49,7 @@ STEP_STAMP_DUTY = "stamp_duty"       # อากรแสตมป์ (ม.8 ว
 STEP_RETENTION = "retention"         # แถลงการเก็บรักษา (ม.12)
 STEP_PRINT_OUT = "print_out"         # สิ่งพิมพ์ออก (ม.10 ว.4)
 STEP_AMENDMENT = "amendment"         # แก้ไขหลังลงนาม (FAQ eSignature ข้อ 5)
+STEP_ATTACHMENT = "attachment"       # แนบหลักฐานตัวจริง — ทำได้ทั้งก่อนและหลังตรึง
 
 # ขั้นตอนที่ต้องทำ "ก่อน" ตรึงต้นฉบับ — เพราะเป็นส่วนที่ประกอบขึ้นเป็นตัวสัญญา
 PRE_LOCK_STEPS = {STEP_DOCUMENT, STEP_DELIVER, STEP_ACCEPTANCE, STEP_SIGN, STEP_SEAL}
@@ -68,7 +69,28 @@ STEP_LABELS = {
     STEP_RETENTION:  {"th": "แถลงการเก็บรักษา", "sections": ["11", "12"]},
     STEP_PRINT_OUT:  {"th": "จัดทำสิ่งพิมพ์ออก", "sections": ["10 วรรค 4"]},
     STEP_AMENDMENT:  {"th": "แก้ไขหลังลงนาม", "sections": ["10"]},
+    STEP_ATTACHMENT: {"th": "แนบหลักฐานตัวจริง", "sections": ["11", "12"]},
 }
+
+
+def delivered_recipients(db: Session, cert_id: str) -> list:
+    """ผู้รับที่ถูกส่งร่างไป — ใช้ตรวจว่าอีเมลที่ใช้ลงนามตรงกับที่ส่งร่างไปหรือไม่
+
+    ถ้าส่งร่างไปที่อยู่หนึ่งแล้วมีคนลงนามด้วยอีกที่อยู่หนึ่ง โซ่การระบุตัวตนขาด —
+    ระบบต้องเห็นและบันทึกไว้ให้ผู้ชั่งน้ำหนักพยานหลักฐาน (ม.11) ตัดสินเอง
+    """
+    out: list = []
+    for r in _links(db, cert_id):
+        if r.step != STEP_DELIVER:
+            continue
+        try:
+            data = json.loads(r.payload_json).get("data", {})
+        except Exception:
+            continue
+        for x in data.get("recipients", []) or []:
+            if x not in out:
+                out.append(x)
+    return out
 
 
 class ChainError(ValueError):

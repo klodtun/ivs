@@ -17,7 +17,7 @@ import io
 import json
 import secrets
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -160,6 +160,7 @@ def sig_to_dict(s: EContractSignature) -> dict:
         "id": s.id,
         "cert_id": s.cert_id,
         "signer_name": s.signer_name,
+        "signer_role": s.signer_role or "",
         "method": s.method,
         "identity_ref": s.identity_ref,
         "signed_at": s.signed_at.isoformat() if s.signed_at else None,
@@ -170,7 +171,8 @@ def sig_to_dict(s: EContractSignature) -> dict:
 
 def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "typed",
                   identity_ref: str = "", ip: str = "", created_by: int = None,
-                  signing_mode: str = "remote", user_agent: str = "") -> dict:
+                  signing_mode: str = "remote", user_agent: str = "",
+                  signer_role: str = "") -> dict:
     """Record an electronic signature on a certificate (§9/§26).
 
     `signing_mode` แยกการลงนามต่อหน้าบนเครื่องของหน่วยงานออกจากการลงนามระยะไกล —
@@ -191,6 +193,7 @@ def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "ty
     now = ntp_service.now()
     row = EContractSignature(
         cert_id=cert_id, signer_name=signer_name[:200],
+        signer_role=(signer_role or "")[:120],
         method=method if method in ("typed", "drawn", "otp") else "typed",
         identity_ref=(identity_ref or "")[:300000], signed_at=now,  # allow a drawn-signature PNG data URI
         ip_address=(ip or "")[:45], signature="", created_by=created_by,
@@ -205,20 +208,32 @@ def add_signature(db: Session, cert_id: str, signer_name: str, method: str = "ty
     db.commit()
     db.refresh(row)
 
+    # อีเมลที่ใช้ลงนามควรเป็นอีเมลเดียวกับที่ส่งร่างไป — ถ้าไม่ตรง โซ่การระบุตัวตนขาด
+    # ระบบไม่ห้าม (บางกรณีมีเหตุผล) แต่ต้องบันทึกไว้ให้เห็นชัดในหลักฐาน
+    delivered = chain_service.delivered_recipients(db, cert_id)
+    ident = (identity_ref or "").strip().lower()
+    matches = bool(delivered) and ident in [d.strip().lower() for d in delivered]
+
     from app.services.compliance_service import METHOD_ASSURANCE
     chain_service.append(db, cert_id, chain_service.STEP_SIGN, {
         "signer_name": row.signer_name,
+        "signer_role": row.signer_role,
         "method": row.method,
         "assurance_level": METHOD_ASSURANCE.get(row.method, "general"),
         "signing_mode": row.signing_mode,
         "operator_user_id": row.operator_user_id,
         "identity_evidence": _identity_summary(row),
+        "identity_matches_delivery": matches,
+        "delivered_recipients": delivered,
         "ip_address": row.ip_address,
         "user_agent": (user_agent or "")[:300],
         "signed_at": row.signed_at,
         "signature_hmac": row.signature,
     }, created_by=created_by)
-    return sig_to_dict(row)
+    out = sig_to_dict(row)
+    out["identity_matches_delivery"] = matches
+    out["delivered_recipients"] = delivered
+    return out
 
 
 def _identity_summary(row) -> str:
@@ -379,7 +394,8 @@ def record_delivery(db: Session, cert_id: str, recipients: list, channel: str = 
 
 def record_acceptance(db: Session, cert_id: str, party: str, source: str = "first_party",
                       evidence: str = "", ip: str = "", note: str = "",
-                      recorded_by: int = None) -> dict:
+                      recorded_by: int = None, attachment_sha256: str = "",
+                      attachment_filename: str = "") -> dict:
     """บันทึกคำสนอง — คู่สัญญาตกลงตามร่างที่เสนอ (ม.13)
 
     `source` แยกหลักฐานที่ระบบบันทึกเอง (first_party) ออกจากหลักฐานที่นำเข้าจากภายนอก
@@ -405,6 +421,8 @@ def record_acceptance(db: Session, cert_id: str, party: str, source: str = "firs
         "evidence_sha256": hashlib.sha256((evidence or "").encode()).hexdigest() if evidence else "",
         "ip_address": (ip or "")[:45],
         "note": note or "",
+        "attachment_sha256": attachment_sha256 or "",
+        "attachment_filename": attachment_filename or "",
     }, created_by=recorded_by)
 
 
@@ -457,21 +475,207 @@ def lock_original(db: Session, cert_id: str, locked_by: int = None) -> dict:
     return link
 
 
+# ── หลักฐานตัวจริง (attachments) + การเลือกเก็บไฟล์ ─────────────────────
+
+import os
+
+ATTACHMENT_ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "econtract",
+)
+ATTACHMENT_KINDS = {
+    "original_document": "เอกสาร/สัญญาตัวจริง",
+    "acceptance_evidence": "หลักฐานคำสนอง",
+    "print_out": "สิ่งพิมพ์ออก",
+    "other": "หลักฐานอื่น",
+}
+MAX_ATTACHMENT = 25 * 1024 * 1024
+
+
+def _safe_name(name: str) -> str:
+    keep = "".join(c for c in (name or "file") if c.isalnum() or c in "._- ")
+    return (keep.strip() or "file")[:120]
+
+
+def set_retention_storage(db: Session, cert_id: str, store: bool,
+                          changed_by: int = None) -> dict:
+    """เปิด/ปิดการเก็บตัวไฟล์จริงของสัญญาฉบับนี้
+
+    ปิดแล้วจะไม่ลบไฟล์ที่เก็บไว้ก่อนหน้า — การลบพยานหลักฐานต้องเป็นการกระทำที่ตั้งใจ
+    และแยกต่างหาก ไม่ใช่ผลข้างเคียงของการสลับสวิตช์
+
+    หลังตรึงต้นฉบับ ปิดสวิตช์ไม่ได้ — ปิดแล้วหลักฐานที่แนบต่อจากนี้จะไม่ถูกเก็บ
+    ซึ่งเป็นการลดระดับการเก็บรักษาของสัญญาที่สมบูรณ์ไปแล้ว (ม.12) เปิดยังทำได้เสมอ
+    เพราะเป็นการยกระดับ
+    """
+    from app.services import chain_service
+
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise ValueError("ไม่พบใบรับรอง")
+    if not store and cert.retention_store_files and chain_service.is_locked(db, cert_id):
+        raise ValueError(
+            "ตรึงต้นฉบับแล้ว จึงปิดการเก็บไฟล์ไม่ได้ — จะทำให้ระดับการเก็บรักษาของสัญญา"
+            "ที่สมบูรณ์แล้วลดลง (ม.12) เปิดเพิ่มยังทำได้"
+        )
+    cert.retention_store_files = bool(store)
+    db.commit()
+    return {"cert_id": cert_id, "retention_store_files": cert.retention_store_files,
+            "locked": chain_service.is_locked(db, cert_id)}
+
+
+def add_attachment(db: Session, cert_id: str, kind: str, filename: str, data: bytes,
+                   content_type: str = "", note: str = "", uploaded_by: int = None,
+                   title: str = "") -> dict:
+    """แนบหลักฐานตัวจริง — บันทึกลายนิ้วมือเสมอ เก็บไฟล์เมื่อเปิดโหมดเก็บไฟล์"""
+    from app.models import EContractAttachment
+    from app.services import chain_service
+
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise ValueError("ไม่พบใบรับรอง")
+    if not data:
+        raise ValueError("ไฟล์ว่าง")
+    if len(data) > MAX_ATTACHMENT:
+        raise ValueError("ไฟล์ใหญ่เกิน 25 MB")
+    if kind not in ATTACHMENT_KINDS:
+        kind = "other"
+
+    sha = hashlib.sha256(data).hexdigest()
+
+    locked = chain_service.is_locked(db, cert_id)
+    if locked and kind == "acceptance_evidence":
+        raise ValueError(
+            "ตรึงต้นฉบับแล้ว จึงแนบหลักฐานคำสนองไม่ได้ — คำเสนอและคำสนองเป็นส่วนที่"
+            "ทำให้สัญญาเกิด (ม.13) ต้องอยู่ก่อนการตรึงต้นฉบับ"
+        )
+    # เอกสารตัวจริงที่แนบหลังตรึง ต้องเป็นไฟล์เดียวกับที่ออกใบรับรองไว้เป๊ะ ๆ
+    # ไม่งั้นจะกลายเป็นการสลับเนื้อหาของสิ่งที่อ้างว่าตรึงแล้ว
+    if kind == "original_document" and sha != cert.sha256:
+        raise ValueError(
+            "ไฟล์ที่แนบไม่ตรงกับเอกสารที่ออกใบรับรองไว้ "
+            f"(ใบรับรอง SHA-256 {cert.sha256[:16]}… · ไฟล์นี้ {sha[:16]}…) — "
+            "หากเป็นเอกสารคนละฉบับ ให้เลือกประเภทเป็น 'หลักฐานอื่น'"
+        )
+    row = EContractAttachment(
+        cert_id=cert_id, kind=kind, filename=(filename or "file")[:400],
+        content_type=(content_type or "")[:120], size_bytes=len(data), sha256=sha,
+        stored=False, note=note or "", uploaded_by=uploaded_by,
+        title=(title or "")[:300],
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    if cert.retention_store_files:
+        rel = os.path.join(cert_id, f"{row.id}_{_safe_name(filename)}")
+        full = os.path.join(ATTACHMENT_ROOT, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(data)
+        row.stored = True
+        row.storage_path = rel
+        db.commit()
+        db.refresh(row)
+
+    chain_service.append(db, cert_id, chain_service.STEP_ATTACHMENT, {
+        "kind": kind,
+        "kind_th": ATTACHMENT_KINDS[kind],
+        "title": row.title or "",
+        "filename": row.filename,
+        "content_type": row.content_type,
+        "size_bytes": row.size_bytes,
+        "sha256": sha,
+        "stored": row.stored,
+        "note": note or "",
+    }, created_by=uploaded_by)
+    return attachment_to_dict(row)
+
+
+def attachment_to_dict(a) -> dict:
+    return {
+        "id": a.id,
+        "cert_id": a.cert_id,
+        "kind": a.kind,
+        "kind_th": ATTACHMENT_KINDS.get(a.kind, a.kind),
+        "title": a.title or "",
+        "filename": a.filename,
+        "content_type": a.content_type,
+        "size_bytes": a.size_bytes,
+        "sha256": a.sha256,
+        "stored": bool(a.stored),
+        "note": a.note,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+    }
+
+
+def list_attachments(db: Session, cert_id: str) -> list:
+    from app.models import EContractAttachment
+    rows = (
+        db.query(EContractAttachment)
+        .filter(EContractAttachment.cert_id == cert_id)
+        .order_by(EContractAttachment.created_at.asc())
+        .all()
+    )
+    return [attachment_to_dict(a) for a in rows]
+
+
+def attachment_file(db: Session, cert_id: str, att_id: int):
+    """คืน (path, ชื่อไฟล์, mime) หรือ raise ถ้าไม่ได้เก็บตัวไฟล์ไว้"""
+    from app.models import EContractAttachment
+    a = (
+        db.query(EContractAttachment)
+        .filter(EContractAttachment.id == att_id, EContractAttachment.cert_id == cert_id)
+        .first()
+    )
+    if not a:
+        raise ValueError("ไม่พบไฟล์แนบ")
+    if not a.stored or not a.storage_path:
+        raise ValueError(
+            "ไฟล์นี้บันทึกไว้เฉพาะลายนิ้วมือ ไม่ได้เก็บตัวไฟล์ "
+            "(โหมดเก็บไฟล์ปิดอยู่ขณะอัปโหลด)"
+        )
+    full = os.path.join(ATTACHMENT_ROOT, a.storage_path)
+    if not os.path.isfile(full):
+        raise ValueError("ไฟล์หายจากที่จัดเก็บ — ตรวจสอบการสำรองข้อมูล")
+    return full, a.filename, (a.content_type or "application/octet-stream")
+
+
 # ── e-Original + e-Retention — ภาพรวมทั้งระบบ ────────────────────────────
 
-def originals_overview(db: Session, limit: int = 200) -> dict:
-    """สถานะความเป็นต้นฉบับ (ม.10) และการเก็บรักษา (ม.12) ของทุกใบรับรอง
+def thai_day_start(days_back: int = 0) -> datetime:
+    """เที่ยงคืนของวันตามเวลาไทย แปลงกลับเป็น UTC แบบ naive ให้ตรงกับที่เก็บใน DB"""
+    now_th = datetime.now(timezone.utc) + timedelta(hours=7)
+    start_th = now_th.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_back)
+    return (start_th - timedelta(hours=7)).replace(tzinfo=None)
+
+
+def _scope_filter(q, scope: str):
+    """จำกัดช่วงเวลา — ค่าเริ่มต้นเป็นวันนี้ เพราะการประเมิน 7 ขั้นตอนทำต่อใบรับรอง
+    การดึงทั้งหมดจึงแพงขึ้นตามจำนวนสัญญาสะสม"""
+    if scope == "all":
+        return q
+    days = {"today": 0, "7d": 6, "30d": 29}.get(scope, 0)
+    return q.filter(EContractCert.created_at >= thai_day_start(days))
+
+
+def originals_overview(db: Session, limit: int = 200, scope: str = "today",
+                       q: str = "") -> dict:
+    """สถานะความเป็นต้นฉบับ (ม.10) และการเก็บรักษา (ม.12)
 
     ดึงจากรายงาน 7 ขั้นตอนของแต่ละใบ เพื่อให้ตัวเลขตรงกับหน้ารายละเอียดเสมอ
     """
     from app.services import compliance_service
 
-    rows = (
-        db.query(EContractCert)
-        .order_by(EContractCert.created_at.desc())
-        .limit(limit)
-        .all()
-    )
+    query = _scope_filter(db.query(EContractCert), scope)
+    term = (q or "").strip()
+    if term:
+        like = f"%{term}%"
+        query = query.filter(
+            (EContractCert.cert_id.like(like)) | (EContractCert.filename.like(like))
+        )
+    total_all = db.query(EContractCert).count()
+    rows = query.order_by(EContractCert.created_at.desc()).limit(limit).all()
     out, locked, at_risk = [], 0, 0
     for cert in rows:
         try:
@@ -514,6 +718,9 @@ def originals_overview(db: Session, limit: int = 200) -> dict:
             },
         })
     return {
+        "scope": scope,
+        "query": (q or "").strip(),
+        "total_all": total_all,
         "storage_mode": "hash_only",
         "storage_note_th": (
             "โหมดปัจจุบันเก็บเฉพาะลายนิ้วมือ (SHA-256) เวลา และหลักฐานประกอบ "

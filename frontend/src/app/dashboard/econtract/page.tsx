@@ -33,7 +33,8 @@ type TabKey = "issue" | "verify" | "list" | "seal" | "original" | "api";
 
 // แท็บ: 4 อันเดิมใช้ i18n, 2 อันใหม่ใช้ label ตรง (ยังไม่มี key ใน i18n)
 const TABS: { key: TabKey; label?: string }[] = [
-  { key: "issue" }, { key: "verify" }, { key: "list" },
+  { key: "issue" }, { key: "verify" },
+  { key: "list", label: "กระบวนการ/ลงนาม" },
   { key: "seal", label: "e-Seal" },
   { key: "original", label: "e-Original + e-Retention" },
   { key: "api" },
@@ -68,6 +69,9 @@ const ENDPOINTS = [
   ["POST", "/api/econtract/{id}/deliver", "บันทึกการส่งร่างให้คู่สัญญา (recipients)"],
   ["POST", "/api/econtract/{id}/acceptance", "บันทึกคำสนอง ม.13 (party, source=first_party|imported)"],
   ["POST", "/api/econtract/{id}/lock", "ตรึงต้นฉบับ ม.10 — หลังจากนี้ลงนาม/ประทับตราเพิ่มไม่ได้"],
+  ["GET", "/api/econtract/{id}/attachments", "หลักฐานตัวจริงที่แนบไว้"],
+  ["POST", "/api/econtract/{id}/attachments", "แนบหลักฐาน (file, kind) — เก็บ hash เสมอ เก็บไฟล์เมื่อเปิดโหมด"],
+  ["POST", "/api/econtract/{id}/retention-storage", "เปิด/ปิดการเก็บตัวไฟล์จริง (store)"],
   ["GET", "/api/econtract/{id}/stamp-duty", "ข้อมูลสำหรับยื่นอากรแสตมป์ (อ.ส.9) — JSON"],
   ["GET", "/api/econtract/{id}/stamp-duty/download", "ดาวน์โหลดใบข้อมูลยื่น อ.ส.9 (?format=txt|json)"],
   ["POST", "/api/econtract/verify", "ตรวจสอบ (ไฟล์เดิม หรือ cert_id) → valid/invalid"],
@@ -120,7 +124,21 @@ export default function EContractPage() {
   const [lifeAct, setLifeAct] = useState<"" | "deliver" | "acceptance">("");
   const [lifeVal, setLifeVal] = useState({ recipients: "", party: "", source: "first_party", evidence: "" });
   const [lifeBusy, setLifeBusy] = useState(false);
-  const [signMode, setSignMode] = useState("remote");
+  const [signMode, setSignMode] = useState("in_person");
+  const [acceptFile, setAcceptFile] = useState<File | null>(null);
+  const [confirmLock, setConfirmLock] = useState(false);
+
+  // หลักฐานตัวจริง
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [storeFiles, setStoreFiles] = useState(false);
+  const [attKind, setAttKind] = useState("original_document");
+  const [attTitle, setAttTitle] = useState("");
+  const [attBusy, setAttBusy] = useState(false);
+  const [signRole, setSignRole] = useState("");
+
+  // ข้อ 6 — ค่าเริ่มต้นแสดงเฉพาะวันนี้ เพื่อไม่ให้ช้าเมื่อสัญญาสะสมเยอะ
+  const [scope, setScope] = useState("today");
+  const [search, setSearch] = useState("");
 
   // e-Original + e-Retention
   const [originals, setOriginals] = useState<any | null>(null);
@@ -183,15 +201,44 @@ export default function EContractPage() {
 
   const openDetail = async (cid: string) => {
     try {
-      setDetail(await api.getEContract(cid));
-      setChain(await api.getEContractChain(cid).catch(() => null));
+      await refreshDetail(cid);
       setSignName(""); setSignId(""); setSignMethod("typed"); setStepForm(null);
-      setLifeAct(""); setSignMode("remote");
+      setLifeAct(""); setSignMode("in_person"); setAcceptFile(null); setConfirmLock(false);
     } catch (e) { console.error(e); }
   };
   const refreshDetail = async (cid: string) => {
-    setDetail(await api.getEContract(cid));
+    const d = await api.getEContract(cid);
+    setDetail(d);
     setChain(await api.getEContractChain(cid).catch(() => null));
+    setAttachments(await api.listEContractAttachments(cid).catch(() => []));
+    const ret = (d?.compliance?.steps || []).find((x: any) => x.step === "e_retention");
+    setStoreFiles(!!ret?.detail?.store_files_enabled);
+  };
+
+  // อีเมลที่ส่งร่างไป — ใช้เป็นตัวเลือกตอนลงนาม เพื่อให้ตัวตนผูกกับการส่งจริง
+  const deliveredEmails: string[] = (chain?.links || [])
+    .filter((l: any) => l.step === "deliver")
+    .flatMap((l: any) => l.payload?.recipients || []);
+  const identityMismatch = deliveredEmails.length > 0 && signId.trim() !== ""
+    && !deliveredEmails.map((e) => e.toLowerCase()).includes(signId.trim().toLowerCase());
+
+  const uploadAttachment = async (f: File | null) => {
+    if (!f || !detail || attBusy) return;
+    setAttBusy(true);
+    try {
+      await api.uploadEContractAttachment(detail.cert_id, f, attKind, "", attTitle);
+      setAttTitle("");
+      await refreshDetail(detail.cert_id);
+    } catch (e: any) { alert(e?.message || "error"); }
+    finally { setAttBusy(false); }
+  };
+
+  const toggleStoreFiles = async (on: boolean) => {
+    if (!detail) return;
+    try {
+      await api.setEContractRetentionStorage(detail.cert_id, on);
+      await refreshDetail(detail.cert_id);
+    } catch (e: any) { alert(e?.message || "error"); }
   };
 
   const runLifecycle = async (fn: () => Promise<any>) => {
@@ -215,16 +262,16 @@ export default function EContractPage() {
     }
     setSigning(true);
     try {
-      await api.signEContract(detail.cert_id, signName.trim(), signMethod, identity, signMode);
+      await api.signEContract(detail.cert_id, signName.trim(), signMethod, identity, signMode, signRole);
       await refreshDetail(detail.cert_id);
-      setSignName(""); setSignId(""); clearCanvas();
+      setSignName(""); setSignId(""); setSignRole(""); clearCanvas();
     } catch (e: any) { alert(e?.message || "error"); }
     finally { setSigning(false); }
   };
 
   const load = useCallback(async () => {
-    try { setList(await api.listEContracts()); } catch (e) { console.error(e); }
-  }, []);
+    try { setList(await api.listEContracts(scope, search)); } catch (e) { console.error(e); }
+  }, [scope, search]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -250,10 +297,11 @@ export default function EContractPage() {
     try { setSeals(await api.listEContractSeals()); } catch (e) { console.error(e); }
   }, []);
   const loadOriginals = useCallback(async () => {
-    try { setOriginals(await api.getEContractOriginals()); } catch (e) { console.error(e); }
-  }, []);
+    try { setOriginals(await api.getEContractOriginals(scope, search)); } catch (e) { console.error(e); }
+  }, [scope, search]);
   useEffect(() => { if (tab === "seal") loadSeals(); }, [tab, loadSeals]);
   useEffect(() => { if (tab === "original") loadOriginals(); }, [tab, loadOriginals]);
+  useEffect(() => { if (tab === "list") load(); }, [tab, load]);
 
   const doCreateSeal = async () => {
     if (!sealForm.org_name.trim() || savingSeal) return;
@@ -332,6 +380,27 @@ export default function EContractPage() {
           </button>
         ))}
       </div>
+
+      {(tab === "list" || tab === "original") && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([["today", "วันนี้"], ["7d", "7 วัน"], ["30d", "30 วัน"], ["all", "ทั้งหมด"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setScope(k)}
+              className={cn("px-2.5 py-1 text-[11px] rounded-md border transition",
+                scope === k ? "bg-brand-50 border-brand-200 text-brand-700 font-medium"
+                            : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50")}>
+              {label}
+            </button>
+          ))}
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหา Cert ID หรือชื่อไฟล์"
+            className="px-2.5 py-1 border border-gray-300 rounded-md text-[11px] outline-none focus:ring-2 focus:ring-brand-500 min-w-[200px]" />
+          {scope !== "all" && (
+            <span className="text-[10px] text-gray-400">
+              แสดงเฉพาะช่วงที่เลือกเพื่อความเร็ว — การประเมิน 7 ขั้นตอนทำต่อใบรับรอง
+            </span>
+          )}
+        </div>
+      )}
 
       {tab === "issue" && (
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3 max-w-2xl">
@@ -434,6 +503,8 @@ export default function EContractPage() {
                   className="ml-auto text-[10px] px-2 py-0.5 bg-green-600 text-white rounded hover:bg-green-700">
                   {t("ect.download")}
                 </a>
+                <button onClick={() => setIssued(null)} title="ปิด"
+                  className="text-green-600 hover:text-green-800 text-base leading-none px-1">&times;</button>
               </div>
               <Field label={t("ect.field_hash")} value={issued.sha256} mono />
               <Field label={t("ect.field_time")} value={`${fmt(issued.ntp_time)} · ${issued.ntp_server_name || "NTP"}`} />
@@ -472,7 +543,14 @@ export default function EContractPage() {
               </div>
               {vResult.cert && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
-                  <Field label={t("ect.col_cert")} value={vResult.cert.cert_id} mono />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-400">{t("ect.col_cert")}</span>
+                    <button onClick={() => openDetail(vResult.cert!.cert_id)}
+                      className="text-xs font-mono text-brand-700 hover:text-brand-800 underline underline-offset-2 text-left break-all">
+                      {vResult.cert.cert_id} →
+                    </button>
+                    <span className="text-[10px] text-gray-400">คลิกเพื่อดูกระบวนการลงนามและโซ่หลักฐาน</span>
+                  </div>
                   <Field label={t("ect.col_file")} value={vResult.cert.filename} />
                   <Field label={t("ect.field_time")} value={`${fmt(vResult.cert.ntp_time)} · ${vResult.cert.ntp_server_name || "NTP"}`} />
                   <Field label={t("ect.field_hash")} value={short(vResult.cert.sha256)} mono />
@@ -498,7 +576,9 @@ export default function EContractPage() {
             </thead>
             <tbody>
               {list.length === 0 && (
-                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">{t("ect.empty")}</td></tr>
+                <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">
+                  {scope === "all" ? t("ect.empty") : "ไม่มีรายการในช่วงที่เลือก — ลองเปลี่ยนเป็น \"ทั้งหมด\""}
+                </td></tr>
               )}
               {list.map((c) => (
                 <tr key={c.cert_id} className="border-t border-gray-100 hover:bg-gray-50">
@@ -553,7 +633,7 @@ export default function EContractPage() {
               <div>
                 <label className="text-[10px] uppercase tracking-wide text-gray-400">ภาพตราประทับ (≤ 280 KB)</label>
                 <input type="file" accept="image/*" onChange={(e) => onSealFile(e.target.files?.[0] ?? null)}
-                  className="w-full mt-0.5 text-[11px] text-gray-500 file:mr-2 file:px-2 file:py-1 file:text-[10px] file:rounded file:border-0 file:bg-gray-100 file:text-gray-600" />
+                  className="w-full mt-0.5 text-[11px] text-gray-500 file:mr-2 file:px-2.5 file:py-1 file:text-[10px] file:font-medium file:rounded file:border-0 file:bg-brand-600 file:text-white hover:file:bg-brand-700 file:cursor-pointer" />
                 {sealImg && (
                   <div className="mt-1.5 flex items-center gap-2">
                     <img src={sealImg} alt="seal" className="h-14 border border-gray-200 rounded bg-white p-1" />
@@ -637,7 +717,9 @@ export default function EContractPage() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {[
-                  ["ใบรับรองทั้งหมด", originals.total, "text-gray-800"],
+                  [scope === "all" ? "ใบรับรองทั้งหมด" : "ในช่วงที่เลือก",
+                   `${originals.total}${originals.total_all && originals.total !== originals.total_all ? ` / ${originals.total_all}` : ""}`,
+                   "text-gray-800"],
                   ["เป็นต้นฉบับแล้ว (ม.10)", originals.locked_originals, "text-green-700"],
                   ["เก็บรักษายังไม่ครบ (ม.12)", originals.retention_incomplete, "text-amber-700"],
                   ["โหมดจัดเก็บ", originals.storage_mode === "hash_only" ? "hash-only" : originals.storage_mode, "text-gray-800"],
@@ -766,6 +848,55 @@ export default function EContractPage() {
         </div>
       )}
 
+      {/* ยืนยันก่อนตรึงต้นฉบับ — ย้อนกลับไม่ได้ */}
+      {confirmLock && detail && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-6"
+          onClick={() => setConfirmLock(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-900 mb-1">ยืนยันการตรึงต้นฉบับ (ม.10)</h3>
+            <p className="text-[11px] text-gray-500 font-mono mb-3">{detail.cert_id}</p>
+
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 mb-3">
+              <p className="text-[11px] font-semibold text-red-800 mb-1">หลังตรึงแล้วจะทำสิ่งเหล่านี้ไม่ได้อีก</p>
+              <ul className="text-[11px] text-red-700 space-y-0.5 list-disc list-inside">
+                <li>ลงลายมือชื่อเพิ่ม</li>
+                <li>ประทับตรานิติบุคคล (e-Seal)</li>
+                <li>บันทึกการส่งร่าง หรือคำสนอง</li>
+              </ul>
+              <p className="text-[10px] text-red-600 mt-1.5">
+                ม.10 กำหนดว่าต้นฉบับต้องไม่มีการเปลี่ยนแปลงนับแต่สร้างเสร็จสมบูรณ์ —
+                <b> การตรึงย้อนกลับไม่ได้</b> ถ้าต้องแก้ไขภายหลังต้องทำเป็นฉบับแก้ไขที่อ้างถึงฉบับนี้
+              </p>
+            </div>
+
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 mb-3">
+              <p className="text-[11px] text-gray-600 mb-1">สถานะปัจจุบัน</p>
+              <p className="text-[11px] text-gray-800">
+                ลงนามแล้ว <b>{(detail.signatures || []).length}</b> ราย
+                {(detail.compliance?.steps || []).find((x: any) => x.step === "e_seal")?.status === "done"
+                  ? " · ประทับตราแล้ว" : " · ยังไม่ได้ประทับตรา"}
+              </p>
+              <p className="text-[10px] text-gray-500 mt-1">
+                ยังทำได้หลังตรึง: ชำระอากรแสตมป์ · แนบหลักฐาน · บันทึกการเก็บรักษา · สิ่งพิมพ์ออก
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setConfirmLock(false); runLifecycle(() => api.lockEContractOriginal(detail.cert_id)); }}
+                disabled={lifeBusy}
+                className="px-4 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 disabled:opacity-50">
+                🔒 ยืนยันตรึงต้นฉบับ
+              </button>
+              <button onClick={() => setConfirmLock(false)}
+                className="px-4 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-md hover:bg-gray-50">
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {detail && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6" onClick={() => setDetail(null)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
@@ -816,7 +947,32 @@ export default function EContractPage() {
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="text-[11px] font-medium text-gray-800">{l.step_th}</span>
+                            <span className="text-[11px] font-medium text-gray-800">
+                              {l.step_th}
+                              {l.step === "attachment" && (
+                                <span className="text-gray-500 font-normal">
+                                  {" — "}{l.payload?.title || l.payload?.filename}
+                                  {l.payload?.kind_th ? ` (${l.payload.kind_th})` : ""}
+                                </span>
+                              )}
+                              {l.step === "sign" && l.payload?.signer_name && (
+                                <span className="text-gray-500 font-normal">
+                                  {" — "}{l.payload.signer_name}
+                                  {l.payload?.signer_role ? ` · ${l.payload.signer_role}` : ""}
+                                </span>
+                              )}
+                              {l.step === "seal" && l.payload?.org_name && (
+                                <span className="text-gray-500 font-normal">{" — "}{l.payload.org_name}</span>
+                              )}
+                              {l.step === "deliver" && l.payload?.recipient_count && (
+                                <span className="text-gray-500 font-normal">
+                                  {" — "}{l.payload.recipient_count} ราย
+                                </span>
+                              )}
+                              {l.step === "offer_acceptance" && l.payload?.party && (
+                                <span className="text-gray-500 font-normal">{" — "}{l.payload.party}</span>
+                              )}
+                            </span>
                             {l.sections?.length > 0 && (
                               <span className="text-[9px] text-gray-400">ม.{l.sections.join(", ม.")}</span>
                             )}
@@ -887,7 +1043,18 @@ export default function EContractPage() {
                           <input value={lifeVal.evidence} placeholder="อ้างอิงหลักฐาน (ข้อความ/เลขที่/ที่มา)"
                             onChange={(e) => setLifeVal({ ...lifeVal, evidence: e.target.value })}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-[11px] outline-none focus:ring-2 focus:ring-brand-500" />
-                          <button onClick={() => runLifecycle(() => api.acceptEContract(detail.cert_id, lifeVal.party, lifeVal.source, lifeVal.evidence))}
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wide text-gray-400">แนบไฟล์หลักฐานคำสนอง (ถ้ามี)</label>
+                            <input type="file" onChange={(e) => setAcceptFile(e.target.files?.[0] ?? null)}
+                              className="w-full mt-0.5 text-[11px] text-gray-500 file:mr-2 file:px-2.5 file:py-1 file:text-[10px] file:font-medium file:rounded file:border-0 file:bg-brand-600 file:text-white hover:file:bg-brand-700 file:cursor-pointer" />
+                            {acceptFile && (
+                              <p className="text-[10px] text-gray-500 mt-0.5">
+                                {acceptFile.name} · ระบบจะบันทึกลายนิ้วมือเสมอ
+                                {storeFiles ? " และเก็บตัวไฟล์ไว้ (โหมดเก็บไฟล์เปิด)" : " แต่ไม่เก็บตัวไฟล์ (โหมดเก็บไฟล์ปิด)"}
+                              </p>
+                            )}
+                          </div>
+                          <button onClick={() => runLifecycle(async () => { await api.acceptEContract(detail.cert_id, lifeVal.party, lifeVal.source, lifeVal.evidence, acceptFile); setAcceptFile(null); })}
                             disabled={!lifeVal.party.trim() || lifeBusy}
                             className="px-3 py-1 bg-brand-600 text-white text-[11px] rounded hover:bg-brand-700 disabled:opacity-50">
                             บันทึกคำสนอง
@@ -904,6 +1071,89 @@ export default function EContractPage() {
                 </div>
               );
             })()}
+
+            {/* ── หลักฐานตัวจริง + โหมดเก็บไฟล์ ─────────────────────── */}
+            <div className="mb-4">
+              <h3 className="text-xs font-semibold text-gray-800 mb-1">หลักฐานตัวจริง</h3>
+              <label className={cn("flex items-start gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition",
+                storeFiles ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200")}>
+                <input type="checkbox" checked={storeFiles} className="mt-0.5"
+                  disabled={chain?.verification?.locked && storeFiles}
+                  onChange={(e) => toggleStoreFiles(e.target.checked)} />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-gray-800">เก็บตัวไฟล์จริงไว้ในเครื่องนี้</p>
+                  <p className="text-[10px] text-gray-600 leading-relaxed mt-0.5">
+                    {storeFiles
+                      ? "เปิดอยู่ — ไฟล์ที่แนบจะถูกเก็บไว้ ดาวน์โหลด/พิมพ์ย้อนหลังได้ ตรงเงื่อนไข ม.10(2) ที่ต้องแสดงข้อความในภายหลังได้"
+                      : "ปิดอยู่ — เก็บเฉพาะลายนิ้วมือ พิสูจน์ได้ว่าไฟล์ไม่ถูกแก้ แต่เอาเอกสารมาแสดงย้อนหลังไม่ได้"}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    ไฟล์เก็บในเครื่องนี้เท่านั้น ไม่ส่งออกไปที่ใด · ปิดสวิตช์ไม่ลบไฟล์ที่เก็บไปแล้ว
+                  </p>
+                  {chain?.verification?.locked && storeFiles && (
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      🔒 ตรึงต้นฉบับแล้ว — ปิดไม่ได้ เพราะจะลดระดับการเก็บรักษาของสัญญาที่สมบูรณ์แล้ว (มาตรา 12)
+                    </p>
+                  )}
+                </div>
+              </label>
+
+              {chain?.verification?.locked && (
+                <p className="text-[10px] text-gray-500 mt-1.5">
+                  หลังตรึงต้นฉบับ แนบได้เฉพาะ <b>เอกสารตัวจริงที่ตรงกับใบรับรอง</b> ·
+                  สิ่งพิมพ์ออก · หลักฐานอื่น — ระบบจะตรวจว่า SHA-256 ตรงกับที่ออกใบรับรองไว้
+                </p>
+              )}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <select value={attKind} onChange={(e) => setAttKind(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded text-[11px] outline-none focus:ring-2 focus:ring-brand-500">
+                  <option value="original_document">เอกสาร/สัญญาตัวจริง</option>
+                  <option value="acceptance_evidence" disabled={!!chain?.verification?.locked}>
+                    หลักฐานคำสนอง{chain?.verification?.locked ? " — ตรึงแล้วแนบไม่ได้" : ""}
+                  </option>
+                  <option value="print_out">สิ่งพิมพ์ออก</option>
+                  <option value="other">หลักฐานอื่น</option>
+                </select>
+                {attKind === "other" && !attTitle.trim() && (
+                  <span className="text-[10px] text-amber-700 w-full">
+                    หลักฐานอื่นต้องระบุชื่อเอกสารก่อน จึงจะเลือกไฟล์ได้ — เพื่อให้รู้ว่าเอกสารนั้นคืออะไร
+                  </span>
+                )}
+                <input value={attTitle} onChange={(e) => setAttTitle(e.target.value)}
+                  placeholder={attKind === "other" ? "ชื่อเอกสาร (จำเป็น)" : "ชื่อเอกสาร (ถ้ามี)"}
+                  className={cn("px-2 py-1 border rounded text-[11px] outline-none focus:ring-2 focus:ring-brand-500 flex-1 min-w-[160px]",
+                    attKind === "other" && !attTitle.trim() ? "border-amber-300 bg-amber-50" : "border-gray-300")} />
+                <input type="file" disabled={attBusy || (attKind === "other" && !attTitle.trim())}
+                  onChange={(e) => { uploadAttachment(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }}
+                  className="text-[11px] text-gray-500 file:mr-2 file:px-2.5 file:py-1 file:text-[10px] file:font-medium file:rounded file:border-0 file:bg-brand-600 file:text-white hover:file:bg-brand-700 file:cursor-pointer" />
+              </div>
+
+              {attachments.length > 0 && (
+                <div className="mt-1.5 border border-gray-200 rounded-md overflow-hidden">
+                  {attachments.map((a) => (
+                    <div key={a.id} className="flex items-center gap-2 px-2.5 py-1.5 border-b border-gray-100 last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-medium text-gray-800">{a.title || a.filename}</span>
+                          {a.title && <span className="text-[10px] text-gray-400">{a.filename}</span>}
+                          <span className="text-[9px] px-1 py-0.5 bg-gray-100 text-gray-600 rounded">{a.kind_th}</span>
+                          {a.stored
+                            ? <span className="text-[9px] px-1 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded">เก็บไฟล์แล้ว</span>
+                            : <span className="text-[9px] px-1 py-0.5 bg-gray-50 text-gray-500 border border-gray-200 rounded">เฉพาะลายนิ้วมือ</span>}
+                        </div>
+                        <div className="text-[10px] font-mono text-gray-400 truncate">
+                          SHA-256 {String(a.sha256).slice(0, 32)}…
+                        </div>
+                      </div>
+                      {a.stored && (
+                        <a href={api.attachmentDownloadUrl(detail.cert_id, a.id)}
+                          className="text-[10px] text-brand-600 hover:text-brand-700 flex-shrink-0">⬇ ดาวน์โหลด</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* ── 7 เรื่องของวงจร e-Contract ─────────────────────────── */}
             {detail.compliance && (() => {
@@ -1011,20 +1261,51 @@ export default function EContractPage() {
                                       </a>
                                     )}
                                   </div>
-                                  {s.detail.receipt_ref && (
-                                    <p className="text-[10px] text-green-700 mt-1">
-                                      รหัสรับรองการเสียอากร: <span className="font-mono">{s.detail.receipt_ref}</span>
+                                  {s.status === "done" ? (
+                                    <div className="mt-1 rounded border border-green-200 bg-green-50 px-2 py-1">
+                                      <p className="text-[11px] font-medium text-green-800">
+                                        ✓ ชำระอากรแสตมป์แล้ว
+                                      </p>
+                                      {s.detail.receipt_ref && (
+                                        <p className="text-[10px] text-green-700 mt-0.5">
+                                          รหัสรับรอง <span className="font-mono">{s.detail.receipt_ref}</span>
+                                          {s.detail.paid_at ? ` · ${fmt(s.detail.paid_at)}` : ""}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : s.status === "waived" ? (
+                                    <p className="text-[10px] text-gray-500 mt-1">
+                                      – ระบุว่าไม่เข้าข่ายต้องเสียอากร
                                     </p>
-                                  )}
+                                  ) : null}
                                 </div>
                               )}
 
                               {canRecord && !editing && (
-                                <button
-                                  onClick={() => setStepForm({ step: s.step, actor: "", ref: "", note: "" })}
-                                  className="mt-1 text-[10px] px-2 py-0.5 border border-brand-200 text-brand-700 rounded hover:bg-brand-50">
-                                  บันทึกขั้นตอนนี้
-                                </button>
+                                s.step === "e_seal" ? (
+                                  <div className="mt-1">
+                                    <button
+                                      onClick={() => {
+                                        setApplyCert(detail.cert_id);
+                                        setTab("seal");
+                                        setDetail(null);
+                                      }}
+                                      className="text-[10px] px-2 py-0.5 bg-brand-600 text-white rounded hover:bg-brand-700">
+                                      ไปที่ e-Seal เพื่อประทับตราใบรับรองนี้ →
+                                    </button>
+                                    <button
+                                      onClick={() => setStepForm({ step: s.step, actor: "", ref: "", note: "" })}
+                                      className="ml-1.5 text-[10px] px-2 py-0.5 border border-gray-300 text-gray-500 rounded hover:bg-gray-50">
+                                      บันทึกด้วยมือ
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setStepForm({ step: s.step, actor: "", ref: "", note: "" })}
+                                    className="mt-1 text-[10px] px-2 py-0.5 border border-brand-200 text-brand-700 rounded hover:bg-brand-50">
+                                    บันทึกขั้นตอนนี้
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
@@ -1081,6 +1362,9 @@ export default function EContractPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-green-600">✓</span>
                       <span className="font-medium text-gray-800">{sg.signer_name}</span>
+                      {sg.signer_role && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">{sg.signer_role}</span>
+                      )}
                       <span className="text-[10px] px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded">{t(`ect.method_${sg.method}`)}</span>
                       <span className="ml-auto text-[10px] text-gray-400">{t("ect.sig_at")} {fmt(sg.signed_at)}</span>
                     </div>
@@ -1092,7 +1376,14 @@ export default function EContractPage() {
               )}
             </div>
 
-            {/* sign form */}
+            {/* sign form — ซ่อนเมื่อตรึงต้นฉบับแล้ว เพราะ backend จะปฏิเสธอยู่ดี */}
+            {chain?.verification?.locked ? (
+              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-[11px] text-gray-600">
+                  🔒 ตรึงต้นฉบับแล้ว — ลงลายมือชื่อเพิ่มไม่ได้ (มาตรา 10)
+                </p>
+              </div>
+            ) : (
             <div className="bg-gray-50 border border-gray-200 rounded-md p-3 space-y-2">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <input value={signName} onChange={(e) => setSignName(e.target.value)} placeholder={t("ect.signer_name")}
@@ -1101,15 +1392,26 @@ export default function EContractPage() {
                   className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500">
                   <option value="typed">{t("ect.method_typed")}</option>
                   <option value="drawn">{t("ect.method_drawn")}</option>
-                  <option value="otp">{t("ect.method_otp")}</option>
+                  <option value="otp" disabled>ยืนยันด้วย OTP/อีเมล — ยังไม่เปิดให้บริการ</option>
                 </select>
+              </div>
+              {/* ฐานะที่ลงนาม — พิสูจน์ว่าใครผูกพันฝ่ายใด และใครเป็นเพียงพยาน */}
+              <div>
+                <input value={signRole} onChange={(e) => setSignRole(e.target.value)}
+                  list="signer-roles" placeholder="ฐานะในสัญญา เช่น ผู้ว่าจ้าง / ผู้รับจ้าง / พยาน"
+                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+                <datalist id="signer-roles">
+                  {["ผู้ว่าจ้าง", "ตัวแทนผู้ว่าจ้าง", "ผู้รับจ้าง", "ตัวแทนผู้รับจ้าง",
+                    "ผู้ให้เช่า", "ผู้เช่า", "ผู้ให้กู้", "ผู้กู้", "ผู้ค้ำประกัน",
+                    "ผู้มอบอำนาจ", "ผู้รับมอบอำนาจ", "พยาน"].map((r) => <option key={r} value={r} />)}
+                </datalist>
               </div>
               {/* ลงนามต่อหน้า vs ระยะไกล มีน้ำหนักพยานต่างกัน จึงต้องบันทึกแยก */}
               <div>
                 <select value={signMode} onChange={(e) => setSignMode(e.target.value)}
                   className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500">
-                  <option value="remote">ลงนามระยะไกล — คู่สัญญาลงนามบนเครื่องของตนเอง</option>
                   <option value="in_person">ลงนามต่อหน้า — บนเครื่องของหน่วยงาน</option>
+                  <option value="remote" disabled>ลงนามระยะไกล — ยังไม่เปิดให้บริการ</option>
                 </select>
                 {signMode === "in_person" && (
                   <p className="text-[10px] text-amber-700 mt-1">
@@ -1129,14 +1431,48 @@ export default function EContractPage() {
                     className="w-full h-[140px] bg-white border-2 border-dashed border-gray-300 rounded-md touch-none cursor-crosshair" />
                 </div>
               ) : (
-                <input value={signId} onChange={(e) => setSignId(e.target.value)} placeholder={t("ect.identity")}
-                  className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+                <div>
+                  {/* อีเมลลงนามควรเป็นอีเมลเดียวกับที่ส่งร่างไป มิฉะนั้นโซ่ตัวตนขาด */}
+                  {deliveredEmails.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1 mb-1">
+                      <span className="text-[10px] text-gray-400">อีเมลที่ส่งร่างไป:</span>
+                      {deliveredEmails.map((em) => (
+                        <button key={em} onClick={() => setSignId(em)}
+                          className={cn("text-[10px] px-1.5 py-0.5 rounded border transition",
+                            signId.trim().toLowerCase() === em.toLowerCase()
+                              ? "bg-brand-50 border-brand-200 text-brand-700 font-medium"
+                              : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50")}>
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <input value={signId} onChange={(e) => setSignId(e.target.value)}
+                    list="delivered-emails" placeholder={t("ect.identity")}
+                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-brand-500" />
+                  <datalist id="delivered-emails">
+                    {deliveredEmails.map((em) => <option key={em} value={em} />)}
+                  </datalist>
+                  {identityMismatch && (
+                    <p className="text-[10px] text-amber-700 mt-1">
+                      ⚠ อีเมลนี้ไม่ตรงกับที่ส่งร่างไป — โซ่การระบุตัวตนจะขาด
+                      ระบบไม่ห้าม แต่จะบันทึกไว้ในหลักฐานว่าไม่ตรง
+                    </p>
+                  )}
+                  {deliveredEmails.length === 0 && (
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      ยังไม่ได้บันทึกการส่งร่าง — บันทึก &quot;ส่งร่างให้คู่สัญญา&quot; ก่อน
+                      จะได้ยืนยันได้ว่าลงนามด้วยอีเมลเดียวกับที่ส่งร่างไป
+                    </p>
+                  )}
+                </div>
               )}
               <button onClick={doSign} disabled={!signName.trim() || signing}
                 className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 disabled:opacity-50">
                 {signing ? t("ect.signing") : t("ect.sign_btn")}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}

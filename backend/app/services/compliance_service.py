@@ -184,7 +184,7 @@ def evaluate(db: Session, cert: EContractCert) -> dict:
             continue
 
         handler = _HANDLERS[key]
-        handler(row, cfg, cert, sigs, recorded, audit_count)
+        handler(db, row, cfg, cert, sigs, recorded, audit_count)
         rows.append(row)
 
     required_rows = [r for r in rows if r["required"]]
@@ -218,7 +218,7 @@ def evaluate(db: Session, cert: EContractCert) -> dict:
 
 # ── handler ต่อขั้นตอน ───────────────────────────────────────────────────
 
-def _h_document(row, cfg, cert, sigs, recorded, audit_count):
+def _h_document(db, row, cfg, cert, sigs, recorded, audit_count):
     want = cfg.get("format", "any")
     actual = cert.doc_format or ""
     row["detail"] = {
@@ -239,13 +239,16 @@ def _h_document(row, cfg, cert, sigs, recorded, audit_count):
     if want and want != "any" and actual and not _format_ok(want, actual):
         row["status"] = "partial"
         row["summary_th"] = f"เป็น {actual} แต่โปรไฟล์กำหนด {want}"
-        row["next_action_th"] = f"แปลงเอกสารเป็น {want} เพื่อการจัดเก็บระยะยาว"
+        row["next_action_th"] = (
+            f"แปลงเอกสารเป็น {want} เพื่อการจัดเก็บระยะยาว "
+            "— ระบบยังไม่มีตัวแปลงในตัว ให้แปลงด้วยเครื่องมือภายนอกแล้วออกใบรับรองใหม่"
+        )
         return
     row["status"] = "done"
     row["summary_th"] = f"{actual or 'ไฟล์'} · SHA-256 {cert.sha256[:16]}…"
 
 
-def _h_signature(row, cfg, cert, sigs, recorded, audit_count):
+def _h_signature(db, row, cfg, cert, sigs, recorded, audit_count):
     need_n = int(cfg.get("min_signers", 1) or 1)
     need_a = cfg.get("min_assurance", "general")
     got_a = [METHOD_ASSURANCE.get(s.method, "general") for s in sigs]
@@ -283,13 +286,16 @@ def _h_signature(row, cfg, cert, sigs, recorded, audit_count):
             f"ลงนามครบ {len(sigs)} ราย แต่ยังเป็นลายมือชื่อ{ASSURANCE_LABEL.get('general')} "
             f"ขณะที่โปรไฟล์กำหนด{ASSURANCE_LABEL.get(need_a, need_a)}"
         )
-        row["next_action_th"] = "ยกระดับเป็น Digital Signature ที่มีใบรับรอง (อยู่ในแผนพัฒนา Phase 2)"
+        row["next_action_th"] = (
+            "ต้องยกระดับเป็น Digital Signature ที่มีใบรับรองจาก CA (มาตรา 26) "
+            "— ยังไม่เปิดให้บริการในระบบนี้"
+        )
         return
     row["status"] = "done"
     row["summary_th"] = f"ลงนามครบ {len(sigs)} ราย · {ASSURANCE_LABEL.get(need_a, need_a)}"
 
 
-def _h_seal(row, cfg, cert, sigs, recorded, audit_count):
+def _h_seal(db, row, cfg, cert, sigs, recorded, audit_count):
     rec = recorded.get("e_seal")
     row["detail"] = {
         "applies_to": cfg.get("applies_to", []),
@@ -317,7 +323,7 @@ def _h_seal(row, cfg, cert, sigs, recorded, audit_count):
     row["next_action_th"] = "บันทึกการประทับตรานิติบุคคล (e-Seal)"
 
 
-def _h_original(row, cfg, cert, sigs, recorded, audit_count):
+def _h_original(db, row, cfg, cert, sigs, recorded, audit_count):
     lock_on = cfg.get("lock_on", "all_parties_signed")
     row["detail"] = {
         "lock_on": lock_on,
@@ -345,7 +351,7 @@ def _h_original(row, cfg, cert, sigs, recorded, audit_count):
     )
 
 
-def _h_retention(row, cfg, cert, sigs, recorded, audit_count):
+def _h_retention(db, row, cfg, cert, sigs, recorded, audit_count):
     years = int(cfg.get("period_years", 5) or 5)
     must = list(cfg.get("must_store", []))
     keep_until = None
@@ -356,13 +362,21 @@ def _h_retention(row, cfg, cert, sigs, recorded, audit_count):
             keep_until = None
 
     ret_rec = recorded.get("e_retention")
+    # ไฟล์จริงถือว่าเก็บแล้วก็ต่อเมื่อมีไฟล์แนบที่ "เก็บตัวไฟล์" ไว้จริง ไม่ใช่แค่ hash
+    from app.models import EContractAttachment
+    stored_files = (
+        db.query(EContractAttachment)
+        .filter(EContractAttachment.cert_id == cert.cert_id,
+                EContractAttachment.stored == True)  # noqa: E712
+        .count()
+    )
     have = {
         "audit_trail": audit_count > 0,
         "transmission_log": audit_count > 0,
         "party_identity": any(s.identity_ref for s in sigs),
         "access_log": audit_count > 0,
         "version_accepted": bool(sigs),
-        "final_file": False,   # Phase 1 (vault mode) — ยังไม่เก็บไฟล์
+        "final_file": stored_files > 0,
         "e_saraban_ref": bool(ret_rec and ret_rec.ref),
     }
     missing = [m for m in must if not have.get(m, False)]
@@ -375,6 +389,8 @@ def _h_retention(row, cfg, cert, sigs, recorded, audit_count):
         "missing": missing,
         "audit_entries": audit_count,
         "access_control": cfg.get("access_control", ""),
+        "store_files_enabled": bool(cert.retention_store_files),
+        "stored_file_count": stored_files,
     }
     if not row["required"]:
         row["status"] = "optional"
@@ -383,7 +399,11 @@ def _h_retention(row, cfg, cert, sigs, recorded, audit_count):
         row["status"] = "partial"
         row["summary_th"] = f"เก็บได้ {len(must) - len(missing)} จาก {len(must)} ประเภท"
         if "final_file" in missing:
-            row["next_action_th"] = "เปิดโหมดเก็บไฟล์ (vault) เพื่อให้ครบตาม ม.12 — อยู่ในแผน Phase 1"
+            row["next_action_th"] = (
+                "เปิดโหมดเก็บไฟล์แล้วแนบเอกสารตัวจริง เพื่อให้แสดงเอกสารย้อนหลังได้ตาม ม.10(2)"
+                if not cert.retention_store_files
+                else "เปิดโหมดเก็บไฟล์แล้ว — ยังต้องแนบเอกสารตัวจริงอย่างน้อย 1 ไฟล์"
+            )
         else:
             row["next_action_th"] = f"ยังขาด: {', '.join(missing)}"
         return
@@ -391,7 +411,7 @@ def _h_retention(row, cfg, cert, sigs, recorded, audit_count):
     row["summary_th"] = f"เก็บถึง {keep_until[:10] if keep_until else '—'} · audit {audit_count} รายการ"
 
 
-def _h_stamp_duty(row, cfg, cert, sigs, recorded, audit_count):
+def _h_stamp_duty(db, row, cfg, cert, sigs, recorded, audit_count):
     rec = recorded.get("e_stamp_duty")
     deadline_days = cfg.get("deadline_days")
     deadline = None
@@ -456,7 +476,7 @@ def _h_stamp_duty(row, cfg, cert, sigs, recorded, audit_count):
     row["next_action_th"] = "ยื่นเสียอากรเป็นตัวเงิน (อ.ส.9) ผ่าน e-Filing กรมสรรพากร แล้วบันทึกรหัสรับรอง"
 
 
-def _h_print_out(row, cfg, cert, sigs, recorded, audit_count):
+def _h_print_out(db, row, cfg, cert, sigs, recorded, audit_count):
     rec = recorded.get("print_out")
     row["detail"] = {
         "self_printed_valid": bool(cfg.get("self_printed_valid", True)),

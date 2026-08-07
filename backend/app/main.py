@@ -147,6 +147,9 @@ def _apply_lightweight_migrations():
         ("econtract_certs", "instrument_date", "DATETIME"),
         ("econtract_signatures", "signing_mode", "VARCHAR(20) DEFAULT 'remote'"),
         ("econtract_signatures", "operator_user_id", "INTEGER"),
+        ("econtract_certs", "retention_store_files", "BOOLEAN DEFAULT 0"),
+        ("econtract_signatures", "signer_role", "VARCHAR(120) DEFAULT ''"),
+        ("econtract_attachments", "title", "VARCHAR(300) DEFAULT ''"),
     ]
     with engine.begin() as conn:
         for table, column, coldef in additions:

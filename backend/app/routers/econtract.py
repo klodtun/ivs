@@ -23,12 +23,22 @@ MAX_BYTES = 25 * 1024 * 1024  # 25 MB per document
 
 @router.get("")
 async def list_certs(
+    scope: str = "today",
+    q: str = "",
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
+    """ค่าเริ่มต้นแสดงเฉพาะวันนี้ — scope=today|7d|30d|all และค้นด้วย q"""
     from sqlalchemy import func
     from app.models import EContractSignature
-    rows = db.query(EContractCert).order_by(EContractCert.created_at.desc()).limit(100).all()
+    query = econtract_service._scope_filter(db.query(EContractCert), scope)
+    term = (q or "").strip()
+    if term:
+        like = f"%{term}%"
+        query = query.filter(
+            (EContractCert.cert_id.like(like)) | (EContractCert.filename.like(like))
+        )
+    rows = query.order_by(EContractCert.created_at.desc()).limit(200).all()
     counts = dict(
         db.query(EContractSignature.cert_id, func.count(EContractSignature.id))
         .group_by(EContractSignature.cert_id).all()
@@ -193,11 +203,13 @@ async def apply_seal(
 
 @router.get("/originals")
 async def originals(
+    scope: str = "today",
+    q: str = "",
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
 ):
-    """ภาพรวมความเป็นต้นฉบับ (ม.10) และการเก็บรักษา (ม.12) ของทุกใบรับรอง"""
-    return econtract_service.originals_overview(db)
+    """ภาพรวมความเป็นต้นฉบับ (ม.10) และการเก็บรักษา (ม.12) — ค่าเริ่มต้นเฉพาะวันนี้"""
+    return econtract_service.originals_overview(db, scope=scope, q=q)
 
 
 # ── Certify / Verify ─────────────────────────────────────────────────────
@@ -286,6 +298,7 @@ async def sign(
     method: str = Form("typed"),
     identity_ref: str = Form(""),
     signing_mode: str = Form("remote"),
+    signer_role: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -297,7 +310,7 @@ async def sign(
         sig = econtract_service.add_signature(
             db, cert_id=cert_id, signer_name=signer_name.strip(),
             method=method, identity_ref=identity_ref, ip=ip, created_by=user.id,
-            signing_mode=signing_mode,
+            signing_mode=signing_mode, signer_role=signer_role,
             user_agent=request.headers.get("user-agent", ""),
         )
     except ValueError as e:
@@ -360,15 +373,28 @@ async def record_acceptance(
     source: str = Form("first_party"),
     evidence: str = Form(""),
     note: str = Form(""),
+    file: UploadFile = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
-    """บันทึกคำสนอง — คู่สัญญาตกลงตามร่าง (ม.13)"""
+    """บันทึกคำสนอง — คู่สัญญาตกลงตามร่าง (ม.13) แนบไฟล์หลักฐานได้"""
     ip = request.client.host if request.client else ""
+    att = None
     try:
+        # แนบหลักฐานก่อน เพื่อให้ hash ของไฟล์อยู่ในโซ่ก่อน link คำสนอง
+        if file is not None:
+            data = await file.read()
+            if data:
+                att = econtract_service.add_attachment(
+                    db, cert_id=cert_id, kind="acceptance_evidence",
+                    filename=file.filename or "acceptance", data=data,
+                    content_type=file.content_type or "", note=note, uploaded_by=user.id,
+                )
         link = econtract_service.record_acceptance(
             db, cert_id=cert_id, party=party, source=source, evidence=evidence,
             ip=ip, note=note, recorded_by=user.id,
+            attachment_sha256=(att or {}).get("sha256", ""),
+            attachment_filename=(att or {}).get("filename", ""),
         )
     except (ValueError, chain_service.ChainError) as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -378,6 +404,91 @@ async def record_acceptance(
     )
     db.commit()
     return link
+
+
+@router.get("/{cert_id}/attachments")
+async def list_attachments(
+    cert_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """หลักฐานตัวจริงที่แนบไว้กับสัญญานี้"""
+    return econtract_service.list_attachments(db, cert_id)
+
+
+@router.post("/{cert_id}/attachments")
+async def add_attachment(
+    cert_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    kind: str = Form("other"),
+    title: str = Form(""),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """แนบหลักฐานตัวจริง — บันทึกลายนิ้วมือเสมอ เก็บตัวไฟล์เมื่อเปิดโหมดเก็บไฟล์"""
+    data = await file.read()
+    try:
+        att = econtract_service.add_attachment(
+            db, cert_id=cert_id, kind=kind, filename=file.filename or "file",
+            data=data, content_type=file.content_type or "", note=note,
+            uploaded_by=user.id, title=title,
+        )
+    except (ValueError, chain_service.ChainError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_attachment", resource_type="econtract",
+        resource_id=cert_id,
+        details=(f"แนบ {att['kind_th']} · {att['filename']} · SHA-256 {att['sha256'][:16]}… · "
+                 f"{'เก็บตัวไฟล์' if att['stored'] else 'เก็บเฉพาะลายนิ้วมือ'}"),
+    )
+    db.commit()
+    return att
+
+
+@router.get("/{cert_id}/attachments/{att_id}/download")
+async def download_attachment(
+    cert_id: str,
+    att_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ดาวน์โหลดหลักฐานตัวจริง (เฉพาะไฟล์ที่เก็บตัวไฟล์ไว้)"""
+    try:
+        path, name, mime = econtract_service.attachment_file(db, cert_id, att_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_attachment_download",
+        resource_type="econtract", resource_id=cert_id, details=f"ดาวน์โหลดหลักฐาน {name}",
+    )
+    db.commit()
+    return FileResponse(path, media_type=mime, filename=name)
+
+
+@router.post("/{cert_id}/retention-storage")
+async def set_retention_storage(
+    cert_id: str,
+    request: Request,
+    store: str = Form("true"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """เปิด/ปิดการเก็บตัวไฟล์จริงของสัญญาฉบับนี้"""
+    on = str(store).lower() in ("1", "true", "yes", "on")
+    try:
+        res = econtract_service.set_retention_storage(db, cert_id, on, changed_by=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    create_audit_log(
+        db, request, user=user, action="econtract_retention_storage",
+        resource_type="econtract", resource_id=cert_id,
+        details=f"{'เปิด' if on else 'ปิด'}การเก็บตัวไฟล์จริง",
+    )
+    db.commit()
+    return res
 
 
 @router.post("/{cert_id}/lock")

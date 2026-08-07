@@ -280,6 +280,34 @@ class EContractCert(Base):
     # ว่าง = ยังไม่กำหนด ให้ถอยไปใช้ ntp_time
     instrument_date = Column(DateTime, nullable=True)
 
+    # เก็บ "ตัวไฟล์จริง" ไว้ในเครื่องหรือไม่ (ม.10(2) ต้องแสดงข้อความนั้นในภายหลังได้)
+    # ปิด = เก็บเฉพาะลายนิ้วมือ พิสูจน์ได้ว่าไฟล์ไม่ถูกแก้ แต่เอาไฟล์มาแสดงไม่ได้
+    retention_store_files = Column(Boolean, default=False)
+
+
+class EContractAttachment(Base):
+    """
+    หลักฐานตัวจริงที่แนบกับสัญญา — เอกสารต้นฉบับ หลักฐานคำสนอง สิ่งพิมพ์ออก ฯลฯ
+
+    บันทึกลายนิ้วมือเสมอ ส่วนตัวไฟล์จะถูกเก็บก็ต่อเมื่อเปิด `retention_store_files`
+    ของใบรับรองนั้น — เพราะการเก็บไฟล์เป็นการตัดสินใจเรื่องอธิปไตยข้อมูลและ PDPA
+    ที่หน่วยงานต้องเลือกเอง
+    """
+    __tablename__ = "econtract_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cert_id = Column(String(40), ForeignKey("econtract_certs.cert_id"), index=True, nullable=False)
+    kind = Column(String(30), nullable=False)      # original_document | acceptance_evidence | print_out | other
+    filename = Column(String(400), nullable=False)
+    content_type = Column(String(120), default="")
+    size_bytes = Column(Integer, default=0)
+    sha256 = Column(String(64), index=True, nullable=False)
+    stored = Column(Boolean, default=False)        # เก็บตัวไฟล์ไว้หรือเก็บแค่ hash
+    storage_path = Column(String(500), default="")  # relative จาก data dir
+    note = Column(Text, default="")
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
 
 class EContractStep(Base):
     """
@@ -369,6 +397,9 @@ class EContractSignature(Base):
     id = Column(Integer, primary_key=True, index=True)
     cert_id = Column(String(40), ForeignKey("econtract_certs.cert_id"), index=True, nullable=False)
     signer_name = Column(String(200), nullable=False)
+    # ฐานะที่ลงนาม — ผู้ว่าจ้าง / ผู้รับจ้าง / ตัวแทน / พยาน ฯลฯ
+    # จำเป็นต่อการพิสูจน์ว่าผู้ลงนามมีอำนาจผูกพันคู่สัญญาฝ่ายใด และใครเป็นเพียงพยาน
+    signer_role = Column(String(120), default="")
     method = Column(String(20), default="typed")   # typed | drawn | otp
     identity_ref = Column(Text, default="")        # อีเมล/เบอร์ที่ยืนยัน หรือ data URI ลายเซ็นวาด
     signed_at = Column(DateTime, nullable=False)
