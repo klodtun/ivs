@@ -38,7 +38,8 @@ def _cert_id() -> str:
 
 def certify(db: Session, filename: str, data: bytes, signer: str = "",
             note: str = "", created_by: int = None,
-            profile_key: str = "generic", sector: str = "") -> dict:
+            profile_key: str = "generic", sector: str = "",
+            convert_pdfa: bool = False) -> dict:
     """Issue an integrity + trusted-timestamp certificate for `data`.
 
     `profile_key` เลือกโปรไฟล์ 7 เรื่อง (ดู profile_service) — โปรไฟล์ที่ resolve ได้จะถูก
@@ -52,6 +53,21 @@ def certify(db: Session, filename: str, data: bytes, signer: str = "",
         raise ValueError(
             f"{eff.get('name_th', profile_key)} — {eff.get('blocked_reason_th', 'ทำเป็นอิเล็กทรอนิกส์ไม่ได้')}"
         )
+
+    # แปลงเป็น PDF/A ก่อน hash — ใบรับรองจึงออกให้ไฟล์ PDF/A ไม่ใช่ไฟล์ก่อนแปลง
+    # ถ้าแปลงหลัง hash โซ่หลักฐานจะชี้ไปไฟล์ที่ไม่ใช่ตัวที่เก็บจริง
+    pdfa_report = None
+    if convert_pdfa:
+        from app.services import pdfa_service
+        if not data[:5] == b"%PDF-":
+            raise ValueError("แปลงเป็น PDF/A ได้เฉพาะไฟล์ PDF — ไฟล์อื่นให้แปลงเป็น PDF ก่อน")
+        try:
+            data, pdfa_report = pdfa_service.convert_to_pdfa(
+                data, title=filename, author=signer or "",
+            )
+            filename = filename.rsplit(".", 1)[0] + "_pdfa.pdf"
+        except pdfa_service.PdfaUnavailable as e:
+            raise ValueError(str(e))
 
     sha256 = hashlib.sha256(data).hexdigest()
     now = ntp_service.now()
@@ -98,8 +114,13 @@ def certify(db: Session, filename: str, data: bytes, signer: str = "",
         "profile_hash": row.effective_profile_hash,
         "sector": row.profile_sector,
         "issued_by": signer or "",
+        "pdfa_converted": bool(convert_pdfa),
+        "pdfa_conformant_markers": (pdfa_report or {}).get("conformant_markers"),
     }, created_by=created_by)
-    return to_dict(row)
+    out = to_dict(row)
+    if pdfa_report:
+        out["pdfa"] = pdfa_report
+    return out
 
 
 def verify(db: Session, sha256: str = "", signature: str = "",

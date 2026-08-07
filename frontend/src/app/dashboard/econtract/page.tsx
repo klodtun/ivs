@@ -65,6 +65,8 @@ const ENDPOINTS = [
   ["POST", "/api/econtract/seals", "ลงทะเบียนตราประทับ (org_name, org_tax_id, image_data)"],
   ["POST", "/api/econtract/{id}/seal", "ประทับตราลงใบรับรอง (seal_id) → บันทึกขั้นตอน e-Seal"],
   ["GET", "/api/econtract/originals", "ภาพรวมความเป็นต้นฉบับ (ม.10) + การเก็บรักษา (ม.12)"],
+  ["GET", "/api/econtract/pdfa/capability", "เครื่องนี้สร้าง PDF/A ได้หรือไม่"],
+  ["GET", "/api/econtract/{id}/final-document", "เอกสารฉบับสมบูรณ์ PDF/A (ต้นฉบับ + ใบรับรองการลงนาม)"],
   ["GET", "/api/econtract/{id}/chain", "โซ่หลักฐาน — ลำดับเหตุการณ์ + ผลตรวจความต่อเนื่อง (ม.11)"],
   ["POST", "/api/econtract/{id}/deliver", "บันทึกการส่งร่างให้คู่สัญญา (recipients)"],
   ["POST", "/api/econtract/{id}/acceptance", "บันทึกคำสนอง ม.13 (party, source=first_party|imported)"],
@@ -157,6 +159,8 @@ export default function EContractPage() {
   const [signer, setSigner] = useState("");
   const [note, setNote] = useState("");
   const [issuing, setIssuing] = useState(false);
+  const [convertPdfa, setConvertPdfa] = useState(false);
+  const [pdfaCap, setPdfaCap] = useState<any | null>(null);
   const [issued, setIssued] = useState<Cert | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -278,6 +282,7 @@ export default function EContractPage() {
     api.listEContractProfiles()
       .then((r) => { setProfiles(r.profiles || []); setGroups(r.groups || {}); })
       .catch((e) => console.error(e));
+    api.getPdfaCapability().then(setPdfaCap).catch(() => setPdfaCap(null));
   }, []);
 
   const selectedProfile = profiles.find((p) => p.key === profileKey);
@@ -286,7 +291,7 @@ export default function EContractPage() {
     if (!file || issuing || selectedProfile?.blocked) return;
     setIssuing(true); setIssued(null);
     try {
-      const c = await api.certifyEContract(file, signer, note, profileKey, sector);
+      const c = await api.certifyEContract(file, signer, note, profileKey, sector, convertPdfa);
       setIssued(c); setFile(null); setSigner(""); setNote("");
       await load();
     } catch (e: any) { alert(e?.message || "error"); }
@@ -481,6 +486,36 @@ export default function EContractPage() {
             <p className="text-xs font-medium text-gray-700">{file ? file.name : t("ect.drop")}</p>
             <p className="text-[10px] text-gray-400 mt-1">{t("ect.drop_hint")}</p>
           </label>
+
+          {/* แปลงก่อน hash เสมอ — ใบรับรองจึงออกให้ไฟล์ PDF/A ไม่ใช่ไฟล์ก่อนแปลง */}
+          {pdfaCap && (
+            <label className={cn("flex items-start gap-2 rounded-md border px-2.5 py-2 transition",
+              pdfaCap.available ? "cursor-pointer bg-white border-gray-200 hover:bg-gray-50"
+                                : "bg-gray-50 border-gray-200 opacity-70")}>
+              <input type="checkbox" checked={convertPdfa} className="mt-0.5"
+                disabled={!pdfaCap.available}
+                onChange={(e) => setConvertPdfa(e.target.checked)} />
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium text-gray-800">
+                  แปลงเป็น PDF/A ก่อนออกใบรับรอง
+                  <span className="ml-1 text-[10px] font-normal text-gray-400">{pdfaCap.target}</span>
+                </p>
+                <p className="text-[10px] text-gray-500 leading-relaxed mt-0.5">
+                  {pdfaCap.available
+                    ? "ฝังฟอนต์ทั้งหมดและระบุ colour space เพื่อให้เอกสารแสดงผลเหมือนเดิมในอีกสิบปี (มาตรา 10(2)) · ใบรับรองจะออกให้ไฟล์ที่แปลงแล้ว"
+                    : pdfaCap.note_th}
+                </p>
+                {!pdfaCap.available && pdfaCap.fix_th && (
+                  <p className="text-[10px] text-amber-700 mt-1">วิธีแก้: {pdfaCap.fix_th}</p>
+                )}
+                {pdfaCap.available && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    ใช้ได้กับไฟล์ PDF เท่านั้น · ฟอนต์ {pdfaCap.font}
+                  </p>
+                )}
+              </div>
+            </label>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <input value={signer} onChange={(e) => setSigner(e.target.value)} placeholder={t("ect.signer")}
@@ -903,8 +938,15 @@ export default function EContractPage() {
             <div className="flex items-center justify-between mb-3">
               <span className="font-mono text-sm font-bold text-brand-700">{detail.cert_id}</span>
               <div className="flex items-center gap-2">
+                {pdfaCap?.available && (
+                  <a href={api.finalDocumentUrl(detail.cert_id)}
+                    title="ต้นฉบับ (ถ้าเก็บไว้) + ใบรับรองการลงนาม รวมเป็น PDF/A"
+                    className="text-[10px] px-2 py-1 bg-brand-600 text-white rounded hover:bg-brand-700">
+                    ⬇ ฉบับสมบูรณ์ (PDF/A)
+                  </a>
+                )}
                 <a href={api.evidenceBundleUrl(detail.cert_id)}
-                  className="text-[10px] px-2 py-1 bg-brand-600 text-white rounded hover:bg-brand-700">
+                  className="text-[10px] px-2 py-1 border border-brand-200 text-brand-700 rounded hover:bg-brand-50">
                   ⬇ {t("ect.evidence")}
                 </a>
                 <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>

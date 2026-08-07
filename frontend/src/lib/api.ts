@@ -369,7 +369,7 @@ export const api = {
 
   certifyEContract: async (
     file: File, signer: string, note: string,
-    profileKey = "generic", sector = "",
+    profileKey = "generic", sector = "", convertPdfa = false,
   ) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const headers: Record<string, string> = {};
@@ -380,6 +380,7 @@ export const api = {
     fd.append("note", note);
     fd.append("profile_key", profileKey);
     fd.append("sector", sector);
+    fd.append("convert_pdfa", convertPdfa ? "true" : "false");
     const res = await fetch(`${BACKEND_DIRECT}/econtract/certify`, { method: "POST", headers, body: fd });
     if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
     return res.json();
@@ -390,6 +391,12 @@ export const api = {
 
   getEContractProfile: (key: string, sector = "") =>
     request<any>(`/econtract/profiles/${key}${sector ? `?sector=${sector}` : ""}`),
+
+  // PDF/A — ม.10(2) เอกสารต้องแสดงข้อความในภายหลังได้
+  getPdfaCapability: () => request<any>("/econtract/pdfa/capability"),
+
+  finalDocumentUrl: (certId: string) =>
+    `${BACKEND_DIRECT}/econtract/${certId}/final-document`,
 
   // คู่มือ e-Contract ของ ETDA (ไฟล์ติดตั้งในเครื่อง ไม่ได้ commit เข้า repo)
   getEContractHandbook: () => request<any>("/econtract/handbook"),

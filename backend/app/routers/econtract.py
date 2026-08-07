@@ -217,6 +217,68 @@ async def originals(
     return econtract_service.originals_overview(db, scope=scope, q=q)
 
 
+# ── PDF/A ────────────────────────────────────────────────────────────────
+
+@router.get("/pdfa/capability")
+async def pdfa_capability(
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """เครื่องนี้สร้าง PDF/A ได้หรือไม่ และขาดอะไร"""
+    from app.services import pdfa_service
+    return pdfa_service.capability()
+
+
+@router.get("/{cert_id}/final-document")
+async def final_document(
+    cert_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """เอกสารฉบับสมบูรณ์เป็น PDF/A — ต้นฉบับ (ถ้าเก็บไว้) + ใบรับรองการลงนามต่อท้าย"""
+    from app.services import pdfa_service
+
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="ไม่พบใบรับรอง")
+
+    # ใช้เอกสารตัวจริงที่เก็บไว้ ถ้ามี — ไม่งั้นได้เฉพาะใบรับรองการลงนาม
+    source = None
+    for a in econtract_service.list_attachments(db, cert_id):
+        if a["kind"] == "original_document" and a["stored"]:
+            try:
+                path, _, _ = econtract_service.attachment_file(db, cert_id, a["id"])
+                with open(path, "rb") as f:
+                    source = f.read()
+                break
+            except ValueError:
+                pass
+
+    try:
+        pdf, report = pdfa_service.build_final_document(
+            cert=econtract_service.to_dict(cert),
+            chain=chain_service.chain(db, cert_id),
+            compliance=compliance_service.evaluate(db, cert),
+            signatures=econtract_service.list_signatures(db, cert_id),
+            attachments=econtract_service.list_attachments(db, cert_id),
+            source_pdf=source,
+        )
+    except pdfa_service.PdfaUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    create_audit_log(
+        db, request, user=user, action="econtract_final_document",
+        resource_type="econtract", resource_id=cert_id,
+        details=(f"สร้างเอกสารฉบับสมบูรณ์ PDF/A · {report.get('pages')} หน้า · "
+                 f"แนบต้นฉบับ={report.get('included_source_document')}"),
+    )
+    db.commit()
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{cert_id}_final.pdf"'},
+    )
+
+
 # ── Certify / Verify ─────────────────────────────────────────────────────
 
 @router.post("/certify")
@@ -227,6 +289,7 @@ async def certify(
     note: str = Form(""),
     profile_key: str = Form("generic"),
     sector: str = Form(""),
+    convert_pdfa: str = Form("false"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -246,6 +309,7 @@ async def certify(
             db, filename=file.filename or "document",
             data=data, signer=signer or user.username, note=note,
             created_by=user.id, profile_key=profile_key or "generic", sector=sector,
+            convert_pdfa=str(convert_pdfa).lower() in ("1", "true", "yes", "on"),
         )
     except ValueError as e:
         # ม.3 — ธุรกรรมครอบครัว/มรดก ทำเป็นอิเล็กทรอนิกส์ไม่ได้
