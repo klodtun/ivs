@@ -467,6 +467,12 @@ async def record_acceptance(
         )
     except (ValueError, chain_service.ChainError) as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        # ข้อผิดพลาดที่ไม่คาดคิดต้องกลับไปเป็นข้อความที่อ่านออก ไม่ใช่ 500 เปล่า ๆ
+        # ที่เบราว์เซอร์แสดงเป็น "Failed to fetch" ซึ่งบอกอะไรผู้ใช้ไม่ได้เลย
+        logger.exception(f"บันทึกคำสนองของ {cert_id} ล้มเหลว")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"บันทึกคำสนองไม่สำเร็จ: {e}")
     create_audit_log(
         db, request, user=user, action="econtract_acceptance", resource_type="econtract",
         resource_id=cert_id, details=f"คำสนองจาก {party} ({source})",

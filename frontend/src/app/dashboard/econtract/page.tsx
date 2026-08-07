@@ -130,6 +130,16 @@ export default function EContractPage() {
   const [acceptFile, setAcceptFile] = useState<File | null>(null);
   const [confirmLock, setConfirmLock] = useState(false);
 
+  // กล่องข้อความแทน alert() ของเบราว์เซอร์ — alert บล็อกทั้งหน้าและตัดข้อความยาว
+  // ซึ่งข้อความอธิบายเหตุผลทางกฎหมายของระบบนี้มักยาวเกินกว่าจะอ่านรู้เรื่อง
+  const [notice, setNotice] = useState<{ kind: "error" | "ok"; title: string; body: string } | null>(null);
+  const [confirmBox, setConfirmBox] = useState<
+    { title: string; body: string; danger?: boolean; onYes: () => void } | null
+  >(null);
+  const fail = (e: any, title = "ทำรายการไม่สำเร็จ") =>
+    setNotice({ kind: "error", title, body: e?.message || String(e) || "ไม่ทราบสาเหตุ" });
+  const done = (title: string, body = "") => setNotice({ kind: "ok", title, body });
+
   // หลักฐานตัวจริง
   const [attachments, setAttachments] = useState<any[]>([]);
   const [storeFiles, setStoreFiles] = useState(false);
@@ -233,7 +243,7 @@ export default function EContractPage() {
       await api.uploadEContractAttachment(detail.cert_id, f, attKind, "", attTitle);
       setAttTitle("");
       await refreshDetail(detail.cert_id);
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setAttBusy(false); }
   };
 
@@ -242,7 +252,7 @@ export default function EContractPage() {
     try {
       await api.setEContractRetentionStorage(detail.cert_id, on);
       await refreshDetail(detail.cert_id);
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
   };
 
   const runLifecycle = async (fn: () => Promise<any>) => {
@@ -253,7 +263,7 @@ export default function EContractPage() {
       await refreshDetail(detail.cert_id);
       setLifeAct("");
       setLifeVal({ recipients: "", party: "", source: "first_party", evidence: "" });
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setLifeBusy(false); }
   };
 
@@ -261,7 +271,7 @@ export default function EContractPage() {
     if (!detail || !signName.trim() || signing) return;
     let identity = signId;
     if (signMethod === "drawn") {
-      if (!hasInkRef.current) { alert(t("ect.draw_empty")); return; }
+      if (!hasInkRef.current) { fail(new Error(t("ect.draw_empty")), "ยังไม่ได้วาดลายเซ็น"); return; }
       identity = canvasRef.current!.toDataURL("image/png");
     }
     setSigning(true);
@@ -269,7 +279,7 @@ export default function EContractPage() {
       await api.signEContract(detail.cert_id, signName.trim(), signMethod, identity, signMode, signRole);
       await refreshDetail(detail.cert_id);
       setSignName(""); setSignId(""); setSignRole(""); clearCanvas();
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setSigning(false); }
   };
 
@@ -277,6 +287,17 @@ export default function EContractPage() {
     try { setList(await api.listEContracts(scope, search)); } catch (e) { console.error(e); }
   }, [scope, search]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (notice) setNotice(null);
+      else if (confirmBox) setConfirmBox(null);
+      else if (confirmLock) setConfirmLock(false);
+    };
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [notice, confirmBox, confirmLock]);
 
   useEffect(() => {
     api.listEContractProfiles()
@@ -294,7 +315,7 @@ export default function EContractPage() {
       const c = await api.certifyEContract(file, signer, note, profileKey, sector, convertPdfa);
       setIssued(c); setFile(null); setSigner(""); setNote("");
       await load();
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setIssuing(false); }
   };
 
@@ -316,7 +337,7 @@ export default function EContractPage() {
       setSealForm({ org_name: "", org_tax_id: "", authority_note: "" });
       setSealImg("");
       await loadSeals();
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setSavingSeal(false); }
   };
 
@@ -325,16 +346,16 @@ export default function EContractPage() {
     setApplying(true);
     try {
       await api.applyEContractSeal(applyCert.trim(), applySeal);
-      alert(`ประทับตราลงบน ${applyCert.trim()} เรียบร้อย`);
+      done("ประทับตราเรียบร้อย", `ใบรับรอง ${applyCert.trim()} ถูกบันทึกขั้นตอนที่ 3 (e-Seal) แล้ว`);
       setApplyCert("");
       await load();
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setApplying(false); }
   };
 
   const onSealFile = (f: File | null) => {
     if (!f) return;
-    if (f.size > 280_000) { alert("ไฟล์ใหญ่เกิน 280 KB"); return; }
+    if (f.size > 280_000) { fail(new Error("จำกัดขนาดไฟล์ 280 KB"), "ภาพตราประทับใหญ่เกินไป"); return; }
     const r = new FileReader();
     r.onload = () => setSealImg(String(r.result || ""));
     r.readAsDataURL(f);
@@ -349,14 +370,14 @@ export default function EContractPage() {
       });
       await refreshDetail(detail.cert_id);
       setStepForm(null);
-    } catch (e: any) { alert(e?.message || "error"); }
+    } catch (e: any) { fail(e); }
     finally { setSavingStep(false); }
   };
 
   const doVerify = async () => {
     setVResult(null);
     try { setVResult(await api.verifyEContract(vfile, certId.trim())); }
-    catch (e: any) { alert(e?.message || "error"); }
+    catch (e: any) { fail(e); }
   };
 
   const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
@@ -731,11 +752,14 @@ export default function EContractPage() {
                   {s.authority_note && <div className="text-[10px] text-gray-400">{s.authority_note}</div>}
                 </div>
                 {s.is_active && (
-                  <button onClick={async () => {
-                    if (!confirm(`เลิกใช้ตรา "${s.org_name}"? สัญญาที่ประทับไปแล้วยังอ้างอิงได้ตามเดิม`)) return;
-                    try { await api.deactivateEContractSeal(s.seal_id); await loadSeals(); }
-                    catch (e: any) { alert(e?.message || "error"); }
-                  }} className="text-[10px] text-gray-400 hover:text-red-600 flex-shrink-0">เลิกใช้</button>
+                  <button onClick={() => setConfirmBox({
+                    title: `เลิกใช้ตรา "${s.org_name}"?`,
+                    body: "ตราจะใช้ประทับใบรับรองใหม่ไม่ได้อีก แต่ไม่ถูกลบ — สัญญาที่ประทับไปแล้วยังอ้างอิงกลับได้ตามเดิม",
+                    onYes: async () => {
+                      try { await api.deactivateEContractSeal(s.seal_id); await loadSeals(); }
+                      catch (e: any) { fail(e); }
+                    },
+                  })} className="text-[10px] text-gray-400 hover:text-red-600 flex-shrink-0">เลิกใช้</button>
                 )}
               </div>
             ))}
@@ -879,6 +903,60 @@ export default function EContractPage() {
               </div>
             </div>
             <pre className="bg-gray-900 text-gray-100 text-[10.5px] rounded-lg p-3 whitespace-pre-wrap font-mono max-h-[420px] overflow-y-auto">{ECONTRACT_PROMPT}</pre>
+          </div>
+        </div>
+      )}
+
+      {/* กล่องข้อความ — แทน alert() ที่บล็อกหน้าและตัดข้อความยาว */}
+      {notice && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-6"
+          onClick={() => setNotice(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            <div className={cn("px-4 py-2.5 flex items-center gap-2",
+              notice.kind === "ok" ? "bg-green-50 border-b border-green-200"
+                                   : "bg-red-50 border-b border-red-200")}>
+              <span className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold",
+                notice.kind === "ok" ? "bg-green-600 text-white" : "bg-red-600 text-white")}>
+                {notice.kind === "ok" ? "✓" : "!"}
+              </span>
+              <h3 className={cn("text-sm font-semibold",
+                notice.kind === "ok" ? "text-green-900" : "text-red-900")}>{notice.title}</h3>
+            </div>
+            {notice.body && (
+              <p className="px-4 py-3 text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {notice.body}
+              </p>
+            )}
+            <div className="px-4 pb-3 flex justify-end">
+              <button onClick={() => setNotice(null)} autoFocus
+                className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700">
+                ตกลง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* กล่องยืนยัน — แทน confirm() */}
+      {confirmBox && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-6"
+          onClick={() => setConfirmBox(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5"
+            onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-gray-900 mb-1.5">{confirmBox.title}</h3>
+            <p className="text-[12px] text-gray-600 leading-relaxed mb-4">{confirmBox.body}</p>
+            <div className="flex gap-2">
+              <button onClick={() => { const f = confirmBox.onYes; setConfirmBox(null); f(); }}
+                className={cn("px-4 py-1.5 text-white text-xs font-medium rounded-md",
+                  confirmBox.danger ? "bg-red-600 hover:bg-red-700" : "bg-brand-600 hover:bg-brand-700")}>
+                ยืนยัน
+              </button>
+              <button onClick={() => setConfirmBox(null)}
+                className="px-4 py-1.5 border border-gray-300 text-gray-600 text-xs rounded-md hover:bg-gray-50">
+                ยกเลิก
+              </button>
+            </div>
           </div>
         </div>
       )}

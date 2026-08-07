@@ -298,6 +298,7 @@ class EContractAttachment(Base):
     id = Column(Integer, primary_key=True, index=True)
     cert_id = Column(String(40), ForeignKey("econtract_certs.cert_id"), index=True, nullable=False)
     kind = Column(String(30), nullable=False)      # original_document | acceptance_evidence | print_out | other
+    title = Column(String(300), default="")        # ชื่อเอกสารที่ผู้ใช้ระบุ (จำเป็นเมื่อ kind=other)
     filename = Column(String(400), nullable=False)
     content_type = Column(String(120), default="")
     size_bytes = Column(Integer, default=0)
