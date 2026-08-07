@@ -25,7 +25,8 @@ type StepMeta = {
 
 type Handbook = {
   title_th: string; author_th: string; publisher_th: string; programme_th: string;
-  pages: number; available: boolean; size_bytes: number; expected_path: string;
+  pages: number; available: boolean; local_available: boolean;
+  size_bytes: number; local_path: string; drive_url: string;
 };
 
 const RISK_STYLE: Record<string, { label: string; cls: string }> = {
@@ -270,29 +271,32 @@ export function EContractGuide() {
                       <p className="text-[10px] text-gray-500">
                         เอกสารประกอบโครงการ {handbook?.programme_th || "Train the Transformers: e-Contract"}
                         {handbook?.pages ? ` · ${handbook.pages} หน้า` : ""}
-                        {handbook?.available ? ` · ${fmtMB(handbook.size_bytes)}` : ""}
                       </p>
                       <p className="text-[10px] text-gray-500 leading-relaxed">
                         ครอบคลุมนิยามและคำศัพท์ กฎหมายที่เกี่ยวข้อง กระบวนการจัดทำ 7 เรื่อง
                         ความต่างระหว่างภาครัฐกับเอกชน เครื่องมือและเกณฑ์คัดเลือกผู้พัฒนา
                         กรณีศึกษา 19 สถานการณ์ กรณีศึกษาต่างประเทศ และคำถามที่พบบ่อย
                       </p>
-                      {handbook?.available ? (
-                        <a href={api.econtractHandbookUrl()}
-                          className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 bg-brand-600 text-white text-[10px] font-medium rounded hover:bg-brand-700">
-                          ⬇ ดาวน์โหลดคู่มือ (PDF)
-                        </a>
-                      ) : (
-                        <div className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5">
-                          <p className="text-[10px] text-amber-800">
-                            ยังไม่ได้ติดตั้งไฟล์คู่มือบนเครื่องนี้
-                          </p>
-                          {handbook?.expected_path && (
-                            <p className="text-[9px] font-mono text-amber-700 mt-0.5 break-all">
-                              วางไฟล์ไว้ที่ {handbook.expected_path}
-                            </p>
-                          )}
-                        </div>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        {handbook?.drive_url && (
+                          <a href={handbook.drive_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-600 text-white text-[10px] font-medium rounded hover:bg-brand-700">
+                            ↗ เปิดคู่มือ (Google Drive)
+                          </a>
+                        )}
+                        {handbook?.local_available && (
+                          <a href={api.econtractHandbookUrl()}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 border border-brand-200 text-brand-700 text-[10px] font-medium rounded hover:bg-brand-50">
+                            ⬇ ดาวน์โหลดจากเครื่องนี้{handbook.size_bytes ? ` (${fmtMB(handbook.size_bytes)})` : ""}
+                          </a>
+                        )}
+                      </div>
+                      {!handbook?.local_available && (
+                        <p className="text-[9px] text-gray-400 mt-1">
+                          เครื่องนี้ไม่มีสำเนาในตัว — หน่วยงานที่ไม่ต่ออินเทอร์เน็ตวางไฟล์ไว้ที่{" "}
+                          <span className="font-mono break-all">{handbook?.local_path}</span>{" "}
+                          เพื่อให้ดาวน์โหลดตรงจาก iVS ได้
+                        </p>
                       )}
                     </div>
                   </div>

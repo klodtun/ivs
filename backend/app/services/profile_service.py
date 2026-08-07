@@ -301,10 +301,14 @@ def list_profiles() -> list[dict]:
 
 
 # ── คู่มืออ้างอิง (ETDA) ─────────────────────────────────────────────────
-# ไฟล์ไม่ถูก commit (ใหญ่ ~83 MB และ .gitignore กัน *.pdf ไว้) — วางไว้ในเครื่อง
-# ที่ติดตั้งเอง แล้วระบบจะเสิร์ฟให้ผู้ใช้ดาวน์โหลดผ่านเมนู e-Contract
+# ไฟล์ใหญ่ ~82 MB จึงไม่เก็บใน repo (และ .gitignore กัน *.pdf อยู่แล้ว) — ใช้ลิงก์
+# Google Drive เป็นแหล่งหลัก ทุกเครื่องเข้าถึงได้ทันทีโดยไม่ต้องติดตั้งอะไร
+#
+# ยังรองรับสำเนาในเครื่องเป็นทางเลือก: หน่วยงานที่ไม่ต่ออินเทอร์เน็ต (air-gapped)
+# วางไฟล์ไว้ที่ HANDBOOK_DIR แล้วระบบจะเสิร์ฟให้ดาวน์โหลดตรงจาก iVS ได้ด้วย
 HANDBOOK_DIR = os.path.join(PROFILE_DIR, "reference")
 HANDBOOK_FILENAME = "09_คุณทรงกลด_ตันทรบันฑิตย์.pdf"
+HANDBOOK_DRIVE_ID = "1hpEMvwNx5KNqjx9XKuI2O-lihYPcN_XP"
 HANDBOOK_META = {
     "title_th": "(ร่าง) คู่มือการจัดทำสัญญาอิเล็กทรอนิกส์ e-Contract สำหรับภาครัฐกับเอกชน SMEs",
     "author_th": "คุณทรงกลด ตันทรบัณฑิตย์",
@@ -312,6 +316,7 @@ HANDBOOK_META = {
     "programme_th": "Train the Transformers: e-Contract",
     "pages": 144,
     "download_name": "ETDA_e-Contract_Handbook.pdf",
+    "drive_url": f"https://drive.google.com/file/d/{HANDBOOK_DRIVE_ID}/view?usp=sharing",
 }
 
 
@@ -320,14 +325,15 @@ def handbook_path() -> str:
 
 
 def handbook_info() -> dict:
-    """ข้อมูลคู่มือ + มีไฟล์ให้ดาวน์โหลดหรือยัง"""
+    """ข้อมูลคู่มือ — ลิงก์ Drive เป็นแหล่งหลัก + สำเนาในเครื่อง (ถ้ามี)"""
     path = handbook_path()
     exists = os.path.isfile(path)
     return {
         **HANDBOOK_META,
-        "available": exists,
+        "available": True,                 # เข้าถึงได้เสมอผ่านลิงก์
+        "local_available": exists,         # มีสำเนาในเครื่องให้ดาวน์โหลดตรงหรือไม่
         "size_bytes": os.path.getsize(path) if exists else 0,
-        "expected_path": path,
+        "local_path": path,
     }
 
 

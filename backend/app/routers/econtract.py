@@ -81,14 +81,19 @@ async def handbook_download(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
 ):
-    """ดาวน์โหลดคู่มือ e-Contract (ETDA) — 144 หน้า"""
+    """ดาวน์โหลดคู่มือ e-Contract (ETDA) จากสำเนาในเครื่อง — 144 หน้า
+
+    แหล่งหลักคือลิงก์ Google Drive (ดู `GET /handbook`) ปลายทางนี้ใช้เมื่อมีสำเนา
+    วางไว้ในเครื่องเท่านั้น เช่น หน่วยงานที่ไม่ต่ออินเทอร์เน็ต
+    """
     info = profile_service.handbook_info()
-    if not info["available"]:
+    if not info["local_available"]:
         raise HTTPException(
             status_code=404,
             detail=(
-                "ยังไม่ได้ติดตั้งไฟล์คู่มือบนเครื่องนี้ — "
-                f"วางไฟล์ '{profile_service.HANDBOOK_FILENAME}' ไว้ที่ {profile_service.HANDBOOK_DIR}"
+                "ไม่มีสำเนาคู่มือในเครื่องนี้ — ใช้ลิงก์ Google Drive แทน "
+                f"({info['drive_url']}) หรือวางไฟล์ '{profile_service.HANDBOOK_FILENAME}' "
+                f"ไว้ที่ {profile_service.HANDBOOK_DIR} เพื่อให้ดาวน์โหลดตรงจาก iVS ได้"
             ),
         )
     create_audit_log(
