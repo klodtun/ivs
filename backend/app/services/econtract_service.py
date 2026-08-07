@@ -37,8 +37,22 @@ def _cert_id() -> str:
 
 
 def certify(db: Session, filename: str, data: bytes, signer: str = "",
-            note: str = "", created_by: int = None) -> dict:
-    """Issue an integrity + trusted-timestamp certificate for `data`."""
+            note: str = "", created_by: int = None,
+            profile_key: str = "generic", sector: str = "") -> dict:
+    """Issue an integrity + trusted-timestamp certificate for `data`.
+
+    `profile_key` เลือกโปรไฟล์ 7 เรื่อง (ดู profile_service) — โปรไฟล์ที่ resolve ได้จะถูก
+    **แช่แข็ง** ไว้กับใบรับรอง เพื่อให้สัญญาถูกประเมินด้วยกฎชุดเดิมตลอดอายุความ
+    """
+    from app.services import profile_service
+    from app.services.compliance_service import detect_doc_format
+
+    eff = profile_service.resolve(profile_key or "generic", sector=sector or None)
+    if eff.get("blocked"):
+        raise ValueError(
+            f"{eff.get('name_th', profile_key)} — {eff.get('blocked_reason_th', 'ทำเป็นอิเล็กทรอนิกส์ไม่ได้')}"
+        )
+
     sha256 = hashlib.sha256(data).hexdigest()
     now = ntp_service.now()
     ntp = ntp_service.get_status()
@@ -55,6 +69,12 @@ def certify(db: Session, filename: str, data: bytes, signer: str = "",
         signer=signer[:120],
         note=note or "",
         created_by=created_by,
+        profile_key=eff.get("key", "generic"),
+        profile_version=int(eff.get("version", 1)),
+        profile_sector=sector or "",
+        effective_profile_json=json.dumps(eff, ensure_ascii=False),
+        effective_profile_hash=eff.get("_hash", ""),
+        doc_format=detect_doc_format(data, filename),
     )
     db.add(row)
     db.commit()
@@ -106,6 +126,11 @@ def to_dict(row: EContractCert) -> dict:
         "signer": row.signer,
         "note": row.note,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "profile_key": row.profile_key or "generic",
+        "profile_version": row.profile_version or 1,
+        "profile_sector": row.profile_sector or "",
+        "profile_hash": row.effective_profile_hash or "",
+        "doc_format": row.doc_format or "",
     }
 
 
@@ -162,6 +187,13 @@ def detail(db: Session, cert_id: str) -> dict:
         return None
     d = to_dict(cert)
     d["signatures"] = list_signatures(db, cert_id)
+    try:
+        from app.services import compliance_service
+        d["compliance"] = compliance_service.evaluate(db, cert)
+    except Exception as e:  # การประเมินล้มเหลวต้องไม่ทำให้ดูใบรับรองไม่ได้
+        import logging
+        logging.getLogger(__name__).warning(f"ประเมิน 7 ขั้นตอนของ {cert_id} ไม่สำเร็จ: {e}")
+        d["compliance"] = None
     return d
 
 
@@ -190,10 +222,25 @@ def build_evidence_bundle(db: Session, cert_id: str) -> bytes:
 
     generated = datetime.now(timezone.utc).isoformat()
 
+    compliance = d.pop("compliance", None)
+
     files: dict[str, bytes] = {}
     files["certificate.json"] = json.dumps(d, ensure_ascii=False, indent=2).encode()
     files["signatures.json"] = json.dumps(d.get("signatures", []), ensure_ascii=False, indent=2).encode()
     files["audit_trail.json"] = json.dumps(audit_rows, ensure_ascii=False, indent=2).encode()
+    if compliance:
+        # รายงาน 7 เรื่อง + โปรไฟล์ที่แช่แข็งไว้ — ผู้ตรวจสอบในอนาคตพิสูจน์ได้ว่า
+        # ตอนทำสัญญา ระบบยึดกฎชุดไหน (ม.11 การชั่งน้ำหนักพยานหลักฐาน)
+        files["compliance_7steps.json"] = json.dumps(compliance, ensure_ascii=False, indent=2).encode()
+        row = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+        if row and row.effective_profile_json:
+            files["contract_profile.json"] = row.effective_profile_json.encode()
+        # แนบใบข้อมูลยื่นอากรแสตมป์เมื่อสัญญาชนิดนี้เข้าข่ายต้องเสีย
+        sd = next((s for s in compliance["steps"] if s["step"] == "e_stamp_duty"), None)
+        if row is not None and sd and sd.get("required"):
+            from app.services import compliance_service as _cs
+            payload = _cs.stamp_duty_payload(db, row)
+            files["stamp_duty_as9.txt"] = _cs.stamp_duty_worksheet_text(payload).encode("utf-8")
     files["README.txt"] = (
         "ชุดหลักฐานธุรกรรมทางอิเล็กทรอนิกส์ (iVS e-Contract Evidence Bundle)\n"
         f"Cert ID     : {d['cert_id']}\n"
@@ -202,10 +249,19 @@ def build_evidence_bundle(db: Session, cert_id: str) -> bytes:
         f"เวลารับรอง   : {d['ntp_time']}  ({d['ntp_server_name']})\n"
         f"ลายเซ็นระบบ  : {d['signature']}\n"
         f"ผู้ลงนาม     : {len(d.get('signatures', []))} ราย\n"
-        f"สร้างบันเดิล : {generated}\n\n"
+        + (
+            f"ประเภทสัญญา  : {compliance['profile'].get('name_th')} "
+            f"(โปรไฟล์ {compliance['profile'].get('key')} v{compliance['profile'].get('version')})\n"
+            f"ความครบถ้วน  : {compliance['summary']['required_done']}/"
+            f"{compliance['summary']['required_total']} ขั้นตอนที่บังคับ\n"
+            if compliance else ""
+        )
+        + f"สร้างบันเดิล : {generated}\n\n"
         "การตรวจสอบ:\n"
         "- เทียบ SHA-256 ของเอกสารต้นฉบับกับค่าใน certificate.json\n"
         "- ตรวจใบรับรอง/ลายเซ็นได้ที่เมนู e-Contract ของ iVS (ใช้ Cert ID หรือไฟล์เดิม)\n"
+        "- compliance_7steps.json สรุปว่าเอกสารนี้ทำครบ 7 เรื่องของวงจร e-Contract หรือยัง\n"
+        "- contract_profile.json คือกฎที่ใช้ประเมิน ณ วันที่ออกใบรับรอง (แช่แข็งไว้)\n"
         "- manifest.json ระบุ SHA-256 ของทุกไฟล์ในชุดนี้ (ตรวจความครบถ้วน)\n\n"
         "อ้างอิง: พ.ร.บ. ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์ (integrity §12, ลายมือชื่อ §9/§26)\n"
     ).encode("utf-8")

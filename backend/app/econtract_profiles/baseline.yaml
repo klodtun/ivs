@@ -1,0 +1,509 @@
+# Contract Profiles — baseline (ชั้นที่ 1)
+#
+# ที่มา: (ร่าง) คู่มือการจัดทำสัญญาอิเล็กทรอนิกส์ e-Contract สำหรับภาครัฐกับเอกชน SMEs (ETDA)
+#        + ประกาศ สพธอ. "ข้อเสนอแนะแนวทางการจัดทำนิติกรรมหรือสัญญาในรูปแบบอิเล็กทรอนิกส์"
+#          ประกาศ ณ วันที่ 21 มิถุนายน พ.ศ. 2567
+# สรุปเมทริกซ์ที่ใช้ตั้งค่า: docs/econtract/02-contract-profiles.md
+#
+# ระดับสิทธิ์การแก้ไขของแต่ละ step (field `level`):
+#   LOCKED   — มาจากกฎหมายโดยตรง overlay แก้ไม่ได้เลย
+#   BASELINE — overlay ยกระดับความเข้มได้ ลดต่ำกว่านี้ไม่ได้
+#   POLICY   — หน่วยงานกำหนดเองได้อิสระ (ระเบียบภายใน)
+#   RUNTIME  — ผู้ใช้เลือกตอนทำสัญญา
+#
+# ระดับลายมือชื่อ: general (ม.9) < reliable (ม.26) < reliable_ca (ม.26 + ใบรับรองจาก CA)
+
+schema_version: 1
+source: "ETDA e-Contract Handbook (draft) + ประกาศ สพธอ. 21 มิ.ย. 2567"
+
+profiles:
+
+  # ── กลุ่ม A: ธุรกิจและพาณิชย์ ────────────────────────────────────────────
+  sale-online:
+    version: 1
+    name_th: สัญญาซื้อขายผ่านแพลตฟอร์มออนไลน์
+    summary_th: ลูกค้าติ๊กยอมรับเงื่อนไขแล้วกดสั่งซื้อบนแพลตฟอร์ม สัญญาเกิดผ่านระบบอัตโนมัติ
+    group: A
+    scenario_ref: 1
+    risk_tier: low
+    legal: { sections: ["7", "8", "9", "13/2"], note_th: "ระบบอัตโนมัติ + clickwrap" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any,
+                      note_th: "แสดง T&C + รายละเอียดสินค้า/ราคา ให้ผู้ซื้ออ่านก่อนตัดสินใจ" }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 1,
+                      note_th: "ติ๊กยอมรับเงื่อนไข + กดสั่งซื้อ = ลงลายมือชื่อตาม ม.9" }
+      e_seal:       { level: POLICY,   required: false }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp,
+                      note_th: "ข้อมูลคำสั่งซื้อ (PO) ถูกล็อกในระบบทันที" }
+      e_retention:  { level: BASELINE, required: true, period_years: 5,
+                      must_store: [audit_trail, transmission_log],
+                      note_th: "Log ต้องพิสูจน์ลำดับเหตุการณ์ได้ตั้งแต่แสดงเจตนาจนชำระเงินเสร็จ" }
+      e_stamp_duty: { level: LOCKED,   required: false,
+                      reason_th: "การซื้อขายสินค้าทั่วไปไม่เข้าข่ายตราสารที่ต้องเสียอากร" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+    warnings:
+      - severity: info
+        text_th: "ความน่าเชื่อถืออยู่ที่ความต่อเนื่องของ Log — ห้ามมีการกระโดดข้ามขั้นตอนหรือแก้ไขข้อมูลภายหลัง"
+
+  sale-pos:
+    version: 1
+    name_th: สัญญาซื้อขายหน้าร้าน (POS / เซ็นบนแท็บเล็ต)
+    summary_th: ขายหน้าร้าน ลูกค้าเซ็นด้วยนิ้วหรือปากกาสไตลัสบนแท็บเล็ต แทนการเซ็นกระดาษ
+    group: A
+    scenario_ref: 2
+    risk_tier: low
+    legal: { sections: ["7", "8", "9"] }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 1,
+                      note_th: "ลูกค้าเซ็นด้วยนิ้ว/สไตลัสบนหน้าจอ" }
+      e_seal:       { level: POLICY,   required: false }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 5,
+                      must_store: [audit_trail] }
+      e_stamp_duty: { level: LOCKED,   required: false,
+                      reason_th: "ซื้อขายสินค้าหน้าร้านทั่วไปไม่เข้าข่ายตราสาร" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  sale-social:
+    version: 1
+    name_th: สัญญาซื้อขายผ่านโซเชียล / แชท
+    summary_th: ตกลงซื้อขายผ่านแชท ผู้ซื้อพิมพ์ "ตกลง" หรือ "CF" ตอบกลับเพื่อยืนยัน
+    group: A
+    scenario_ref: 3
+    risk_tier: low
+    legal: { sections: ["7", "8", "9", "11"] }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 1,
+                      note_th: 'พิมพ์ "ตกลง" / "รับ" / "CF" ในแชท = ลงลายมือชื่อตาม ม.9' }
+      e_seal:       { level: POLICY,   required: false }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 5,
+                      must_store: [audit_trail, transmission_log],
+                      note_th: "เก็บสลิป + สำรองประวัติการสนทนา" }
+      e_stamp_duty: { level: LOCKED,   required: false }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+    warnings:
+      - severity: high
+        text_th: "ควรให้ผู้ซื้อพิมพ์ตอบรับเป็นลายลักษณ์อักษร — ไม่ควรใช้เพียงสติกเกอร์ในการตอบรับ"
+
+  distributor:
+    version: 1
+    name_th: สัญญาตัวแทนจำหน่าย
+    summary_th: แต่งตั้งตัวแทนจำหน่ายสินค้าเฉพาะแบรนด์หรือเฉพาะพื้นที่ มูลค่าสูงและเป็นนิติบุคคลทั้งสองฝ่าย
+    group: A
+    scenario_ref: 4
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12", "26"], tax_th: "ตราสารตัวแทน" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [territory_rights, benefits, attachments] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable, min_signers: 2,
+                      note_th: "มูลค่าสูง — ทั้งสองฝ่ายควรใช้ Digital Signature" }
+      e_seal:       { level: POLICY,   required: false,
+                      hint_th: "ประทับ e-Seal ควบคู่ Digital Signature หากระเบียบองค์กรกำหนด" }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, transmission_log] }
+      e_stamp_duty: { level: LOCKED,   required: true, instrument_th: "สัญญาตัวแทน",
+                      channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+    warnings:
+      - severity: high
+        text_th: "การใช้เพียงภาพสแกนลายเซ็นแปะในไฟล์ เสี่ยงถูกปฏิเสธความรับผิดได้ง่าย"
+
+  broker-appointment:
+    version: 1
+    name_th: สัญญาแต่งตั้งตัวแทน / นายหน้า
+    summary_th: แต่งตั้งนายหน้าอสังหาฯ หรือตัวแทนขาย พร้อมกำหนดขอบเขตอำนาจและตารางอัตราค่าบำเหน็จ
+    group: A
+    scenario_ref: 5
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12", "26"], tax_th: "ตราสารตัวแทน/นายหน้า" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [scope_of_authority, commission_scale] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable, min_signers: 2 }
+      e_seal:       { level: BASELINE, required: true, applies_to: [principal],
+                      note_th: "ฝั่งเจ้าของธุรกิจ (นิติบุคคล) ประทับ e-Seal ยืนยันการแต่งตั้งอย่างเป็นทางการ" }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity] }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  # ── กลุ่ม B: จ้างงานและบริหารงานบุคคล ─────────────────────────────────────
+  employment:
+    version: 1
+    name_th: สัญญาจ้างแรงงาน
+    summary_th: HR ร่างสัญญาจ้างพนักงานประจำ ต้องแยกประกาศความเป็นส่วนตัวและการยินยอมตาม PDPA ให้ชัด
+    group: B
+    scenario_ref: 6
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12", "26"],
+             other_th: "พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล 2562" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [privacy_notice, pdpa_consent],
+                      note_th: "ต้องแยกประกาศความเป็นส่วนตัวและการยินยอมออกมาให้ชัด (PDPA)" }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable, min_signers: 2,
+                      note_th: "นายจ้างใช้ Digital Signature; ลูกจ้างยืนยันตัวตนก่อนลงนาม" }
+      e_seal:       { level: POLICY,   required: false,
+                      hint_th: "ประทับได้หากระเบียบบริษัทกำหนด" }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, access_log],
+                      access_control: restricted,
+                      note_th: "กฎหมายแรงงานมีอายุความยาว — จำกัดสิทธิ์ให้ดูได้เฉพาะพนักงานคนนั้น" }
+      e_stamp_duty: { level: LOCKED,   required: false,
+                      reason_th: "สัญญาจ้างแรงงานทั่วไป (Employee) ไม่เข้าข่ายตราสารตามประมวลรัษฎากร" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  welfare-agreement:
+    version: 1
+    name_th: ข้อตกลงสวัสดิการพนักงาน
+    summary_th: พนักงานล็อกอินระบบ HR แล้วกดยอมรับเงื่อนไขสวัสดิการ เช่น กองทุนสำรองเลี้ยงชีพ ประกันกลุ่ม
+    group: B
+    scenario_ref: 7
+    risk_tier: low
+    legal: { sections: ["8", "9", "12"], other_th: "PDPA" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any,
+                      required_sections: [privacy_notice] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 1,
+                      note_th: "พนักงาน login (SSO) แล้วคลิกยอมรับ" }
+      e_seal:       { level: POLICY,   required: false }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp,
+                      note_th: "ระบบออกหลักฐานการรับสิทธิเป็น PDF/A ให้พนักงาน" }
+      e_retention:  { level: BASELINE, required: true, period_years: 5,
+                      must_store: [audit_trail, version_accepted],
+                      note_th: "ต้องระบุได้ว่าพนักงานรายใดกดยอมรับเงื่อนไขเวอร์ชันใด เมื่อใด" }
+      e_stamp_duty: { level: LOCKED,   required: false }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  consultant:
+    version: 1
+    name_th: สัญญาจ้างที่ปรึกษา
+    summary_th: จ้างผู้เชี่ยวชาญภายนอกทำงานตามขอบเขต มีงวดงานและข้อตกลงสิทธิ์ในทรัพย์สินทางปัญญา
+    group: B
+    scenario_ref: 8
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12", "26"], tax_th: "ถือเป็นสัญญาจ้างทำของ" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [scope_of_work, payment_milestones, ip_rights] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable, min_signers: 2 }
+      e_seal:       { level: POLICY,   required: false, applies_to: [employer] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity],
+                      link_to: [e_tax_invoice, delivery_system] }
+      e_stamp_duty: { level: LOCKED,   required: true, instrument_th: "จ้างทำของ",
+                      deadline_days: 15, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  # ── กลุ่ม C: จัดซื้อจัดจ้างและบริการ ──────────────────────────────────────
+  hire-of-work:
+    version: 1
+    name_th: สัญญาจ้างทำของ / สัญญาบริการ
+    summary_th: จ้างทำของที่เน้น "ผลสำเร็จของงาน" เช่น งานรับเหมา งานผลิตสื่อ แบ่งจ่ายเป็นงวดและมีการตรวจรับ
+    group: C
+    scenario_ref: 9
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "11", "12", "26"], tax_th: "ตราสารจ้างทำของ" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [scope_of_work, payment_milestones, acceptance_criteria],
+                      attachments_are_part_of_contract: true }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable, min_signers: 2,
+                      identity_binding: [thaid, twofa],
+                      note_th: "ผู้ว่าจ้างใช้ Digital Signature; ผู้รับจ้างยืนยันตัวตน 2FA/ThaID ก่อนลงนาม" }
+      e_seal:       { level: BASELINE, required: true, applies_to: [employer] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, transmission_log],
+                      link_to: [e_tax_invoice, delivery_system] }
+      e_stamp_duty: { level: LOCKED,   required: true, instrument_th: "จ้างทำของ",
+                      deadline_days: 15, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  gov-procurement:
+    version: 1
+    name_th: สัญญาจัดซื้อจัดจ้างภาครัฐ (G2B)
+    summary_th: หน่วยงานรัฐทำสัญญากับเอกชนภายใต้ พ.ร.บ.จัดซื้อจัดจ้างฯ ใช้ร่างสัญญามาตรฐานที่รัฐกำหนด
+    group: C
+    scenario_ref: 10
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "11", "12", "26"],
+             other_th: "พ.ร.บ.การจัดซื้อจัดจ้างและการบริหารพัสดุภาครัฐ 2560; ระเบียบงานสารบรรณ (e-Saraban)" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [tor, qualifications, attachments],
+                      note_th: "ใช้ร่างสัญญามาตรฐานตามที่ภาครัฐกำหนด" }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable_ca, min_signers: 2,
+                      identity_binding: [thaid],
+                      note_th: "ฝั่งรัฐ: ผู้มีอำนาจลงนามด้วย Digital Signature ที่มีใบรับรองจาก CA" }
+      e_seal:       { level: BASELINE, required: true, applies_to: [both] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, transmission_log],
+                      access_control: restricted }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9,
+                      note_th: "โดยเฉพาะเมื่อเป็นสัญญาจ้างทำของหรือบริการ" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  # ── กลุ่ม D: การเงินและหนี้สิน ───────────────────────────────────────────
+  loan:
+    version: 1
+    name_th: สัญญากู้ยืมเงิน
+    summary_th: ให้กู้ยืมเงินระหว่างบุคคล รวมถึงกรณีตกลงกันผ่านแชทแล้วโอนเงินจริง
+    group: D
+    scenario_ref: 11
+    risk_tier: high
+    legal: { sections: ["7", "8", "9", "10", "11", "12"],
+             tax_th: "ตราสารกู้ยืมเงิน — เสียอากรเมื่อวงเงินเกิน 2,000 บาท" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any,
+                      note_th: "สาระสำคัญต้องเป็นไปตาม ป.พ.พ. ว่าด้วยหลักฐานเป็นหนังสือ" }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2,
+                      note_th: "เลือกวิธีตามมูลค่าและความเสี่ยงของสัญญา" }
+      e_seal:       { level: POLICY,   required: false,
+                      hint_th: "กรณีกู้ยืมระหว่างบุคคลธรรมดาไม่ต้องประทับตรา — แต่ถ้าเจ้าหนี้เป็นนิติบุคคลและข้อบังคับกำหนด ให้เปิดข้อนี้" }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, transmission_log] }
+      e_stamp_duty: { level: LOCKED,   required: true, condition: "amount > 2000",
+                      channel: rd_efiling_as9,
+                      note_th: "ต้องเสียอากรก่อนจึงจะใช้ฟ้องร้องบังคับคดีได้" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  guarantee:
+    version: 1
+    name_th: สัญญาค้ำประกัน
+    summary_th: บุคคลที่สามเข้ามารับผิดชอบหนี้แทนลูกหนี้ ต้องระบุมูลหนี้และขอบเขตความรับผิดให้ชัด
+    group: D
+    scenario_ref: 12
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "11", "12"], tax_th: "ตราสารค้ำประกัน" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [guaranteed_amount, liability_terms] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2,
+                      identity_binding: [otp, twofa] }
+      e_seal:       { level: POLICY,   required: false }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, transmission_log] }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+    warnings:
+      - severity: high
+        text_th: "ห้ามให้ผู้ค้ำประกันสแกนรูปลายเซ็นมาแปะเพียงอย่างเดียวโดยไม่มีการยืนยันตัวตนอื่นประกอบ — น้ำหนักพยานหลักฐานอาจไม่พอ"
+
+  hire-purchase:
+    version: 1
+    name_th: สัญญาเช่าซื้อ
+    summary_th: ขายสินค้าแบบผ่อนชำระ กรรมสิทธิ์ยังไม่โอนจนผ่อนครบ เช่น รถจักรยานยนต์ เครื่องใช้ไฟฟ้า
+    group: D
+    scenario_ref: 13
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12"], tax_th: "ตราสารเช่าซื้อ" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any,
+                      required_sections: [asset_detail, installment, interest, repossession_terms] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2 }
+      e_seal:       { level: BASELINE, required: true, applies_to: [lessor] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, transmission_log] }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  # ── กลุ่ม E: เช่าและอสังหาริมทรัพย์ ───────────────────────────────────────
+  lease-property:
+    version: 1
+    name_th: สัญญาเช่าที่พักอาศัย / สำนักงาน
+    summary_th: ให้เช่าห้องพักอาศัยหรือพื้นที่สำนักงาน ระบุค่าเช่า เงินมัดจำ และระยะเวลาเช่า
+    group: E
+    scenario_ref: 14
+    risk_tier: medium
+    legal: { sections: ["8", "9", "10", "12"], tax_th: "ตราสารเช่าอสังหาริมทรัพย์" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any,
+                      required_sections: [rent, deposit, house_rules] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2 }
+      e_seal:       { level: POLICY,   required: false, applies_to: [lessor] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail] }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9,
+                      note_th: "ผู้ให้เช่าเป็นผู้ยื่นชำระ — จำเป็นต่อการฟ้องขับไล่" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  sale-purchase-promise:
+    version: 1
+    name_th: สัญญาจะซื้อจะขายอสังหาริมทรัพย์
+    summary_th: วางมัดจำจองซื้ออสังหาฯ ก่อนโอนกรรมสิทธิ์จริง เช่น จองคอนโด พร้อมเงื่อนไขริบมัดจำ
+    group: E
+    scenario_ref: 15
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "11", "12"] }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any,
+                      required_sections: [price, deposit_forfeiture_terms] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2,
+                      identity_binding: [thaid],
+                      note_th: "ผู้จะซื้อต้องยืนยันตัวตนระดับสูง (ThaID) ป้องกันการแอบอ้างสวมสิทธิ์" }
+      e_seal:       { level: BASELINE, required: true, applies_to: [seller] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity, transmission_log] }
+      e_stamp_duty: { level: LOCKED,   required: false,
+                      reason_th: "สัญญาจะซื้อจะขายไม่อยู่ในบังคับต้องปิดอากรตามบัญชีอัตราอากรแสตมป์" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  lease-movable:
+    version: 1
+    name_th: สัญญาเช่าสังหาริมทรัพย์ (เครื่องจักร/อุปกรณ์)
+    summary_th: เช่าเครื่องจักรหรืออุปกรณ์มูลค่าสูง เช่น รถขุด พร้อมเงื่อนไขความรับผิดหากทรัพย์ชำรุด
+    group: E
+    scenario_ref: 16
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12"], tax_th: "ตราสารเช่าทรัพย์" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [asset_detail, rent_rate, damage_liability] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2,
+                      identity_binding: [thaid, twofa] }
+      e_seal:       { level: BASELINE, required: true, applies_to: [lessor] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity] }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  # ── กลุ่ม F: ปกป้องข้อมูลและทางกฎหมาย ────────────────────────────────────
+  nda:
+    version: 1
+    name_th: สัญญาไม่เปิดเผยข้อมูลความลับ (NDA)
+    summary_th: ตกลงไม่เปิดเผยข้อมูลความลับก่อนเริ่มงานร่วมกัน เช่น แผนธุรกิจ รายชื่อลูกค้า สูตรการผลิต
+    group: F
+    scenario_ref: 17
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12", "26"] }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [confidential_info_definition, penalties] }
+      e_signature:  { level: BASELINE, required: true, min_assurance: reliable, min_signers: 2 }
+      e_seal:       { level: BASELINE, required: true, applies_to: [both],
+                      note_th: "ยืนยันว่าการเก็บความลับผูกพันในระดับองค์กร" }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity],
+                      access_control: restricted }
+      e_stamp_duty: { level: LOCKED,   required: false,
+                      reason_th: "NDA โดยทั่วไปไม่เข้าข่ายตราสารตามประมวลรัษฎากร" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  mou:
+    version: 1
+    name_th: บันทึกข้อตกลงความร่วมมือ (MOU)
+    summary_th: บันทึกความร่วมมือระหว่างองค์กร เช่น มหาวิทยาลัยกับบริษัท ต้องแยกให้ชัดว่าข้อใดผูกพันทางกฎหมาย
+    group: F
+    scenario_ref: 18
+    risk_tier: medium
+    legal: { sections: ["8", "9", "10", "12"] }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [binding_clauses_summary],
+                      note_th: "สรุปหน้าแรกให้ชัดว่าข้อความใดมีผลผูกพันทางกฎหมาย" }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 2 }
+      e_seal:       { level: BASELINE, required: true, applies_to: [both] }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail], access_control: restricted }
+      e_stamp_duty: { level: LOCKED,   required: false,
+                      reason_th: "MOU เป็นการแสดงเจตจำนงร่วมมือ ยังไม่เข้าข่ายตราสาร",
+                      caveat_th: "เว้นแต่มีข้อตกลงเรื่องการจ้างทำของระบุไว้ในฉบับเดียวกัน" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  power-of-attorney:
+    version: 1
+    name_th: หนังสือมอบอำนาจ
+    summary_th: มอบอำนาจให้ผู้อื่นดำเนินการแทน ต้องระบุขอบเขตอำนาจและวันเริ่มต้น–สิ้นสุดให้ชัดเจน
+    group: F
+    scenario_ref: 19
+    risk_tier: high
+    legal: { sections: ["8", "9", "10", "12"],
+             tax_th: "ตราสารใบมอบอำนาจ — 10 หรือ 30 บาท แล้วแต่กรณี" }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: "PDF/A",
+                      required_sections: [scope_of_authority, valid_from, valid_to],
+                      note_th: "ต้องระบุขอบเขตอำนาจและระยะเวลาเริ่มต้น–สิ้นสุดให้ชัดเจน" }
+      e_signature:  { level: BASELINE, required: true, min_assurance: general, min_signers: 1 }
+      e_seal:       { level: POLICY,   required: false,
+                      hint_th: "จำเป็นเมื่อมอบอำนาจในฐานะกรรมการและข้อบังคับบริษัทกำหนด" }
+      e_original:   { level: BASELINE, required: true, lock_on: all_parties_signed, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 10,
+                      must_store: [final_file, audit_trail, party_identity],
+                      access_control: restricted }
+      e_stamp_duty: { level: LOCKED,   required: true, channel: rd_efiling_as9 }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }
+
+  # ── ทำเป็นอิเล็กทรอนิกส์ไม่ได้ (ม.3) ─────────────────────────────────────
+  # พ.ร.บ.ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์ ม.3 ไม่ใช้บังคับกับธุรกรรมเกี่ยวกับครอบครัวและมรดก
+  marriage-registration:
+    version: 1
+    name_th: จดทะเบียนสมรส
+    summary_th: กฎหมายธุรกรรมทางอิเล็กทรอนิกส์ไม่ใช้บังคับ ต้องดำเนินการ ณ สำนักทะเบียนตามปกติ
+    group: X
+    blocked: true
+    blocked_reason_th: "ม.3 — ธุรกรรมเกี่ยวกับครอบครัว ไม่อยู่ในบังคับของ พ.ร.บ.ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์"
+    legal: { sections: ["3"] }
+
+  divorce-registration:
+    version: 1
+    name_th: จดทะเบียนหย่า
+    summary_th: กฎหมายธุรกรรมทางอิเล็กทรอนิกส์ไม่ใช้บังคับ ต้องดำเนินการ ณ สำนักทะเบียนตามปกติ
+    group: X
+    blocked: true
+    blocked_reason_th: "ม.3 — ธุรกรรมเกี่ยวกับครอบครัว ไม่อยู่ในบังคับของ พ.ร.บ.ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์"
+    legal: { sections: ["3"] }
+
+  adoption:
+    version: 1
+    name_th: รับบุตรบุญธรรม / รับรองบุตร
+    summary_th: กฎหมายธุรกรรมทางอิเล็กทรอนิกส์ไม่ใช้บังคับ ต้องดำเนินการตามกระบวนการของหน่วยงานที่รับผิดชอบ
+    group: X
+    blocked: true
+    blocked_reason_th: "ม.3 — ธุรกรรมเกี่ยวกับครอบครัว ไม่อยู่ในบังคับของ พ.ร.บ.ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์"
+    legal: { sections: ["3"] }
+
+  will:
+    version: 1
+    name_th: พินัยกรรม
+    summary_th: กฎหมายธุรกรรมทางอิเล็กทรอนิกส์ไม่ใช้บังคับ ต้องทำตามแบบที่ประมวลกฎหมายแพ่งและพาณิชย์กำหนด
+    group: X
+    blocked: true
+    blocked_reason_th: "ม.3 — ธุรกรรมเกี่ยวกับมรดก ไม่อยู่ในบังคับของ พ.ร.บ.ว่าด้วยธุรกรรมทางอิเล็กทรอนิกส์"
+    legal: { sections: ["3"] }
+
+  # ── โปรไฟล์ทั่วไป (ใช้เมื่อยังไม่ระบุประเภท) ──────────────────────────────
+  generic:
+    version: 1
+    name_th: เอกสาร/สัญญาทั่วไป (ยังไม่ระบุประเภท)
+    summary_th: ยังไม่ระบุประเภทสัญญา ใช้เมื่อต้องการเพียงลายนิ้วมือเอกสารและเวลาที่เชื่อถือได้
+    group: A
+    risk_tier: low
+    legal: { sections: ["7", "8", "9", "10", "11", "12"] }
+    steps:
+      e_document:   { level: BASELINE, required: true, format: any }
+      e_signature:  { level: BASELINE, required: false, min_assurance: general, min_signers: 1 }
+      e_seal:       { level: POLICY,   required: false }
+      e_original:   { level: BASELINE, required: true, lock_on: certified, timestamp: ntp }
+      e_retention:  { level: BASELINE, required: true, period_years: 5,
+                      must_store: [audit_trail] }
+      e_stamp_duty: { level: POLICY,   required: false,
+                      reason_th: "ตรวจสอบเองว่าเข้าข่ายตราสารตามประมวลรัษฎากรหรือไม่" }
+      print_out:    { level: RUNTIME,  required: false, self_printed_valid: true }

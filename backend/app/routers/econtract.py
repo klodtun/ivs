@@ -6,13 +6,13 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, UserRole, EContractCert
 from app.middleware.auth import require_role, get_current_user
-from app.services import econtract_service
+from app.services import econtract_service, profile_service, compliance_service
 from app.services.audit_service import create_audit_log
 
 router = APIRouter(prefix="/api/econtract", tags=["e-Contract"])
@@ -41,31 +41,112 @@ async def list_certs(
     return out
 
 
+# ── Contract Profiles (ชั้น 7 เรื่อง) ────────────────────────────────────
+
+@router.get("/profiles")
+async def list_profiles(
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ประเภทสัญญาที่เลือกได้ + ขั้นตอนที่บังคับของแต่ละประเภท"""
+    return {
+        "profiles": profile_service.list_profiles(),
+        "groups": profile_service.GROUP_LABELS,
+        "steps": [
+            {"key": k, **profile_service.STEP_META[k]} for k in profile_service.STEP_KEYS
+        ],
+    }
+
+
+@router.get("/handbook")
+async def handbook_info(
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ข้อมูลคู่มือ e-Contract ของ ETDA และสถานะว่ามีไฟล์ให้ดาวน์โหลดหรือไม่"""
+    return profile_service.handbook_info()
+
+
+@router.get("/handbook/download")
+async def handbook_download(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ดาวน์โหลดคู่มือ e-Contract (ETDA) — 144 หน้า"""
+    info = profile_service.handbook_info()
+    if not info["available"]:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "ยังไม่ได้ติดตั้งไฟล์คู่มือบนเครื่องนี้ — "
+                f"วางไฟล์ '{profile_service.HANDBOOK_FILENAME}' ไว้ที่ {profile_service.HANDBOOK_DIR}"
+            ),
+        )
+    create_audit_log(
+        db, request, user=user, action="econtract_handbook_download",
+        resource_type="econtract", resource_id="handbook",
+        details=f"ดาวน์โหลดคู่มือ e-Contract (ETDA) · {info['size_bytes']} bytes",
+    )
+    db.commit()
+    return FileResponse(
+        profile_service.handbook_path(),
+        media_type="application/pdf",
+        filename=info["download_name"],
+    )
+
+
+@router.get("/profiles/{profile_key}")
+async def get_profile(
+    profile_key: str,
+    sector: str = "",
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """โปรไฟล์ที่ resolve แล้ว (baseline + overlay ภาครัฐ ถ้าระบุ)"""
+    try:
+        return profile_service.resolve(profile_key, sector=sector or None)
+    except profile_service.ProfileError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# ── Certify / Verify ─────────────────────────────────────────────────────
+
 @router.post("/certify")
 async def certify(
     request: Request,
     file: UploadFile = File(...),
     signer: str = Form(""),
     note: str = Form(""),
+    profile_key: str = Form("generic"),
+    sector: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
-    """Issue an integrity + trusted-timestamp certificate for an uploaded file."""
+    """Issue an integrity + trusted-timestamp certificate for an uploaded file.
+
+    `profile_key` กำหนดว่าสัญญาชนิดนี้ต้องทำอะไรบ้างใน 7 เรื่อง — โปรไฟล์จะถูกแช่แข็ง
+    ไว้กับใบรับรองเพื่อให้ประเมินย้อนหลังได้ด้วยกฎชุดเดิม
+    """
     data = await file.read()
     if not data:
         raise HTTPException(status_code=422, detail="ไฟล์ว่าง")
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=422, detail="ไฟล์ใหญ่เกิน 25 MB")
 
-    cert = econtract_service.certify(
-        db, filename=file.filename or "document",
-        data=data, signer=signer or user.username, note=note,
-        created_by=user.id,
-    )
+    try:
+        cert = econtract_service.certify(
+            db, filename=file.filename or "document",
+            data=data, signer=signer or user.username, note=note,
+            created_by=user.id, profile_key=profile_key or "generic", sector=sector,
+        )
+    except ValueError as e:
+        # ม.3 — ธุรกรรมครอบครัว/มรดก ทำเป็นอิเล็กทรอนิกส์ไม่ได้
+        raise HTTPException(status_code=422, detail=str(e))
     create_audit_log(
         db, request, user=user, action="econtract_certify", resource_type="econtract",
         resource_id=cert["cert_id"],
-        details=f"ออกใบรับรอง {cert['cert_id']} · {cert['filename']} · SHA-256 {cert['sha256'][:16]}…",
+        details=(
+            f"ออกใบรับรอง {cert['cert_id']} · {cert['filename']} · "
+            f"SHA-256 {cert['sha256'][:16]}… · โปรไฟล์ {cert['profile_key']} v{cert['profile_version']}"
+        ),
     )
     db.commit()
     return cert
@@ -132,6 +213,99 @@ async def sign(
     )
     db.commit()
     return sig
+
+
+@router.get("/{cert_id}/compliance")
+async def compliance(
+    cert_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """รายงาน 7 เรื่อง — เอกสารนี้ทำอะไรไปแล้วบ้าง และยังค้างอะไร"""
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="ไม่พบใบรับรอง")
+    return compliance_service.evaluate(db, cert)
+
+
+@router.get("/{cert_id}/stamp-duty")
+async def stamp_duty_info(
+    cert_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ข้อมูลสำหรับยื่นขอเสียอากรแสตมป์ (อ.ส.9) — JSON"""
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="ไม่พบใบรับรอง")
+    return compliance_service.stamp_duty_payload(db, cert)
+
+
+@router.get("/{cert_id}/stamp-duty/download")
+async def stamp_duty_download(
+    cert_id: str,
+    request: Request,
+    format: str = "txt",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """ดาวน์โหลดใบข้อมูลสำหรับยื่น อ.ส.9 (txt = พิมพ์ได้, json = ป้อนเข้าระบบอื่น)"""
+    cert = db.query(EContractCert).filter(EContractCert.cert_id == cert_id).first()
+    if not cert:
+        raise HTTPException(status_code=404, detail="ไม่พบใบรับรอง")
+    payload = compliance_service.stamp_duty_payload(db, cert)
+
+    if format == "json":
+        body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        media, ext = "application/json; charset=utf-8", "json"
+    else:
+        body = compliance_service.stamp_duty_worksheet_text(payload).encode("utf-8")
+        media, ext = "text/plain; charset=utf-8", "txt"
+
+    create_audit_log(
+        db, request, user=user, action="econtract_stamp_duty_export",
+        resource_type="econtract", resource_id=cert_id,
+        details=f"ดาวน์โหลดข้อมูลยื่นอากรแสตมป์ (อ.ส.9) รูปแบบ {ext}",
+    )
+    db.commit()
+    return Response(
+        content=body, media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{cert_id}_stamp_duty.{ext}"'},
+    )
+
+
+@router.post("/{cert_id}/steps/{step_key}")
+async def record_step(
+    cert_id: str,
+    step_key: str,
+    request: Request,
+    actor: str = Form(""),
+    ref: str = Form(""),
+    note: str = Form(""),
+    status: str = Form("done"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """บันทึกขั้นตอนที่เกิดนอกระบบ — e-Seal, e-Stamp Duty, Print out, e-Retention
+
+    ขั้นตอนอื่น (e-Document / e-Signature / e-Original) ระบบตรวจจากข้อมูลจริงเอง
+    บันทึกด้วยมือไม่ได้ เพื่อไม่ให้ใครกดผ่านทั้งที่ยังไม่ได้ทำ
+    """
+    try:
+        rec = compliance_service.record_step(
+            db, cert_id=cert_id, step_key=step_key, actor=actor.strip(),
+            ref=ref.strip(), note=note, status=status, recorded_by=user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    label = profile_service.STEP_META.get(step_key, {}).get("short_th", step_key)
+    create_audit_log(
+        db, request, user=user, action="econtract_step", resource_type="econtract",
+        resource_id=cert_id,
+        details=f"บันทึกขั้นตอน {label} ({status}) · {actor or '—'} · อ้างอิง {ref or '—'}",
+    )
+    db.commit()
+    return rec
 
 
 @router.get("/{cert_id}/evidence")

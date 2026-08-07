@@ -366,7 +366,10 @@ export const api = {
   // e-Contract certificates (integrity + trusted timestamp)
   listEContracts: () => request<any[]>("/econtract"),
 
-  certifyEContract: async (file: File, signer: string, note: string) => {
+  certifyEContract: async (
+    file: File, signer: string, note: string,
+    profileKey = "generic", sector = "",
+  ) => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -374,7 +377,44 @@ export const api = {
     fd.append("file", file);
     fd.append("signer", signer);
     fd.append("note", note);
+    fd.append("profile_key", profileKey);
+    fd.append("sector", sector);
     const res = await fetch(`${BACKEND_DIRECT}/econtract/certify`, { method: "POST", headers, body: fd });
+    if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
+    return res.json();
+  },
+
+  // Contract Profiles — ชั้นที่อธิบาย 7 เรื่องของวงจร e-Contract
+  listEContractProfiles: () => request<any>("/econtract/profiles"),
+
+  getEContractProfile: (key: string, sector = "") =>
+    request<any>(`/econtract/profiles/${key}${sector ? `?sector=${sector}` : ""}`),
+
+  // คู่มือ e-Contract ของ ETDA (ไฟล์ติดตั้งในเครื่อง ไม่ได้ commit เข้า repo)
+  getEContractHandbook: () => request<any>("/econtract/handbook"),
+
+  econtractHandbookUrl: () => `${BACKEND_DIRECT}/econtract/handbook/download`,
+
+  getEContractCompliance: (certId: string) =>
+    request<any>(`/econtract/${certId}/compliance`),
+
+  // ใบข้อมูลสำหรับยื่นขอเสียอากรแสตมป์ (อ.ส.9) ที่ระบบ e-Filing กรมสรรพากร
+  stampDutyDownloadUrl: (certId: string, format: "txt" | "json" = "txt") =>
+    `${BACKEND_DIRECT}/econtract/${certId}/stamp-duty/download?format=${format}`,
+
+  recordEContractStep: async (
+    certId: string, stepKey: string,
+    { actor = "", ref = "", note = "", status = "done" }: Record<string, string> = {},
+  ) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("actor", actor);
+    fd.append("ref", ref);
+    fd.append("note", note);
+    fd.append("status", status);
+    const res = await fetch(`${BACKEND_DIRECT}/econtract/${certId}/steps/${stepKey}`, { method: "POST", headers, body: fd });
     if (!res.ok) { const e = await res.json().catch(() => ({ detail: "Request failed" })); throw new Error(e.detail || "Request failed"); }
     return res.json();
   },

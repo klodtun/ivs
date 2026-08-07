@@ -137,6 +137,13 @@ def _apply_lightweight_migrations():
         ("app_pdpa", "anonymization_mode", "TEXT DEFAULT 'none'"),
         ("opencli_imports", "project_id", "INTEGER"),
         ("opencli_code_versions", "module", "VARCHAR(60)"),
+        # e-Contract: ชั้นโปรไฟล์ 7 เรื่อง
+        ("econtract_certs", "profile_key", "VARCHAR(80) DEFAULT 'generic'"),
+        ("econtract_certs", "profile_version", "INTEGER DEFAULT 1"),
+        ("econtract_certs", "profile_sector", "VARCHAR(20) DEFAULT ''"),
+        ("econtract_certs", "effective_profile_json", "TEXT DEFAULT ''"),
+        ("econtract_certs", "effective_profile_hash", "VARCHAR(64) DEFAULT ''"),
+        ("econtract_certs", "doc_format", "VARCHAR(20) DEFAULT ''"),
     ]
     with engine.begin() as conn:
         for table, column, coldef in additions:

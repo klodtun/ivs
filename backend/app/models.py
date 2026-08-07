@@ -255,6 +255,40 @@ class EContractCert(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
+    # ── Contract Profile (ชั้น 7 เรื่อง) ───────────────────────────────
+    # โปรไฟล์ถูก resolve ตอนออกใบรับรองแล้ว "แช่แข็ง" ไว้ที่นี่ — สัญญาที่ทำวันนี้ต้องถูก
+    # ประเมินด้วยกฎชุดของวันนี้ตลอดไป แม้ baseline จะเปลี่ยนในอนาคต
+    profile_key = Column(String(80), default="generic", index=True)
+    profile_version = Column(Integer, default=1)
+    profile_sector = Column(String(20), default="")        # gov | private | ""
+    effective_profile_json = Column(Text, default="")
+    effective_profile_hash = Column(String(64), default="")
+    doc_format = Column(String(20), default="")            # PDF/A-2b | PDF | DOCX | other
+
+
+class EContractStep(Base):
+    """
+    บันทึกว่า "เอกสารนี้ทำอะไรไปแล้วบ้าง" ใน 7 เรื่องของวงจร e-Contract
+
+    บางขั้นตอนระบบรู้เอง (e-Document/e-Signature/e-Original) — บางขั้นตอนเกิดนอกระบบและ
+    ต้องบันทึกเข้ามา เช่น ประทับตรานิติบุคคล ชำระอากรแสตมป์ผ่าน e-Filing หรือทำสิ่งพิมพ์ออก
+    ตารางนี้เก็บเฉพาะขั้นตอนกลุ่มหลัง แล้ว compliance_service นำไปรวมกับข้อเท็จจริงที่ระบบ
+    รู้เองเพื่อประเมินเทียบโปรไฟล์
+    """
+    __tablename__ = "econtract_steps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cert_id = Column(String(40), ForeignKey("econtract_certs.cert_id"), index=True, nullable=False)
+    step_key = Column(String(30), nullable=False)   # e_seal | e_stamp_duty | print_out | ...
+    status = Column(String(20), default="done")     # done | waived
+    actor = Column(String(200), default="")         # ใคร/องค์กรใดเป็นผู้ดำเนินการ
+    ref = Column(String(200), default="")           # รหัสรับรองการเสียอากร / เลขที่อ้างอิง
+    detail = Column(Text, default="")               # JSON เพิ่มเติม (จำนวนเงิน ช่องทาง ฯลฯ)
+    note = Column(Text, default="")
+    recorded_at = Column(DateTime, nullable=False)  # เวลา NTP
+    recorded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
 
 class EContractSignature(Base):
     """
