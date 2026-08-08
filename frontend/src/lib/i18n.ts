@@ -968,8 +968,8 @@ const translations: Record<Locale, Record<string, string>> = {
     // Consulting
     "nav.consulting": "ปรึกษา",
     "nav.econtract": "e-Contract",
-    "ect.title": "e-Contract — ใบรับรองเวลาและความครบถ้วน",
-    "ect.subtitle": "ออกใบรับรองเวลาที่เชื่อถือได้ (NTP ราชการไทย) + ลายนิ้วมือเอกสาร (SHA-256) ตาม พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์",
+    "ect.title": "e-Contract — สัญญาอิเล็กทรอนิกส์",
+    "ect.subtitle": "จัดทำ ลงนาม ตรึงต้นฉบับ เก็บหลักฐาน ครบ 7 ขั้นตอน",
     "ect.tab_issue": "ออกใบรับรอง",
     "ect.tab_verify": "ตรวจสอบ",
     "ect.tab_list": "ประวัติ/ลงนาม",
@@ -2422,8 +2422,8 @@ frontend/dist/         → Optional (iVS auto-builds if missing)
     // Consulting
     "nav.consulting": "Consulting",
     "nav.econtract": "e-Contract",
-    "ect.title": "e-Contract — Timestamp & Integrity Certificate",
-    "ect.subtitle": "Issue a trusted timestamp (Thai legal NTP) + document fingerprint (SHA-256) under the Electronic Transactions Act",
+    "ect.title": "e-Contract — Electronic Contracts",
+    "ect.subtitle": "Draft, sign, freeze and retain — all seven stages",
     "ect.tab_issue": "Issue",
     "ect.tab_verify": "Verify",
     "ect.tab_list": "History / Sign",
