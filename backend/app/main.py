@@ -120,6 +120,46 @@ def _reassign_orphan_owners():
         db.close()
 
 
+def _reconcile_app_states():
+    """Make the dashboard agree with Docker about what is actually running.
+
+    A deploy that was interrupted — upload cut short, backend restarted
+    mid-build — leaves a row behind with no container. Shown as RUNNING or
+    BUILDING it sends the user looking for a Docker fault when the truth is
+    simply that the deploy never finished, so mark those ERROR at boot.
+    """
+    from app.models import App, AppStatus
+    from app.services.docker_service import docker_service
+    if not docker_service.is_available():
+        return
+    db = SessionLocal()
+    try:
+        stale = (
+            db.query(App)
+            .filter(App.status.in_([AppStatus.RUNNING, AppStatus.BUILDING]))
+            .all()
+        )
+        fixed = 0
+        for app in stale:
+            live = docker_service.resolve_live_container_id(
+                app.container_id or "", f"ivs-{app.slug}"
+            )
+            if live:
+                if live != app.container_id:
+                    app.container_id = live
+                continue
+            app.status = AppStatus.ERROR
+            app.container_id = None
+            fixed += 1
+        if fixed:
+            db.commit()
+            logger.warning(f"Marked {fixed} app(s) ERROR — no container found for them")
+    except Exception as e:
+        logger.warning(f"App state reconcile failed: {e}")
+    finally:
+        db.close()
+
+
 def _apply_lightweight_migrations():
     """Idempotent ALTER TABLE for columns added after the initial schema.
 
@@ -213,6 +253,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Integrity check failed: {e}")
     # Put the login back in front of every app marked "protected" — the gates
     # are plain sockets, so they die with the process and must be re-opened.
+    _reconcile_app_states()
     try:
         from app.services.app_gate_service import app_gate_manager
         await app_gate_manager.sync_all()
