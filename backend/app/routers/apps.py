@@ -809,6 +809,27 @@ async def set_app_logo(
     return {"message": "Logo updated", "has_logo": bool(value)}
 
 
+def _mark_container_missing(app: App, db: Session):
+    """Record that this app has no container, and say so instead of pretending.
+
+    start/restart used to set RUNNING unconditionally, so an app whose deploy
+    never finished (the upload was interrupted, the backend restarted mid-build)
+    showed as "running" on the dashboard while nothing was listening on its
+    port — the state that sends people hunting for a Docker problem that isn't
+    there. A missing container is a deploy that has to be redone.
+    """
+    app.status = AppStatus.ERROR
+    app.container_id = None
+    db.commit()
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"แอป {app.name} ไม่มีคอนเทนเนอร์ — การดีพลอยไม่สำเร็จหรือถูกขัดจังหวะ "
+            f"กรุณาดีพลอยไฟล์ .zip ของแอปนี้ใหม่อีกครั้ง"
+        ),
+    )
+
+
 def _rebuild_for_access_mode(app: App, db: Session, mode: str) -> bool:
     """Recreate the app's container so its port binding matches `mode`.
 
@@ -910,8 +931,9 @@ async def start_app(
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
     live_id = _heal_container_id(app, db)
-    if live_id:
-        docker_service.start_container(live_id)
+    if not live_id:
+        _mark_container_missing(app, db)
+    docker_service.start_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
 
@@ -957,8 +979,9 @@ async def restart_app(
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
     live_id = _heal_container_id(app, db)
-    if live_id:
-        docker_service.restart_container(live_id)
+    if not live_id:
+        _mark_container_missing(app, db)
+    docker_service.restart_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
     return {"message": f"{app.name} restarted"}
