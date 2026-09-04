@@ -66,7 +66,7 @@ export function GiteaCredentialsCard() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
-            🔑 {t("gitea.creds.title")}
+             {t("gitea.creds.title")}
           </h4>
           <p className="text-[10px] text-gray-500 mt-0.5">{t("gitea.creds.subtitle")}</p>
         </div>
@@ -124,7 +124,7 @@ export function GiteaCredentialsCard() {
                 tabIndex={-1}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                {showPass ? "🙈" : "👁"}
+                {showPass ? "" : ""}
               </button>
             </div>
             <p className="text-[9px] text-gray-400 mt-0.5">{t("gitea.creds.password_hint")}</p>
@@ -132,7 +132,7 @@ export function GiteaCredentialsCard() {
 
           {error && (
             <div className="text-[10px] text-red-600 bg-red-50 border border-red-200 rounded p-1.5">
-              ⚠ {error}
+               {error}
             </div>
           )}
 
@@ -163,7 +163,7 @@ export function GiteaCredentialsCard() {
               </span>
               <button
                 onClick={() => copy(creds.username, "user")}
-                className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded hover:bg-brand-50"
+                className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded-md hover:bg-brand-50"
               >
                 {copied === "user" ? `✓ ${t("gitea.creds.copied")}` : t("gitea.creds.copy")}
               </button>
@@ -182,13 +182,13 @@ export function GiteaCredentialsCard() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setShowPass((v) => !v)}
-                  className="text-[9px] text-gray-500 hover:text-gray-700 px-1 py-px rounded hover:bg-gray-100"
+                  className="text-[9px] text-gray-500 hover:text-gray-700 px-1 py-px rounded-md hover:bg-gray-100"
                 >
-                  {showPass ? `🙈 ${t("gitea.creds.hide")}` : `👁 ${t("gitea.creds.show")}`}
+                  {showPass ? ` ${t("gitea.creds.hide")}` : ` ${t("gitea.creds.show")}`}
                 </button>
                 <button
                   onClick={() => copy(creds.password, "pass")}
-                  className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded hover:bg-brand-50"
+                  className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded-md hover:bg-brand-50"
                 >
                   {copied === "pass" ? `✓ ${t("gitea.creds.copied")}` : t("gitea.creds.copy")}
                 </button>

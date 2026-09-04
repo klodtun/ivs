@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { FieldPolicyPanel } from "@/components/field-policy-panel";
+import { RopaPanel } from "@/components/ropa-panel";
 import { useLang } from "@/components/lang-provider";
 import { cn, formatDateTimeSeconds, formatLegalTimestamp, timeAgo } from "@/lib/utils";
 import { Pagination, usePagination } from "@/components/pagination";
@@ -15,6 +18,7 @@ import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
 import { User, App, AuditLog, AuditLogExport } from "@/types";
 import { MachineRegistryEntry, DiscoveredMachine } from "@/lib/api";
+import { PageHeader } from "@/components/ui";
 
 type Tab = "users" | "logs" | "dns" | "network" | "pdpa" | "gitea" | "autostart" | "license" | "enterprise" | "tunnel";
 
@@ -168,13 +172,13 @@ function EnterpriseTab({ t }: { t: (k: string) => string }) {
             <button
               onClick={discover}
               disabled={discovering}
-              className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               {discovering ? t("enterprise.discovering") : t("enterprise.discover")}
             </button>
             <button
               onClick={() => setShowAdd(true)}
-              className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
+              className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-md hover:bg-brand-700 transition-colors"
             >
               {t("enterprise.add_machine")}
             </button>
@@ -207,11 +211,11 @@ function EnterpriseTab({ t }: { t: (k: string) => string }) {
           </div>
           <div className="flex gap-2">
             <button onClick={addMachine} disabled={saving || !addForm.fingerprint}
-              className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50">
+              className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50">
               {saving ? "..." : t("enterprise.add_machine")}
             </button>
             <button onClick={() => setShowAdd(false)}
-              className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50">
+              className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50">
               Cancel
             </button>
           </div>
@@ -232,7 +236,7 @@ function EnterpriseTab({ t }: { t: (k: string) => string }) {
                 <span className="text-green-600 text-[10px] font-medium">{t("enterprise.already_registered")}</span>
               ) : (
                 <button onClick={() => addDiscovered(d)}
-                  className="px-2 py-1 text-[10px] bg-brand-600 text-white rounded hover:bg-brand-700">
+                  className="px-2 py-1 text-[10px] bg-brand-600 text-white rounded-md hover:bg-brand-700">
                   {t("enterprise.add_discovered")}
                 </button>
               )}
@@ -270,7 +274,7 @@ function EnterpriseTab({ t }: { t: (k: string) => string }) {
             </div>
             {!m.is_self && (
               <button onClick={() => removeMachine(m.fingerprint)}
-                className="shrink-0 px-2 py-1 text-[10px] text-red-600 border border-red-200 rounded hover:bg-red-50">
+                className="shrink-0 px-2 py-1 text-[10px] text-red-600 border border-red-200 rounded-md hover:bg-red-50">
                 {t("enterprise.remove")}
               </button>
             )}
@@ -287,7 +291,15 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [tab, setTab] = useState<Tab>("users");
+  // รับแท็บจาก ?tab= เพื่อให้ลิงก์จากหน้าแรกพาไปถึงเรื่องที่กด ไม่ใช่แค่หน้านี้
+  // ลิงก์ที่พาไปหน้าถูกแต่แท็บผิด ทำให้คนต้องหาเองต่อ ซึ่งเท่ากับไม่ได้ลิงก์
+  const searchParams = useSearchParams();
+  const TABS: Tab[] = ["users", "logs", "dns", "network", "pdpa", "gitea",
+                       "autostart", "license", "enterprise", "tunnel"];
+  const requested = searchParams.get("tab") as Tab | null;
+  const [tab, setTab] = useState<Tab>(
+    requested && TABS.includes(requested) ? requested : "users"
+  );
   // Tunnel provider config (per-iVS credentials)
   const [tunnelCfg, setTunnelCfg] = useState<{
     provider: string; ngrok_configured: boolean; cloudflare_configured: boolean;
@@ -433,6 +445,30 @@ export default function SettingsPage() {
 
   // PDPA
   const [pdpaRecords, setPdpaRecords] = useState<any[]>([]);
+  // ค้นหาและตัวกรองของทะเบียน ROPA
+  //
+  // ทะเบียนโตอย่างเดียวตามกฎใน OPERATIONS.md — 44 แถววันนี้ และจะมากขึ้นเรื่อย ๆ
+  // เมื่อแอปถูกปลด ตารางที่ไม่มีตัวกรองจึงใช้ตอบคำถามจริงไม่ได้ตั้งแต่ต้น
+  const [ropaQuery, setRopaQuery] = useState("");
+  const [ropaLife, setRopaLife] = useState<"all" | "active" | "ceased">("all");
+  const [ropaStatus, setRopaStatus] = useState<"all" | "complete" | "partial" | "not_started">("all");
+
+  // กรองก่อนแบ่งหน้า ไม่ใช่หลัง — ไม่งั้นเลขรวมจะเป็นของทั้งทะเบียน
+  // แต่แถวที่เห็นเป็นของที่กรองแล้ว ซึ่งอ่านแล้วเข้าใจผิดทุกครั้ง
+  const ropaFiltered = pdpaRecords.filter((r) => {
+    if (ropaLife === "active" && r.app_removed_at) return false;
+    if (ropaLife === "ceased" && !r.app_removed_at) return false;
+    if (ropaStatus !== "all" && r.status !== ropaStatus) return false;
+    const q = ropaQuery.trim().toLowerCase();
+    if (!q) return true;
+    const hay = [
+      r.app_name, r.app_slug, r.purpose, r.retention_period,
+      ...(r.pii_fields || []), ...(r.pii_auto_detected || []),
+    ].join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+  const ropaPage = usePagination<any>(ropaFiltered, 25);
+
   const [loadingPdpa, setLoadingPdpa] = useState(false);
   const [scanningAll, setScanningAll] = useState(false);
   const [exportingRopa, setExportingRopa] = useState(false);
@@ -710,7 +746,7 @@ export default function SettingsPage() {
       a.download = result.filename;
       a.click();
       URL.revokeObjectURL(blobUrl);
-      setToastMsg(`✅ ${t("settings.export_success")} — ${result.filename} (${result.record_count} ${t("settings.activities_count")}, SHA-256: ${result.sha256_hash.substring(0, 16)}...)`);
+      setToastMsg(` ${t("settings.export_success")} — ${result.filename} (${result.record_count} ${t("settings.activities_count")}, SHA-256: ${result.sha256_hash.substring(0, 16)}...)`);
       setTimeout(() => setToastMsg(null), 8000);
     } catch (e: any) { alert(e.message); } finally { setExportingRopa(false); }
   };
@@ -774,7 +810,7 @@ export default function SettingsPage() {
       await api.updatePrivacyNotice(editPN.app_id, pnForm);
       await loadPdpa();
       setEditPN(null);
-      setToastMsg(`✅ ${t("settings.pn_saved")} — ${editPN.app_name}`);
+      setToastMsg(` ${t("settings.pn_saved")} — ${editPN.app_name}`);
       setTimeout(() => setToastMsg(null), 5000);
     } catch (e: any) { alert(e.message); } finally { setSavingPN(false); }
   };
@@ -814,8 +850,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">{t("settings.title")}</h1>
-        <p className="text-gray-500 text-[10px] mt-0.5">{t("settings.subtitle")}</p>
+        <PageHeader title={t("settings.title")} help={t("settings.subtitle")} />
       </div>
 
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
@@ -965,12 +1000,6 @@ export default function SettingsPage() {
           {ntpStatus && (
             <div className={cn("rounded-lg border p-3 flex items-center gap-3",
               ntpStatus.synced ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200")}>
-              <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
-                ntpStatus.synced ? "bg-green-100" : "bg-red-100")}>
-                <svg className={cn("w-4 h-4", ntpStatus.synced ? "text-green-600" : "text-red-600")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className={cn("text-xs font-semibold", ntpStatus.synced ? "text-green-800" : "text-red-800")}>
@@ -998,13 +1027,10 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={toggleExportCollapsed}
-                className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-lg group"
+                className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-md group"
                 aria-expanded={false}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
                   <div className="text-left min-w-0">
                     <h3 className="font-semibold text-gray-900 text-sm leading-tight">
                       {t("settings.export_history")}
@@ -1035,9 +1061,6 @@ export default function SettingsPage() {
                 className="flex items-start gap-2 text-left flex-1 min-w-0 hover:opacity-80 transition group"
                 title={t("retention.click_to_collapse")}
               >
-                <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
                     {t("settings.export_history")}
@@ -1049,7 +1072,7 @@ export default function SettingsPage() {
                 </div>
               </button>
               <button onClick={handleExport} disabled={exporting}
-                className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-medium rounded-md hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-1 flex-shrink-0">
+                className="px-3 py-1.5 bg-brand-600 text-white text-[10px] font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50 flex items-center gap-1 flex-shrink-0">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -1154,7 +1177,7 @@ export default function SettingsPage() {
 
             {/* Example */}
             <div className="bg-blue-50 rounded-md p-3 text-[10px] text-blue-800">
-              <p className="font-medium">💡 {t("settings.dns_example")} <code className="bg-blue-100 px-1 rounded">{dnsDomain || "vibe.local"}</code></p>
+              <p className="font-medium">{t("settings.dns_example")} <code className="bg-blue-100 px-1 rounded">{dnsDomain || "vibe.local"}</code></p>
               <p className="mt-1">{t("settings.dns_example2")} <code className="bg-blue-100 px-1 rounded font-mono">http://myapp.{dnsDomain || "vibe.local"}</code></p>
             </div>
 
@@ -1176,18 +1199,13 @@ export default function SettingsPage() {
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
-                  </svg>
-                </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 text-sm">{t("settings.net_title")}</h3>
                   <p className="text-[10px] text-gray-500">{t("settings.net_desc")}</p>
                 </div>
               </div>
               <button onClick={loadNetworkInfo} disabled={loadingNetwork}
-                className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-medium rounded-md hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1">
+                className="px-3 py-1.5 bg-brand-600 text-white text-[10px] font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50 flex items-center gap-1">
                 <svg className={cn("w-3 h-3", loadingNetwork && "animate-spin")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
@@ -1284,11 +1302,6 @@ export default function SettingsPage() {
           {/* Quick Setup — mDNS */}
           <div className="bg-white rounded-lg border-2 border-brand-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-brand-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                </svg>
-              </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.net_mdns_quick_title")}</h3>
                 <p className="text-[10px] text-gray-500">{t("settings.net_mdns_quick_desc")}</p>
@@ -1369,12 +1382,6 @@ export default function SettingsPage() {
           {/* mDNS Config — Editable */}
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.net_mdns_edit_title")}</h3>
                 <p className="text-[10px] text-gray-500">{t("settings.net_mdns_edit_desc")}</p>
@@ -1415,12 +1422,6 @@ export default function SettingsPage() {
           {/* Static IP Guide */}
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                </svg>
-              </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.net_static_title")}</h3>
                 <p className="text-[10px] text-gray-500">{t("settings.net_static_desc")}</p>
@@ -1503,9 +1504,6 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
           {pwPolicy && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
               <button onClick={togglePwPolicy} className="w-full flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg">🔑</span>
-                </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900 text-sm">{t("settings.pw_policy_title")}</h3>
                   <p className="text-[10px] text-gray-500">{t("settings.pw_policy_desc")}</p>
@@ -1538,10 +1536,10 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                 ))}
               </div>
               <button onClick={savePwPolicy} disabled={pwPolicySaving}
-                className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 disabled:opacity-50">
+                className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 disabled:opacity-50">
                 {pwPolicySaving ? t("settings.pw_policy_saving") : t("settings.pw_policy_save")}
               </button>
-              <p className="text-[10px] text-purple-600">⚙ {t("settings.pw_policy_note")}</p>
+              <p className="text-[10px] text-purple-600">{t("settings.pw_policy_note")}</p>
               </>)}
             </div>
           )}
@@ -1553,9 +1551,6 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                  <span className="text-lg">🛡️</span>
-                </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 text-sm">{t("settings.pdpa_title")}</h3>
                   <p className="text-[10px] text-gray-500">{t("settings.pdpa_desc")}</p>
@@ -1563,11 +1558,11 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
               </div>
               <div className="flex gap-2">
                 <button onClick={handleScanAll} disabled={scanningAll}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-md hover:bg-blue-100 transition disabled:opacity-50">
+                  className="px-3 py-1.5 bg-gray-50 text-brand-700 text-xs font-medium rounded-md hover:bg-gray-100 transition disabled:opacity-50">
                   {scanningAll ? t("settings.pdpa_scanning") : t("settings.pdpa_scan_all")}
                 </button>
                 <button onClick={handleExportRopa} disabled={exportingRopa || pdpaRecords.length === 0}
-                  className="px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 transition disabled:opacity-50">
+                  className="px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50">
                   {exportingRopa ? t("settings.pdpa_exporting") : t("settings.pdpa_export")}
                 </button>
               </div>
@@ -1578,16 +1573,61 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
           {toastMsg && (
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between">
               <span className="text-green-800 text-xs font-medium">{toastMsg}</span>
-              <button onClick={() => setToastMsg(null)} className="text-green-600 hover:text-green-800 text-sm ml-3">✕</button>
+              <button onClick={() => setToastMsg(null)} className="text-brand-700 hover:text-brand-700 text-sm ml-3">✕</button>
             </div>
           )}
 
           {/* ROPA Table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {/* ทะเบียนโตอย่างเดียวและไม่มีวันย่อ — ตัวกรองจึงไม่ใช่ของประดับ
+                "เลิกดำเนินการแล้ว" เป็นตัวกรองที่ผู้ตรวจใช้จริง เพราะคำถามว่า
+                เคยประมวลผลอะไรบ้าง กับกำลังประมวลผลอะไรอยู่ เป็นคนละคำถาม */}
+            {!loadingPdpa && pdpaRecords.length > 0 && (
+              <div className="px-3 py-2 border-b border-gray-100 flex flex-wrap items-center gap-2">
+                <input
+                  value={ropaQuery}
+                  onChange={(e) => setRopaQuery(e.target.value)}
+                  placeholder={t("settings.ropa_search")}
+                  className="text-[11px] border border-gray-300 rounded px-2 py-1 w-56"
+                />
+                <FilterGroup
+                  value={ropaLife}
+                  onChange={(v) => setRopaLife(v as any)}
+                  options={[
+                    { v: "all", label: `${t("settings.ropa_f_all")} (${pdpaRecords.length})` },
+                    { v: "active", label: `${t("settings.ropa_f_active")} (${pdpaRecords.filter((r) => !r.app_removed_at).length})` },
+                    { v: "ceased", label: `${t("settings.ropa_f_ceased")} (${pdpaRecords.filter((r) => r.app_removed_at).length})` },
+                  ]}
+                />
+                <FilterGroup
+                  value={ropaStatus}
+                  onChange={(v) => setRopaStatus(v as any)}
+                  options={[
+                    { v: "all", label: t("settings.ropa_f_any_status") },
+                    { v: "complete", label: t("settings.pdpa_status_complete") },
+                    { v: "partial", label: t("settings.pdpa_status_partial") },
+                    { v: "not_started", label: t("settings.pdpa_status_not_started") },
+                  ]}
+                />
+                {(ropaQuery || ropaLife !== "all" || ropaStatus !== "all") && (
+                  <button
+                    onClick={() => { setRopaQuery(""); setRopaLife("all"); setRopaStatus("all"); }}
+                    className="text-[10px] text-gray-500 hover:text-gray-900 underline"
+                  >
+                    {t("settings.ropa_clear")}
+                  </button>
+                )}
+                <span className="ml-auto text-[10px] text-gray-400">
+                  {t("settings.ropa_showing")} {ropaFiltered.length}/{pdpaRecords.length}
+                </span>
+              </div>
+            )}
             {loadingPdpa ? (
               <div className="p-8 text-center text-gray-400 text-xs">Loading...</div>
             ) : pdpaRecords.length === 0 ? (
               <div className="p-8 text-center text-gray-400 text-xs">{t("settings.pdpa_no_apps")}</div>
+            ) : ropaFiltered.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-xs">{t("settings.ropa_no_match")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1605,10 +1645,25 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {pdpaRecords.map((r, i) => (
-                      <tr key={r.app_id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                        <td className="px-3 py-2 font-medium text-gray-900">{r.app_name}</td>
+                    {ropaPage.paged.map((r: any) => (
+                      <tr key={r.id ?? r.app_id} className="hover:bg-gray-50">
+                        {/* เลขลำดับมาจากตำแหน่งในทะเบียนทั้งหมด ไม่ใช่ตำแหน่งบนหน้าจอ
+                            เลขที่อ้างในรายงานที่ส่งออกไปแล้วต้องชี้แถวเดิมเสมอ
+                            ต่อให้ผู้อ่านกำลังกรองหรือเปิดอยู่หน้าที่สาม */}
+                        <td className="px-3 py-2 text-gray-400">
+                          {pdpaRecords.findIndex((x) => (x.id ?? x.app_id) === (r.id ?? r.app_id)) + 1}
+                        </td>
+                        {/* แอปที่ถูกลบยังอยู่ใน ROPA ตลอดไป — PDPA ไม่ได้สั่งให้ลบ
+                            บันทึกนี้ตามแอป และการถอดแอปไม่ได้ย้อนความจริงที่ว่า
+                            เคยมีการประมวลผลข้อมูลของใครบางคน */}
+                        <td className="px-3 py-2 font-medium text-gray-900">
+                          <span className={r.app_removed_at ? "text-gray-500" : ""}>{r.app_name}</span>
+                          {r.app_removed_at && (
+                            <span className="block text-[9px] text-amber-700 mt-0.5 font-normal">
+                              {t("settings.ropa_app_removed")} {formatLegalTimestamp(r.app_removed_at)}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-gray-600 max-w-[150px] truncate">{r.purpose || <span className="text-gray-300">—</span>}</td>
                         <td className="px-3 py-2 max-w-[200px]">
                           {(r.pii_fields?.length > 0 || r.pii_auto_detected?.length > 0) ? (
@@ -1644,10 +1699,10 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex gap-1">
-                            <button onClick={() => openPdpaEdit(r)} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] hover:bg-blue-100">
+                            <button onClick={() => openPdpaEdit(r)} className="px-2 py-0.5 bg-gray-50 text-brand-700 rounded-md text-[9px] hover:bg-gray-100">
                               {t("settings.pdpa_edit")}
                             </button>
-                            <button onClick={() => handleScanApp(r.app_id)} className="px-2 py-0.5 bg-gray-50 text-gray-600 rounded text-[9px] hover:bg-gray-100">
+                            <button onClick={() => handleScanApp(r.app_id)} className="px-2 py-0.5 bg-gray-50 text-gray-600 rounded-md text-[9px] hover:bg-gray-100">
                               {t("settings.pdpa_scan")}
                             </button>
                           </div>
@@ -1656,13 +1711,24 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     ))}
                   </tbody>
                 </table>
+                <div className="px-3 py-2 border-t border-gray-100">
+                  <Pagination
+                    total={ropaFiltered.length}
+                    page={ropaPage.page}
+                    pageSize={ropaPage.pageSize}
+                    onPageChange={ropaPage.setPage}
+                    onPageSizeChange={ropaPage.setPageSize}
+                    itemLabel={t("settings.ropa_item_label")}
+                    compact
+                  />
+                </div>
               </div>
             )}
           </div>
 
           {/* Security Base Info */}
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-3">
-            <p className="text-[10px] text-blue-700 font-medium">🔒 {t("settings.pdpa_security_base")}</p>
+            <p className="text-[10px] text-blue-700 font-medium">{t("settings.pdpa_security_base")}</p>
           </div>
 
           {/* Anonymization Prompt AI Modal */}
@@ -1670,7 +1736,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setAnonPrompt(null)}>
               <div className="bg-white rounded-lg shadow-xl p-5 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-semibold text-sm text-gray-900">✨ {t("settings.pdpa_anon_prompt_title")}: {anonPrompt.app_name}</h3>
+                  <h3 className="font-semibold text-sm text-gray-900">{t("settings.pdpa_anon_prompt_title")}: {anonPrompt.app_name}</h3>
                   <button onClick={() => setAnonPrompt(null)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
                 </div>
                 <p className="text-[10px] text-gray-500 mb-2">{t("settings.pdpa_anon_prompt_desc")}</p>
@@ -1681,7 +1747,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                   {(["anonymous", "pseudonymous"] as const).map(m => (
                     <button key={m} onClick={() => setAnonPromptTab(m)}
                       className={cn("px-3 py-1 text-[11px] rounded-md",
-                        anonPromptTab === m ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600")}>
+                        anonPromptTab === m ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600")}>
                       {m === "anonymous" ? t("settings.pdpa_anon_anonymous") : t("settings.pdpa_anon_pseudonymous")}
                     </button>
                   ))}
@@ -1691,7 +1757,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                 </pre>
                 <button
                   onClick={() => { navigator.clipboard?.writeText(anonPrompt.prompts[anonPromptTab]); setAnonCopied(true); setTimeout(() => setAnonCopied(false), 1500); }}
-                  className="mt-2 px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700">
+                  className="mt-2 px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700">
                   {anonCopied ? `✓ ${t("license.copied")}` : `⧉ ${t("settings.pdpa_anon_prompt_copy")}`}
                 </button>
               </div>
@@ -1713,14 +1779,14 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     scanResult.status === "timeout" ? "bg-amber-50 border border-amber-200 text-amber-800"
                                                      : "bg-red-50 border border-red-200 text-red-700"
                   )}>
-                    <span>⚠</span>
+
                     <div className="flex-1">
                       <p className="font-medium">
                         {scanResult.status === "timeout" ? t("settings.pdpa_scan_timeout") : t("settings.pdpa_scan_failed")}
                       </p>
                       {scanResult.scan_message && <p className="mt-0.5 opacity-80">{scanResult.scan_message}</p>}
                       <button onClick={() => handleScanApp(scanResult.app_id)}
-                        className="mt-1.5 px-2 py-0.5 bg-white border border-current/30 rounded hover:opacity-80">
+                        className="mt-1.5 px-2 py-0.5 bg-white border border-current/30 rounded-md hover:opacity-80">
                         {t("settings.pdpa_scan_retry")}
                       </button>
                     </div>
@@ -1753,7 +1819,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
 
                 {!scanResult.masking_detected && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mb-3">
-                    <p className="text-[10px] text-yellow-700">⚠️ {t("settings.pdpa_masking_warn")}</p>
+                    <p className="text-[10px] text-yellow-700">{t("settings.pdpa_masking_warn")}</p>
                   </div>
                 )}
 
@@ -1825,7 +1891,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     {/* Auto-detected PII */}
                     {editPdpa.pii_auto_detected?.length > 0 && (
                       <div className="mb-2">
-                        <p className="text-[9px] text-blue-600 font-medium mb-1">🔍 {t("settings.pdpa_pii_auto")}:</p>
+                        <p className="text-[9px] text-blue-600 font-medium mb-1">{t("settings.pdpa_pii_auto")}:</p>
                         <div className="flex flex-wrap gap-1 mb-1">
                           {editPdpa.pii_auto_detected.map((f: string) => (
                             <span key={f} className={cn("px-1.5 py-0.5 rounded text-[9px] cursor-pointer border",
@@ -1837,7 +1903,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                           ))}
                         </div>
                         <button onClick={() => addAutoDetectedPii(editPdpa.pii_auto_detected)}
-                          className="text-[9px] text-blue-600 hover:text-blue-800 underline">
+                          className="text-[9px] text-brand-700 hover:text-brand-700 underline">
                           {t("settings.pdpa.add_all_detected")}
                         </button>
                       </div>
@@ -1864,7 +1930,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                         onKeyDown={e => e.key === "Enter" && addPiiField()}
                         placeholder={t("settings.pdpa_pii_manual")}
                         className="flex-1 px-2 py-1 border border-gray-300 rounded text-[10px] outline-none focus:ring-1 focus:ring-purple-500" />
-                      <button onClick={addPiiField} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] hover:bg-gray-200">+</button>
+                      <button onClick={addPiiField} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-[10px] hover:bg-gray-200">+</button>
                     </div>
 
                     {/* Selected PII tags */}
@@ -1873,7 +1939,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                         {pdpaForm.pii_fields.map(f => (
                           <span key={f} className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] flex items-center gap-1">
                             {f}
-                            <button onClick={() => removePiiField(f)} className="text-purple-400 hover:text-purple-600">&times;</button>
+                            <button onClick={() => removePiiField(f)} className="text-purple-400 hover:text-brand-700">&times;</button>
                           </span>
                         ))}
                       </div>
@@ -1886,7 +1952,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     <input type="text" value={pdpaForm.retention_period} onChange={e => setPdpaForm(prev => ({ ...prev, retention_period: e.target.value }))}
                       placeholder={t("settings.pdpa_retention_hint")}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none" />
-                    <p className="text-[10px] text-purple-600 mt-1">⚙ {t("settings.pdpa_retention_enforced")}</p>
+                    <p className="text-[10px] text-purple-600 mt-1">{t("settings.pdpa_retention_enforced")}</p>
                   </div>
 
                   {/* Anonymization policy on export / API */}
@@ -1903,12 +1969,12 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     {pdpaForm.anonymization_mode === "none" &&
                      ((editPdpa?.pii_auto_detected?.length || 0) > 0 || pdpaForm.pii_fields.length > 0) && (
                       <div className="mt-1.5 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-md p-2">
-                        <span className="text-amber-500">⚠</span>
+
                         <div className="flex-1">
                           <p className="text-[10px] text-amber-800">{t("settings.pdpa_anon_warn")}</p>
                           <button type="button" onClick={() => openAnonPrompt(editPdpa.app_id)}
-                            className="mt-1 px-2 py-0.5 text-[10px] bg-amber-600 text-white rounded hover:bg-amber-700">
-                            ✨ {t("settings.pdpa_anon_prompt_btn")}
+                            className="mt-1 px-2 py-0.5 text-[10px] bg-brand-600 text-white rounded-md hover:bg-brand-700">
+                             {t("settings.pdpa_anon_prompt_btn")}
                           </button>
                         </div>
                       </div>
@@ -1921,13 +1987,19 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     <textarea value={pdpaForm.security_notes} onChange={e => setPdpaForm(prev => ({ ...prev, security_notes: e.target.value }))}
                       placeholder={t("settings.pdpa_security_hint")}
                       className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-none h-12" />
-                    <p className="text-[9px] text-gray-400 mt-0.5">🔒 {t("settings.pdpa_security_base")}</p>
+                    <p className="text-[9px] text-gray-400 mt-0.5">{t("settings.pdpa_security_base")}</p>
                   </div>
 
                   {/* Masking Status */}
+                  {/* Lawful basis, recipients, and what a deletion request gets */}
+                  <RopaPanel appId={editPdpa.app_id} />
+
+                  {/* Rules derived from the scan, and what they do to a response */}
+                  <FieldPolicyPanel appId={editPdpa.app_id} appName={editPdpa.app_name} />
+
                   {editPdpa.masking_details && (
                     <div className={cn("rounded p-2 text-[10px]", editPdpa.has_masking ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700")}>
-                      <p className="font-medium mb-1">{editPdpa.has_masking ? "✓ " + t("settings.pdpa_found_masking") : "⚠️ " + t("settings.pdpa_no_masking")}</p>
+                      <p className="font-medium mb-1">{editPdpa.has_masking ? "✓ " + t("settings.pdpa_found_masking") : " " + t("settings.pdpa_no_masking")}</p>
                       <p className="text-[9px] opacity-75 whitespace-pre-wrap">{editPdpa.masking_details}</p>
                     </div>
                   )}
@@ -1938,7 +2010,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                       {t("settings.pdpa_cancel")}
                     </button>
                     <button onClick={handleSavePdpa} disabled={savingPdpa}
-                      className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 transition disabled:opacity-50">
+                      className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50">
                       {savingPdpa ? t("settings.pdpa_saving") : t("settings.pdpa_save")}
                     </button>
                   </div>
@@ -1967,7 +2039,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                     <button
                       type="button"
                       onClick={() => setPnForm(prev => ({ ...prev, privacy_notice_enabled: !prev.privacy_notice_enabled }))}
-                      className={cn("relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent cursor-pointer transition-colors", pnForm.privacy_notice_enabled ? "bg-purple-600" : "bg-gray-300")}
+                      className={cn("relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent cursor-pointer transition-colors", pnForm.privacy_notice_enabled ? "bg-brand-600" : "bg-gray-300")}
                     >
                       <span className={cn("pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform", pnForm.privacy_notice_enabled ? "translate-x-5" : "translate-x-0")} />
                     </button>
@@ -2027,10 +2099,10 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
 
                       {/* Preview */}
                       <div className="border border-dashed border-purple-300 rounded-lg p-3 bg-purple-50/50">
-                        <p className="text-[10px] font-medium text-purple-700 mb-2">👁️ {t("settings.pn_preview")}</p>
+                        <p className="text-[10px] font-medium text-purple-700 mb-2">{t("settings.pn_preview")}</p>
                         <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">🛡️</span>
+
                             <h4 className="text-xs font-bold text-gray-900">{pnForm.privacy_notice_title || t("pn.default_title")}</h4>
                           </div>
                           <p className="text-[10px] text-gray-600 mb-2 whitespace-pre-wrap">{pnForm.privacy_notice_detail || t("settings.pn_preview_placeholder")}</p>
@@ -2052,7 +2124,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
                       {t("settings.pdpa_cancel")}
                     </button>
                     <button onClick={handleSavePN} disabled={savingPN}
-                      className="px-4 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 transition disabled:opacity-50">
+                      className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50">
                       {savingPN ? t("settings.pn_saving") : t("settings.pn_save")}
                     </button>
                   </div>
@@ -2068,11 +2140,6 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                </svg>
-              </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.gitea_title")}</h3>
                 <p className="text-[10px] text-gray-500">{t("settings.gitea_desc")}</p>
@@ -2100,7 +2167,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
             {/* How to use — step-by-step */}
             <div>
               <h4 className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
-                📖 {t("settings.gitea_howto_title")}
+                 {t("settings.gitea_howto_title")}
               </h4>
               <ol className="space-y-2 text-[11px] text-gray-700">
                 {[
@@ -2169,11 +2236,6 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-indigo-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 10-5.656-5.656l-1.1 1.1" />
-                </svg>
-              </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.tunnel_title")}</h3>
                 <p className="text-[10px] text-gray-500">{t("settings.tunnel_desc")}</p>
@@ -2200,7 +2262,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 ngrok Authtoken
                 {tunnelCfg?.ngrok_configured && (
-                  <span className="ml-2 text-[9px] text-green-600">✓ {t("settings.tunnel_configured")} ({tunnelCfg.ngrok_token_masked})</span>
+                  <span className="ml-2 text-[9px] text-green-600 font-mono break-all">✓ {t("settings.tunnel_configured")} ({tunnelCfg.ngrok_token_masked})</span>
                 )}
               </label>
               <input
@@ -2219,7 +2281,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Cloudflare Tunnel Token
                 {tunnelCfg?.cloudflare_configured && (
-                  <span className="ml-2 text-[9px] text-green-600">✓ {t("settings.tunnel_configured")} ({tunnelCfg.cloudflare_token_masked})</span>
+                  <span className="ml-2 text-[9px] text-green-600 font-mono break-all">✓ {t("settings.tunnel_configured")} ({tunnelCfg.cloudflare_token_masked})</span>
                 )}
               </label>
               <input
@@ -2232,7 +2294,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
               />
               <p className="text-[9px] text-gray-400 mt-1">{t("settings.tunnel_cf_hint")}</p>
               {tunnelProvider === "cloudflare" && (
-                <p className="text-[9px] text-amber-600 mt-1">⚠ {t("settings.tunnel_cf_install")}</p>
+                <p className="text-[9px] text-amber-600 mt-1">{t("settings.tunnel_cf_install")}</p>
               )}
             </div>
 
@@ -2240,7 +2302,7 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
               <button
                 onClick={saveTunnelCfg}
                 disabled={tunnelSaving}
-                className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 disabled:opacity-50"
               >
                 {tunnelSaving ? t("settings.tunnel_saving") : t("settings.tunnel_save")}
               </button>
@@ -2258,11 +2320,6 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-orange-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
-                </svg>
-              </div>
               <div>
                 <h3 className="font-semibold text-gray-900 text-sm">{t("settings.autostart_title")}</h3>
                 <p className="text-[10px] text-gray-500">{t("settings.autostart_desc")}</p>
@@ -2371,11 +2428,6 @@ services:
         <div className="space-y-4">
           <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
-                <svg className="w-6 h-6 text-brand-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 12c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-              </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">{t("license.title")}</h2>
               </div>
@@ -2394,7 +2446,7 @@ services:
                   </div>
                   <button
                     onClick={() => copyText(licMdns.ip, "ip")}
-                    className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 flex-shrink-0"
+                    className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 flex-shrink-0"
                   >
                     {copiedField === "ip" ? `✓ ${t("license.copied")}` : t("license.copy")}
                   </button>
@@ -2408,7 +2460,7 @@ services:
                   </div>
                   <button
                     onClick={() => copyText(`http://${licMdns.ip}:${licMdns.port}`, "url")}
-                    className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 flex-shrink-0"
+                    className="text-[10px] px-2 py-1 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 flex-shrink-0"
                   >
                     {copiedField === "url" ? `✓ ${t("license.copied")}` : t("license.copy")}
                   </button>
@@ -2464,7 +2516,7 @@ services:
                           setTimeout(() => setCopiedSerial(false), 2000);
                         });
                       }}
-                      className="ml-4 px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors"
+                      className="ml-4 px-3 py-1.5 text-xs bg-brand-600 text-white rounded-md hover:bg-brand-700 transition-colors"
                     >
                       {copiedSerial ? t("license.copied") : t("license.copy")}
                     </button>
@@ -2502,7 +2554,7 @@ services:
                             setTimeout(() => setCopiedFingerprint(false), 2000);
                           });
                         }}
-                        className="shrink-0 px-2 py-1 text-[10px] bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                        className="shrink-0 px-2 py-1 text-[10px] bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
                       >
                         {copiedFingerprint ? t("license.copied") : t("license.copy")}
                       </button>
@@ -2541,6 +2593,37 @@ services:
           onCancel={() => setPendingDelete(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * ชุดปุ่มกรองแบบเลือกได้ค่าเดียว
+ *
+ * ใช้ปุ่มแทน dropdown เพราะตัวเลือกมีน้อยและจำนวนในแต่ละกลุ่มต้องเห็นพร้อมกัน —
+ * "เลิกดำเนินการแล้ว (28)" เป็นข้อมูลในตัวมันเอง ไม่ใช่แค่ทางไปกรอง
+ */
+function FilterGroup({ value, onChange, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { v: string; label: string }[];
+}) {
+  return (
+    <div className="flex gap-0.5">
+      {options.map((o) => (
+        <button
+          key={o.v}
+          onClick={() => onChange(o.v)}
+          className={cn(
+            "text-[10px] px-1.5 py-1 rounded-md border transition",
+            value === o.v
+              ? "border-brand-400 bg-brand-50 text-brand-700"
+              : "border-gray-200 text-gray-600 hover:bg-gray-50"
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

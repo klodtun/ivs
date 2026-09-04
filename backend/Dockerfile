@@ -2,8 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# libpango/harfbuzz คือสิ่งที่ WeasyPrint ใช้จัด shaping ภาษาไทย (สระบน/ล่าง
+# วรรณยุกต์ซ้อน และการตัดบรรทัดที่ไม่มีช่องว่างระหว่างคำ)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc curl && rm -rf /var/lib/apt/lists/*
+    gcc curl \
+    libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

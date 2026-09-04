@@ -86,18 +86,31 @@ async def create_tunnel(
         raise HTTPException(status_code=404, detail="App not found")
 
     allowed = [1, 10, 60, 180, 1440]
-    if req.duration_minutes not in allowed:
+    # None = ไม่มีกำหนด — เป็นทางเลือกที่ตั้งใจ ไม่ใช่การเลี่ยงเพดานเวลา
+    # จึงต้องมีเหตุผลกำกับเสมอ (บังคับที่ตัว service)
+    if req.duration_minutes is not None and req.duration_minutes not in allowed:
         raise HTTPException(status_code=400, detail=f"Duration must be one of: {allowed}")
 
     try:
-        tunnel = await tunnel_service.create_tunnel(db, app, req.duration_minutes, user.id)
+        tunnel = await tunnel_service.create_tunnel(
+            db, app, req.duration_minutes, user.id,
+            permanent_reason=req.permanent_reason or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    span = f"{req.duration_minutes}m" if req.duration_minutes else "ไม่มีกำหนด"
     create_audit_log(
         db, request, user=user, action="create_tunnel", resource_type="tunnel",
         resource_id=str(tunnel.id),
-        details=f"Tunnel for {app.name} ({req.duration_minutes}m) → {tunnel.public_url}",
+        details=(
+            f"Tunnel for {app.name} ({span}) → {tunnel.public_url}"
+            + (f" · เหตุผล: {req.permanent_reason}" if not req.duration_minutes else "")
+        ),
+        # อุโมงค์ที่เปิดค้างคือสิ่งที่ต้องหาเจอง่ายในบันทึกภายหลัง
+        log_level="WARNING" if not req.duration_minutes else "INFO",
     )
     db.commit()
 

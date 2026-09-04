@@ -81,13 +81,10 @@ export function RetentionPolicyPanel() {
         <button
           type="button"
           onClick={toggleCollapsed}
-          className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-lg group"
+          className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-md group"
           aria-expanded={!collapsed}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <svg className="w-4 h-4 text-brand-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
             <div className="text-left min-w-0">
               <h3 className="font-semibold text-gray-900 text-sm leading-tight">
                 {t("retention.title")}
@@ -166,9 +163,6 @@ export function RetentionPolicyPanel() {
           aria-expanded={true}
           title={t("retention.click_to_collapse")}
         >
-          <svg className="w-4 h-4 text-brand-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
               {t("retention.title")}
@@ -252,7 +246,7 @@ export function RetentionPolicyPanel() {
                 </span>
                 {overRecommended && (
                   <span className="text-amber-600 font-medium">
-                    ⚠ {t("retention.over_recommended")}
+                     {t("retention.over_recommended")}
                   </span>
                 )}
               </div>

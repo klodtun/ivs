@@ -7,6 +7,7 @@ import { LangToggle } from "@/components/lang-toggle";
 import { User } from "@/types";
 import { isEnabled } from "@/lib/features";
 import { api } from "@/lib/api";
+import { customPages } from "@/custom/pages";
 
 const navItems = [
   {
@@ -56,12 +57,25 @@ const navItems = [
 export function Sidebar({ user }: { user: User | null }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useLang();
+  const { t, locale } = useLang();
   const [shutdownConfirm, setShutdownConfirm] = useState(false);
   const [shutdownWorking, setShutdownWorking] = useState(false);
   // Current LAN IP shown top-left so people always have the right address
   // even when DHCP changes it and mDNS is off.
   const [lanIp, setLanIp] = useState<string>("");
+  // โมดูลที่เป็นการสาธิต — รุ่นย่อยมี แต่ใบอนุญาตยังไม่ถึง
+  const [demoModules, setDemoModules] = useState<string[]>([]);
+  // เมนูที่กล่องนี้ควรแสดง มาจากหลังบ้าน ไม่ใช่หน้าจอตัดสินเอง
+  //
+  // ผลิตภัณฑ์สามตัว (iVS ฟรี · โรงพยาบาล · e-Contract) ต่างกันที่ชุดเมนู
+  // ทางเลือกอีกทางคือแยกสาขาโค้ดแล้วตัดเมนูด้วยมือ ซึ่งจะได้หลายสายที่ต้องซิงก์
+  // กันเอง และทำให้ file_baselines วัดอะไรไม่ได้ เพราะมันวัดจากรุ่นที่ปล่อยซึ่ง
+  // ต้องมีสายเดียว
+  //
+  // null = ยังไม่รู้ → แสดงตามสิทธิ์ไปก่อน ไม่ใช่ซ่อนทั้งหมด เพราะแถบเมนูที่ว่าง
+  // เปล่าตอนโหลดอ่านเหมือนระบบพัง
+  const [visibleMenus, setVisibleMenus] = useState<string[] | null>(null);
+  const [menuLabels, setMenuLabels] = useState<Record<string, { th: string; en: string }>>({});
   const [lanUrl, setLanUrl] = useState<string>("");
   const [ipChanged, setIpChanged] = useState(false);
   const [ipCopied, setIpCopied] = useState(false);
@@ -71,7 +85,14 @@ export function Sidebar({ user }: { user: User | null }) {
     let stop = false;
     const check = async () => {
       try {
-        const r = await api.getLanIp();
+        api.getModules()
+        .then((m) => {
+          setDemoModules(m.demo_only || []);
+          setVisibleMenus(m.visible_menus || null);
+          setMenuLabels(m.menu_labels || {});
+        })
+        .catch(() => setDemoModules([]));
+      const r = await api.getLanIp();
         if (stop) return;
         setLanIp(r.ip);
         setLanUrl(r.url);
@@ -112,13 +133,58 @@ export function Sidebar({ user }: { user: User | null }) {
     }
   };
 
+  // เมนูไหนคือโมดูลไหน — ใช้ตัดสินว่าต้องติดป้ายสาธิตหรือไม่
+  const MODULE_OF_HREF: Record<string, string> = {
+    "/dashboard/bridge": "opencli",
+    "/dashboard/econtract": "econtract",
+    "/dashboard/system-map": "system_map",
+    "/dashboard/flows": "flows",
+    "/dashboard/design-controls": "iso13485",
+  };
+
   const filteredNav = navItems.filter(
     (item) =>
       user &&
       item.roles.includes(user.role) &&
       // Hide entries gated behind a feature flag that's off in this release
-      (!("featureFlag" in item) || isEnabled(item.featureFlag as any))
+      (!("featureFlag" in item) || isEnabled(item.featureFlag as any)) &&
+      // และเมนูที่รุ่นย่อยนี้ไม่มี
+      (visibleMenus === null || visibleMenus.includes(item.href))
   );
+
+  // เมนูที่ลูกค้าประกาศไว้ในเขตของตัวเอง — ต่อท้ายของแกนเสมอ
+  //
+  // ก่อนหน้านี้การเพิ่มเมนูต้องแก้ไฟล์นี้ ซึ่งการอัปเกรดเขียนทับ ทำให้งานที่
+  // ลูกค้าเพิ่มหายทุกครั้งที่อัปเดต แล้วบทเรียนที่เขาได้คือ "อย่าอัปเดต" ซึ่ง
+  // อันตรายกว่าเมนูหาย เพราะเครื่องที่ไม่อัปเดตคือเครื่องที่ไม่ได้รับการแก้
+  // ช่องโหว่ รายการจึงมาจาก custom/pages.ts ที่การอัปเกรดไม่แตะ
+  //
+  // roles ที่นี่ซ่อนเมนูเท่านั้น ไม่ใช่การกันสิทธิ์ — หน้าที่ซ่อนไว้ยังเปิดตรง
+  // ด้วย URL ได้ การกันจริงต้องอยู่ที่ router ฝั่งหลังบ้าน
+  const customNav = (user
+    ? customPages.filter((p) => p.roles.includes(user.role as any))
+    : []
+  ).map((p) => ({
+    labelKey: "",
+    label: locale === "th" ? p.labelTh : p.labelEn,
+    href: `/dashboard/custom/${p.slug}`,
+    icon:
+      p.icon ||
+      "M11 4a1 1 0 011-1h.01a1 1 0 010 2H12a1 1 0 01-1-1zM4 7h16M4 12h16M4 17h10",
+    roles: p.roles,
+  }));
+
+  // แกนกับเขตลูกค้าใช้รูปเดียวกันตอน render — ปุ่มไม่ต้องรู้ว่าเมนูมาจากไหน
+  const allNav = [
+    ...filteredNav.map((i) => ({
+      href: i.href,
+      icon: i.icon,
+      label:
+        menuLabels[i.href]?.[locale === "th" ? "th" : "en"] || t(i.labelKey),
+      demo: demoModules.includes(MODULE_OF_HREF[i.href] || ""),
+    })),
+    ...customNav.map((i) => ({ href: i.href, icon: i.icon, label: i.label, demo: false })),
+  ];
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -184,7 +250,7 @@ export function Sidebar({ user }: { user: User | null }) {
       </div>
 
       <nav className="flex-1 p-2 space-y-0.5">
-        {filteredNav.map((item) => {
+        {allNav.map((item) => {
           const active =
             item.href === "/dashboard"
               ? pathname === "/dashboard"
@@ -213,7 +279,19 @@ export function Sidebar({ user }: { user: User | null }) {
                   d={item.icon}
                 />
               </svg>
-              {t(item.labelKey)}
+              <span className="flex-1 text-left truncate">{item.label}</span>
+              {item.demo && (
+                <span
+                  title={
+                    locale === "th"
+                      ? "โมดูลสาธิต — ต้องมีใบอนุญาต Pro ขึ้นไปจึงใช้งานจริงได้"
+                      : "Demonstration module — needs a Pro licence to run for real"
+                  }
+                  className="text-[8px] font-medium px-1 py-px rounded bg-amber-100 text-amber-700 flex-shrink-0"
+                >
+                  {locale === "th" ? "สาธิต" : "DEMO"}
+                </span>
+              )}
             </button>
           );
         })}
@@ -241,7 +319,7 @@ export function Sidebar({ user }: { user: User | null }) {
           </div>
           <button
             onClick={handleLogout}
-            className="w-full text-left text-[10px] text-gray-500 hover:text-red-600 px-1.5 py-1 rounded hover:bg-red-50 transition"
+            className="w-full text-left text-[10px] text-gray-500 hover:text-red-600 px-1.5 py-1 rounded-md hover:bg-red-50 transition"
           >
             {t("nav.signout")}
           </button>
@@ -254,7 +332,7 @@ export function Sidebar({ user }: { user: User | null }) {
               onClick={handleShutdown}
               disabled={shutdownWorking}
               className={cn(
-                "w-full text-left text-[10px] mt-1 px-1.5 py-1 rounded transition disabled:opacity-50",
+                "w-full text-left text-[10px] mt-1 px-1.5 py-1 rounded-md transition disabled:opacity-50",
                 shutdownConfirm
                   ? "bg-red-600 text-white hover:bg-red-700 font-semibold"
                   : "text-gray-500 hover:text-red-600 hover:bg-red-50"

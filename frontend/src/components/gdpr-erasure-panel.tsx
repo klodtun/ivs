@@ -106,12 +106,9 @@ export function GdprErasurePanel() {
         <button
           type="button"
           onClick={toggleCollapsed}
-          className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-lg group"
+          className="w-full flex items-center justify-between gap-3 p-3 hover:bg-gray-50 transition rounded-md group"
         >
           <div className="flex items-center gap-2 min-w-0">
-            <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22" />
-            </svg>
             <div className="text-left min-w-0">
               <h3 className="font-semibold text-gray-900 text-sm leading-tight">{t("gdpr.title")}</h3>
               <p className="text-[10px] text-gray-500 mt-0.5 truncate">{t("gdpr.subtitle_short")}</p>
@@ -140,9 +137,6 @@ export function GdprErasurePanel() {
           className="flex items-start gap-2 text-left flex-1 min-w-0 hover:opacity-80 transition group"
           title={t("retention.click_to_collapse")}
         >
-          <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22" />
-          </svg>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
               {t("gdpr.title")}
@@ -247,8 +241,8 @@ export function GdprErasurePanel() {
       {certificate && (
         <div className="bg-green-50 border border-green-300 rounded-md p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-green-800">✓ {t("gdpr.cert_issued")} #{certificate.id}</p>
-            <button onClick={downloadCertificate} className="text-[10px] text-green-700 hover:text-green-900 underline font-medium">
+            <p className="text-xs font-semibold text-green-800">{t("gdpr.cert_issued")} #{certificate.id}</p>
+            <button onClick={downloadCertificate} className="text-[10px] text-brand-700 hover:text-green-900 underline font-medium">
               ⬇ {t("gdpr.cert_download")}
             </button>
           </div>

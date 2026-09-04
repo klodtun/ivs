@@ -109,7 +109,10 @@ class AppVersionResponse(BaseModel):
 
 class TunnelCreate(BaseModel):
     app_id: int
-    duration_minutes: int = 60
+    # None = ไม่มีกำหนดหมดอายุ (การเชื่อมต่อประจำระหว่างสองระบบ)
+    duration_minutes: Optional[int] = 60
+    # บังคับกรอกเมื่อ duration_minutes เป็น None
+    permanent_reason: str = ""
 
 
 class TunnelResponse(BaseModel):
@@ -130,6 +133,11 @@ class VaultKeyCreate(BaseModel):
     category: str = "general"
     value: str
     description: str = ""
+    # ขอบเขตตั้งได้ตั้งแต่ตอนสร้าง — กุญแจที่ออกใหม่มักออกมาเพื่อแทนใบที่รั่ว
+    # การบังคับให้สร้างก่อนแล้วค่อยกลับมาตั้งชื่อทีหลัง คือขั้นตอนที่คนข้าม
+    env_override: str = ""
+    namespace: str = ""
+    allow_reveal: bool = True
 
 
 class VaultKeyResponse(BaseModel):
@@ -234,6 +242,8 @@ class PdpaResponse(BaseModel):
     app_id: int
     app_name: str = ""
     app_slug: str = ""
+    # ประทับเมื่อแอปถูกลบออกจาก iVS — บันทึก ROPA ยังอยู่ต่อไป
+    app_removed_at: Optional[datetime] = None
     purpose: str = ""
     pii_fields: list[str] = []
     pii_auto_detected: list[str] = []

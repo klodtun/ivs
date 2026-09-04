@@ -7,6 +7,7 @@ import { Tunnel, App } from "@/types";
 import { Pagination, usePagination } from "@/components/pagination";
 import PrivacyNoticePopup from "@/components/privacy-notice-popup";
 import { TunnelShareModal } from "@/components/tunnel-share-modal";
+import { PageHeader } from "@/components/ui";
 
 const durationOptions = [
   { value: 1, labelKey: "tunnel.dur.1m" },
@@ -14,6 +15,10 @@ const durationOptions = [
   { value: 60, labelKey: "tunnel.dur.1h" },
   { value: 180, labelKey: "tunnel.dur.3h" },
   { value: 1440, labelKey: "tunnel.dur.24h" },
+  // 0 แทน "ไม่มีกำหนด" ในตัวเลือก แล้วแปลงเป็น null ตอนส่ง — การเชื่อมต่อประจำ
+  // ระหว่างสองระบบเป็นเรื่องปกติ และการบังคับให้หมดอายุมีแต่ทำให้คนเลือก 24 ชม.
+  // ทุกวันแทน ซึ่งแย่กว่าการบอกตรง ๆ ว่าตั้งใจเปิดค้างพร้อมเหตุผล
+  { value: 0, labelKey: "tunnel.dur.forever" },
 ];
 
 export default function TunnelsPage() {
@@ -22,6 +27,7 @@ export default function TunnelsPage() {
   const [apps, setApps] = useState<App[]>([]);
   const [selectedApp, setSelectedApp] = useState<number | null>(null);
   const [duration, setDuration] = useState(60);
+  const [permanentReason, setPermanentReason] = useState("");
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   // PDPA — privacy notice review + tunnel-share-by-email modals
@@ -49,7 +55,15 @@ export default function TunnelsPage() {
   const handleCreate = async () => {
     if (!selectedApp) return;
     setCreating(true);
-    try { await api.createTunnel(selectedApp, duration); await loadData(); } catch (e: any) { alert(e.message); } finally { setCreating(false); }
+    try {
+      await api.createTunnel(
+        selectedApp,
+        duration === 0 ? null : duration,
+        duration === 0 ? permanentReason.trim() : ""
+      );
+      setPermanentReason("");
+      await loadData();
+    } catch (e: any) { alert(e.message); } finally { setCreating(false); }
   };
 
   const handleRevoke = async (id: number) => {
@@ -89,8 +103,7 @@ export default function TunnelsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">{t("tunnel.title")}</h1>
-        <p className="text-gray-500 text-[10px] mt-0.5">{t("tunnel.subtitle")}</p>
+        <PageHeader title={t("tunnel.title")} help={t("tunnel.subtitle")} />
       </div>
 
       {/* Create Tunnel */}
@@ -112,7 +125,19 @@ export default function TunnelsPage() {
               {durationOptions.map((d) => (<option key={d.value} value={d.value}>{t(d.labelKey)}</option>))}
             </select>
           </div>
-          <button onClick={handleCreate} disabled={!selectedApp || creating}
+          {duration === 0 && (
+            <div className="flex-1 min-w-[220px]">
+              <label className="block text-[10px] text-gray-600 mb-0.5">{t("tunnel.reason")}</label>
+              <input
+                value={permanentReason}
+                onChange={(e) => setPermanentReason(e.target.value)}
+                placeholder={t("tunnel.reason_ph")}
+                className="w-full px-2.5 py-1.5 border border-amber-300 bg-amber-50 rounded-md text-xs outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+          )}
+          <button onClick={handleCreate}
+            disabled={!selectedApp || creating || (duration === 0 && !permanentReason.trim())}
             className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50">
             {creating ? t("tunnel.creating") : t("tunnel.open")}
           </button>
@@ -158,9 +183,9 @@ export default function TunnelsPage() {
                               <button
                                 onClick={() => copyUrl(tunnel)}
                                 className={cn(
-                                  "flex-shrink-0 p-1 rounded transition",
+                                  "flex-shrink-0 p-1 rounded-md transition",
                                   copiedId === tunnel.id
-                                    ? "bg-green-100 text-green-600"
+                                    ? "bg-gray-100 text-brand-700"
                                     : "hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                                 )}
                                 title="Copy URL"
@@ -196,18 +221,18 @@ export default function TunnelsPage() {
                       <td className="px-4 py-2.5 text-right">
                         {isActive && (
                           <div className="inline-flex items-center gap-1">
-                            {/* 🛡️ Privacy notice — opens the same review popup
+                            {/*  Privacy notice — opens the same review popup
                                 used by AppCard so the recipient (and sender)
                                 can revisit their PDPA consent at any time. */}
                             <button
                               onClick={() => setPrivacyAppId(tunnel.app_id)}
                               title={t("tunnel.privacy_tooltip")}
-                              className="text-[10px] text-gray-500 hover:text-purple-700 hover:bg-purple-50 px-1.5 py-0.5 rounded transition inline-flex items-center gap-0.5"
+                              className="text-[10px] text-gray-500 hover:text-brand-700 hover:bg-gray-50 px-1.5 py-0.5 rounded-md transition inline-flex items-center gap-0.5"
                             >
-                              <span className="text-xs leading-none">🛡️</span>
+
                               <span className="hidden sm:inline">{t("tunnel.privacy")}</span>
                             </button>
-                            {/* 📧 Share via email — opens TunnelShareModal
+                            {/*  Share via email — opens TunnelShareModal
                                 that pre-builds a PDPA-compliant message
                                 (notice + URL + usage instructions + risk
                                 warning) and hands it to the user's mail
@@ -215,14 +240,14 @@ export default function TunnelsPage() {
                             <button
                               onClick={() => setShareTunnel(tunnel)}
                               title={t("tunnel.share_tooltip")}
-                              className="text-[10px] text-gray-500 hover:text-brand-700 hover:bg-brand-50 px-1.5 py-0.5 rounded transition inline-flex items-center gap-0.5"
+                              className="text-[10px] text-gray-500 hover:text-brand-700 hover:bg-brand-50 px-1.5 py-0.5 rounded-md transition inline-flex items-center gap-0.5"
                             >
-                              <span className="text-xs leading-none">📧</span>
+
                               <span className="hidden sm:inline">{t("tunnel.share")}</span>
                             </button>
                             <button
                               onClick={() => handleRevoke(tunnel.id)}
-                              className="text-[10px] text-red-600 hover:text-red-700 font-medium hover:bg-red-50 px-2 py-0.5 rounded transition"
+                              className="text-[10px] text-red-600 hover:text-red-700 font-medium hover:bg-red-50 px-2 py-0.5 rounded-md transition"
                             >
                               {t("tunnel.revoke")}
                             </button>
@@ -246,7 +271,7 @@ export default function TunnelsPage() {
         )}
       </div>
 
-      {/* 🛡️ Privacy Notice — review mode for the underlying app.
+      {/*  Privacy Notice — review mode for the underlying app.
           Reuses the same popup AppCard uses, so consent flows through
           the same /api/pdpa/{id}/consent endpoint and the audit log. */}
       {privacyAppId !== null && (
@@ -258,7 +283,7 @@ export default function TunnelsPage() {
         />
       )}
 
-      {/* 📧 Share tunnel by email — composes the PDPA-compliant message
+      {/*  Share tunnel by email — composes the PDPA-compliant message
           and hands it to the user's mail client via mailto:. */}
       {shareTunnel && shareTunnel.public_url && (
         <TunnelShareModal

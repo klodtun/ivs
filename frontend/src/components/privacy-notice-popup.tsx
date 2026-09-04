@@ -240,9 +240,6 @@ export default function PrivacyNoticePopup({
               </svg>
             </button>
           )}
-          <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <span className="text-2xl">🛡️</span>
-          </div>
           <h2 className="text-base font-bold text-gray-900">
             {notice.privacy_notice_title || t("pn.default_title")}
           </h2>
@@ -298,7 +295,7 @@ export default function PrivacyNoticePopup({
                   rel="noopener noreferrer"
                   className="text-[11px] text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
                 >
-                  📄 {t("pn.link_policy")}
+                   {t("pn.link_policy")}
                   <span className="text-[9px]">↗</span>
                 </a>
               )}
@@ -309,7 +306,7 @@ export default function PrivacyNoticePopup({
                   rel="noopener noreferrer"
                   className="text-[11px] text-blue-600 hover:text-blue-800 underline flex items-center gap-1"
                 >
-                  📋 {t("pn.link_full_notice")}
+                   {t("pn.link_full_notice")}
                   <span className="text-[9px]">↗</span>
                 </a>
               )}
@@ -325,20 +322,20 @@ export default function PrivacyNoticePopup({
               <button
                 onClick={handleAccept}
                 disabled={submitting || currentDecision === "accepted"}
-                className="w-full py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="w-full py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-md hover:bg-brand-700 transition shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {currentDecision === "accepted" ? t("pn.accept_current") : t("pn.switch_to_accept")}
               </button>
               <button
                 onClick={handleDecline}
                 disabled={submitting || currentDecision === "declined"}
-                className="w-full py-2 mt-2 bg-red-50 text-red-700 border border-red-200 text-sm font-medium rounded-lg hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-2 mt-2 bg-red-50 text-red-700 border border-red-200 text-sm font-medium rounded-md hover:bg-red-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {currentDecision === "declined" ? t("pn.decline_current") : t("pn.switch_to_decline")}
               </button>
               <button
                 onClick={handleClose}
-                className="w-full py-2 mt-2 text-xs text-gray-500 hover:text-gray-700 rounded-lg transition"
+                className="w-full py-2 mt-2 text-xs text-gray-500 hover:text-gray-700 rounded-md transition"
               >
                 {t("pn.close")}
               </button>
@@ -348,14 +345,14 @@ export default function PrivacyNoticePopup({
               <button
                 onClick={handleAccept}
                 disabled={submitting}
-                className="w-full py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition shadow-md disabled:opacity-50"
+                className="w-full py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-md hover:bg-brand-700 transition shadow-md disabled:opacity-50"
               >
                 {submitting ? t("pn.saving") : t("pn.accept_and_enter")}
               </button>
               <button
                 onClick={handleDecline}
                 disabled={submitting}
-                className="w-full py-2 mt-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
+                className="w-full py-2 mt-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition disabled:opacity-50"
               >
                 {t("pn.decline")}
               </button>

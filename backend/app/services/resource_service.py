@@ -6,6 +6,7 @@ import psutil
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.models import App, AppStatus, ResourceMetric
+from app.config import settings
 from app.services.docker_service import docker_service
 
 logger = logging.getLogger(__name__)
@@ -43,13 +44,39 @@ def _get_gpu_info() -> dict:
         return {"used_mb": None, "total_mb": None, "type": "none"}
 
 
+def _per_app_from_last_snapshot(db: Session) -> tuple[list[dict], str]:
+    """ตัวเลขต่อแอปจากภาพถ่ายล่าสุดที่ลูปเบื้องหลังเก็บไว้
+
+    ถามสถิติจาก Docker ทีละคอนเทนเนอร์ใช้เวลาราวสองวินาทีต่อตัว เพราะต้องเก็บ
+    ตัวอย่างสองครั้งเพื่อคิด CPU ต่างช่วง กล่องนี้มีสิบห้าแอป หน้าจอจึงหมุนรอ
+    สามสิบวินาทีทุกครั้งที่เปิด และซ้ำอีกทุกสิบห้าวินาทีจากตัวรีเฟรช
+
+    แต่ resource_collection_loop เก็บตัวเลขชุดเดียวกันลงฐานข้อมูลอยู่แล้วทุกนาที
+    การอ่านแถวล่าสุดจึงได้คำตอบเท่ากันในเวลาไม่กี่มิลลิวินาที
+
+    คืนเวลาที่เก็บมาด้วย เพราะข้อมูลอาจเก่าได้ถึงหนึ่งนาที และหน้าจอต้องบอกความ
+    จริงข้อนั้น ไม่ใช่แสดงเป็นค่า ณ วินาทีนี้เฉย ๆ
+    """
+    row = (
+        db.query(ResourceMetric)
+        .order_by(ResourceMetric.created_at.desc())
+        .first()
+    )
+    if not row or not row.per_app_json:
+        return [], ""
+    try:
+        return json.loads(row.per_app_json), row.created_at.isoformat()
+    except Exception:                              # noqa: BLE001
+        return [], ""
+
+
 def _get_per_app_stats(db: Session) -> list[dict]:
-    """Get resource usage per running app from Docker."""
+    """Per-app usage asked of Docker directly — correct, and slow."""
     apps = db.query(App).filter(App.status == AppStatus.RUNNING, App.container_id.isnot(None)).all()
     result = []
     for app in apps:
         # Self-heal stale container_id (rebuilt outside IVS)
-        live_id = docker_service.resolve_live_container_id(app.container_id or "", f"ivs-{app.slug}")
+        live_id = docker_service.resolve_live_container_id(app.container_id or "", f"{settings.CONTAINER_PREFIX}{app.slug}")
         if live_id and live_id != app.container_id:
             app.container_id = live_id
             try: db.commit()
@@ -102,8 +129,12 @@ def collect_snapshot(db: Session):
     return metric
 
 
-def get_current_resources(db: Session) -> dict:
-    """Get current system resources + per-app stats + capacity analysis."""
+def get_current_resources(db: Session, live: bool = False) -> dict:
+    """สถานะปัจจุบัน — ตัวเลขระบบสด ตัวเลขต่อแอปจากภาพถ่ายล่าสุด
+
+    live=True บังคับถาม Docker ตรง ๆ ซึ่งช้ากว่ามาก ใช้เมื่อคนกดสั่งเอง ไม่ใช่
+    ตอนเปิดหน้า
+    """
     cpu = psutil.cpu_percent(interval=0.5)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
@@ -111,7 +142,10 @@ def get_current_resources(db: Session) -> dict:
     # Count from database (source of truth) instead of Docker labels
     total = db.query(App).count()
     running = db.query(App).filter(App.status == AppStatus.RUNNING).count()
-    per_app = _get_per_app_stats(db)
+    if live:
+        per_app, per_app_at = _get_per_app_stats(db), ""
+    else:
+        per_app, per_app_at = _per_app_from_last_snapshot(db)
 
     # Memory accounting — keep bytes, percent, and "free for new apps" consistent:
     #   - memory_used_mb     uses (total - available), matches mem.percent
@@ -197,17 +231,27 @@ def get_current_resources(db: Session) -> dict:
             "ram_free_mb": mem_available_mb,
         },
         "per_app": per_app,
+        "per_app_at": per_app_at,
+        "per_app_live": bool(live),
         "alerts": alerts,
     }
 
 
-def get_history(db: Session, hours: int = 24) -> list[dict]:
-    """Get historical resource metrics."""
+def get_history(db: Session, hours: int = 1, points: int = 240) -> list[dict]:
+    """ประวัติสำหรับกราฟ — เฉพาะค่าที่กราฟใช้ และไม่เกินจำนวนจุดที่ตั้งไว้
+
+    เดิมคืนทุกแถวในช่วงเวลา พร้อม per_app ของทุกแถว หนึ่งวันจึงได้ 969 จุด
+    ขนาด 2.5 MB โดยที่กราฟอ่านแค่สามค่า และ per_app ในประวัติไม่มีหน้าจอไหนใช้
+
+    เมื่อช่วงเวลายาวขึ้น จำนวนจุดไม่ควรโตตาม เพราะกราฟกว้างไม่กี่ร้อยพิกเซล จุด
+    ที่เกินนั้นวาดทับกันเอง จึงสุ่มเว้นระยะให้เหลือเท่าที่มองเห็นได้จริง
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     metrics = db.query(ResourceMetric).filter(
         ResourceMetric.created_at >= cutoff
     ).order_by(ResourceMetric.created_at.asc()).all()
 
+    step = max(1, len(metrics) // points) if points else 1
     return [{
         "time": m.created_at.isoformat(),
         "cpu": m.cpu_percent,
@@ -218,8 +262,7 @@ def get_history(db: Session, hours: int = 24) -> list[dict]:
         "gpu_used": m.gpu_memory_used_mb,
         "gpu_total": m.gpu_memory_total_mb,
         "apps_running": m.apps_running,
-        "per_app": json.loads(m.per_app_json) if m.per_app_json else [],
-    } for m in metrics]
+    } for m in metrics[::step]]
 
 
 def generate_report(db: Session) -> str:

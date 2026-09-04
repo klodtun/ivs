@@ -14,6 +14,7 @@
 export const features = {
   // Sidebar entries
   api_catalog: true,   // v1.0.1 — managed catalog of deployed-app APIs
+  opencli_bridge: true, // Pro/Enterprise — legacy→AI-agent bridge (backend gates PRO/ENT)
 
   // Settings tabs
   dns_tab: false,

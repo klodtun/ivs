@@ -3,11 +3,11 @@ import { useState, useRef, useEffect } from "react";
 import { useLang } from "@/components/lang-provider";
 
 const APP_TYPES = [
-  { key: "static", icon: "🌐", color: "bg-blue-50 border-blue-200 text-blue-700" },
-  { key: "nodejs", icon: "🟢", color: "bg-green-50 border-green-200 text-green-700" },
-  { key: "fastapi", icon: "⚡", color: "bg-yellow-50 border-yellow-200 text-yellow-700" },
-  { key: "streamlit", icon: "📊", color: "bg-red-50 border-red-200 text-red-700" },
-  { key: "fullstack", icon: "🔮", color: "bg-purple-50 border-purple-200 text-purple-700" },
+  { key: "static", icon: "", color: "bg-blue-50 border-blue-200 text-blue-700" },
+  { key: "nodejs", icon: "", color: "bg-green-50 border-green-200 text-green-700" },
+  { key: "fastapi", icon: "", color: "bg-yellow-50 border-yellow-200 text-yellow-700" },
+  { key: "streamlit", icon: "", color: "bg-red-50 border-red-200 text-red-700" },
+  { key: "fullstack", icon: "", color: "bg-purple-50 border-purple-200 text-purple-700" },
 ] as const;
 
 export function DeployGuide() {
@@ -146,7 +146,7 @@ export function DeployGuide() {
                         onClick={() => copyText(prompt, `prompt-${activeTab}`)}
                         className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-all ${
                           copied === `prompt-${activeTab}`
-                            ? "bg-green-100 text-green-700"
+                            ? "bg-gray-100 text-brand-700"
                             : "bg-gray-100 text-gray-600 hover:bg-brand-100 hover:text-brand-700"
                         }`}
                       >
@@ -188,7 +188,6 @@ export function DeployGuide() {
                     headers throws "non ISO-8859-1" during fetch(). */}
                 {activeTab !== "static" && (
                   <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-2.5 flex gap-2">
-                    <span className="text-blue-500 mt-0.5 flex-shrink-0">🇹🇭</span>
                     <p className="text-[10px] text-blue-800">{t("guide.tip.thai")}</p>
                   </div>
                 )}
@@ -216,7 +215,7 @@ export function DeployGuide() {
                     onClick={() => copyText(templateContent, "template")}
                     className={`flex items-center gap-1 px-2.5 py-1 text-[10px] rounded-md transition-all ${
                       copied === "template"
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-gray-100 text-brand-700"
                         : "bg-brand-600 text-white hover:bg-brand-700"
                     }`}
                   >

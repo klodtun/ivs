@@ -17,7 +17,7 @@ def _detect_local_ip() -> str:
 
 class Settings(BaseSettings):
     APP_NAME: str = "iVS - Internal Vibe Server"
-    APP_VERSION: str = "1.3.1"
+    APP_VERSION: str = "1.9.2"
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
 
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/ivs.db")
@@ -40,8 +40,18 @@ class Settings(BaseSettings):
     DOCKER_SOCKET: str = os.getenv("DOCKER_SOCKET", "unix:///var/run/docker.sock")
     DOCKER_NETWORK: str = os.getenv("DOCKER_NETWORK", "ivs-apps")
 
-    APP_PORT_RANGE_START: int = 10000
-    APP_PORT_RANGE_END: int = 10999
+    # คำนำหน้าชื่อคอนเทนเนอร์ของแอปที่ดีพลอย — เป็นสมบัติของเครื่องติดตั้ง
+    # ไม่ใช่ของรุ่น ตั้งครั้งเดียวตอนติดตั้งครั้งแรกแล้วห้ามเปลี่ยน เพราะแอปที่
+    # รันอยู่ถูกค้นด้วยชื่อนี้ เปลี่ยนเมื่อไหร่แอปเดิมหายจากหน้าจอทั้งที่ยัง
+    # ทำงานอยู่ ค่าที่ตั้งไว้จะถูกเทียบกับที่จดใน installation ทุกครั้งที่บูต
+    CONTAINER_PREFIX: str = os.getenv("CONTAINER_PREFIX", "ivs-")
+
+    # รุ่นย่อย — ชุดโมดูลที่กล่องนี้แจกมาเพื่อทำ คนละแกนกับระดับใบอนุญาต
+    # ดู app/variants.py  เครื่องพัฒนาใช้ "all" เพื่อสาธิตได้ครบ
+    IVS_VARIANT: str = os.getenv("IVS_VARIANT", "all")
+
+    APP_PORT_RANGE_START: int = int(os.getenv("APP_PORT_RANGE_START", "10000"))
+    APP_PORT_RANGE_END: int = int(os.getenv("APP_PORT_RANGE_END", "10999"))
 
     TUNNEL_PROVIDER: str = os.getenv("TUNNEL_PROVIDER", "frp")
     FRP_SERVER: str = os.getenv("FRP_SERVER", "")

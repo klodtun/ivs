@@ -60,11 +60,6 @@ export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Prop
           {/* Header */}
           <div className="bg-gradient-to-r from-red-500 to-red-600 px-5 py-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
               <div>
                 <h2 id="delete-modal-title" className="text-white font-semibold text-base">
                   {t("delete.title")}
@@ -120,7 +115,7 @@ export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Prop
             {/* Persistent data volume — kept unless explicitly destroyed */}
             <div className={`rounded-lg p-2.5 border ${deleteData ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
               <p className={`text-[11px] font-semibold flex items-center gap-1.5 ${deleteData ? "text-red-800" : "text-green-800"}`}>
-                <span>{deleteData ? "🗑️" : "💾"}</span>
+                <span>{deleteData ? "" : ""}</span>
                 {deleteData ? t("delete.data_destroy_title") : t("delete.data_keep_title")}
               </p>
               <p className={`text-[10px] mt-1 leading-relaxed ${deleteData ? "text-red-700" : "text-green-700"}`}>
@@ -160,7 +155,7 @@ export function DeleteAppModal({ app, onConfirm, onCancel, onExportFirst }: Prop
                       type="button"
                       onClick={onExportFirst}
                       disabled={submitting}
-                      className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-brand-600 rounded hover:bg-brand-700 transition disabled:opacity-50"
+                      className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-white bg-brand-600 rounded-md hover:bg-brand-700 transition disabled:opacity-50"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

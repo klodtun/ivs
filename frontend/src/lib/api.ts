@@ -1,3 +1,284 @@
+// ─── Vault scoping — ตัวตน / กลุ่ม / ความสามารถ ─────────────────── //
+export interface VaultGrantRow {
+  grant_id: number;
+  app_id: number;
+  slug: string;
+  name: string;
+  capability: string;
+  expires_at: string | null;
+  // ชื่อที่แอปตัวนี้จะได้รับจริง อาจต่างจากชื่อของกุญแจเมื่อสองระบบอ่านคนละชื่อ
+  env_name: string;
+  env_overridden: boolean;
+  env_valid: boolean;
+}
+
+export interface VaultScopeKey {
+  id: number;
+  name: string;
+  provider: string;
+  /** general | ai | maps | weather | finance | other — ใช้จัดกลุ่มบนหน้าแรก */
+  category: string;
+  namespace: string;
+  namespace_explicit: boolean;
+  env_name: string;
+  env_derived: string;
+  env_overridden: boolean;
+  // ชื่อที่โปรแกรมอ่านไม่ได้ = กุญแจที่ส่งไปแล้วไม่มีใครใช้
+  env_valid: boolean;
+  allow_reveal: boolean;
+  granted_to: VaultGrantRow[];
+  grant_count: number;
+}
+
+export interface VaultScopeOverview {
+  keys: VaultScopeKey[];
+  apps: { app_id: number; slug: string; name: string; status: string; key_count: number; keys: string[] }[];
+  namespaces: { namespace: string; keys: number }[];
+  totals: {
+    keys: number; keys_ungranted: number; keys_no_reveal: number; keys_bad_env: number;
+    grants_bad_env: number;
+    apps: number; apps_without_keys: number;
+  };
+  migration: {
+    total_keys: number;
+    apps: { slug: string; name: string; had_before: number; has_now: number; loses: number }[];
+  };
+}
+
+// ─── Business flow ──────────────────────────────────────────────── //
+export interface FlowStepRow {
+  id: number;
+  flow_key: string;
+  flow_label: string;
+  step_no: number;
+  label: string;
+  app_id: number | null;
+  app_name: string | null;
+  app_slug: string | null;
+  api_entry_id: number | null;
+  // ขั้นที่ตรวจไม่ได้มีสองแบบ — คนทำเองตลอดไป กับยังไม่ได้เชื่อม (งานที่ค้าง)
+  unbound_kind: "manual" | "planned";
+  // unverified = ยังไม่เคยตรวจ หรือเป็นขั้นที่คนทำเอง — ไม่ใช่ "พัง"
+  status: "unverified" | "ok" | "drifted" | "broken";
+  drift_note: string;
+  verified_at: string | null;
+  latency_ms: number | null;
+  http_code: number | null;
+}
+
+export interface Flow {
+  flow_key: string;
+  flow_label: string;
+  steps: FlowStepRow[];
+  ok: number;
+  drifted: number;
+  broken: number;
+  unverified: number;
+}
+
+// ─── System map ─────────────────────────────────────────────────── //
+export interface MapNode {
+  id: number;
+  slug: string;
+  name: string;
+  status: string;
+  port: number | null;
+  version: number;
+  access_mode: string;
+  pii_fields: number;
+  pii_unconfirmed: number;
+  pdpa_declared: boolean;
+  retention: string;
+  tunnel_open: boolean;
+  has_schema: boolean;
+  catalog_seen_at: string | null;
+  // ผลยิงจริงครั้งล่าสุด — ไม่ใช่การอนุมานจากสถานะคอนเทนเนอร์
+  reach_status: "OK" | "FAIL" | "UNKNOWN";
+  reach_http: number | null;
+  reach_ms: number | null;
+  reach_at: string | null;
+  reach_message: string;
+}
+
+export interface DependencyEdge {
+  id: number;
+  from_app_id: number;
+  to_app_id: number | null;
+  target: string;
+  external: boolean;
+  kind: "http_api" | "database" | "external";
+  origin: "scan" | "declared" | "inferred" | "token";
+  evidence: string;
+  /** ชี้ไปที่แถวจริงที่ทำให้เส้นนี้เกิด — null เมื่อไม่มีอะไรให้ชี้ */
+  evidence_ref: {
+    kind: "token" | "app" | "person";
+    token_id?: number; app_id?: number; label?: string;
+    user?: string | null; at?: string | null;
+  } | null;
+  confirmed: boolean;
+  last_seen_at: string | null;
+}
+
+/** ภาพรวมหน้าแรก — สี่มุมมอง กรองตามสิทธิ์ของผู้เรียกแล้ว */
+export interface SystemOverview {
+  generated_at: string;
+  role: string;
+  performance: {
+    cpu_percent: number | null;
+    memory_percent: number | null;
+    disk_percent: number | null;
+    measured_at: string | null;
+    trend: { at: string | null; cpu: number; mem: number }[];
+    apps_total: number;
+    apps_stopped: number;
+    unreachable: number;
+    never_tested: number;
+    slowest: { slug: string; ms: number }[];
+    /** รายการจริงเบื้องหลังตัวเลข — ใช้ตรวจว่านับอะไรอยู่ */
+    details?: Record<string, string[]>;
+    /** เรียงตามหน่วยความจำ — CPU ณ วินาทีเดียวกระโดดเกินกว่าจะจัดอันดับได้ */
+    top_consumers: { slug: string; memory_mb: number; cpu_percent: number }[];
+  };
+  privacy: {
+    fields_total: number;
+    fields_unconfirmed: number;
+    apps_no_purpose: number;
+    apps_no_purpose_examples: string[];
+    apps_no_retention: number;
+    external_targets: number;
+    details?: Record<string, string[]>;
+  };
+  risk: {
+    edges_total: number;
+    edges_unconfirmed: number;
+    apps_without_edges: number;
+    steps_broken: number;
+    steps_drifted: number;
+    steps_planned: number;
+    changes_unassessed: number;
+    details?: Record<string, string[]>;
+  };
+  /** AI ที่มีอยู่จริง — โมเดล ปลายทาง แอปที่เข้าถึงได้ และ AI ที่เรียกเข้ามา */
+  ai: {
+    models: { label: string; provider: string; model: string; base_url: string; has_key: boolean }[];
+    models_count: number;
+    models_without_key: number;
+    apps_with_ai: number;
+    apps_total: number;
+    ai_callers: { caller: string; target: string; scope: string }[];
+    ai_callers_count: number;
+    ai_callers_revoked: number;
+    keys?: number;
+    keys_ungranted?: number;
+    details?: Record<string, string[]>;
+  };
+  /** สรุปว่าแต่ละเมนูในแถบข้างมีของอยู่เท่าไร — อ้างด้วย href ชุดเดียวกับแถบข้าง */
+  menus: {
+    href: string;
+    count: number;
+    unit: string;
+    /** ยอดสะสมทั้งหมด เมื่อต่างจากยอดที่ใช้อยู่ */
+    note?: string;
+    items?: string[];
+  }[];
+  /** เฉพาะผู้ดูแลระบบ — จำนวนกุญแจก็บอกขนาดของสิ่งที่มีอยู่ */
+  security?: {
+    tokens_active: number;
+    tokens_expiring: number;
+    tokens_expiring_list: { label: string; caller: string; expires_at: string }[];
+    keys_total: number;
+    keys_ungranted: number;
+    keys_revealable: number;
+    audit_warnings_7d: number;
+    tunnels_open: number;
+    apps_public: number;
+    details?: Record<string, string[]>;
+  };
+}
+
+/** หกมุมมองเดียวกับหน้าแรก แต่ของแอปตัวเดียว */
+export interface AppOverview {
+  app_id: number;
+  slug: string;
+  name: string;
+  status: string;
+  version: number;
+  port: number | null;
+  access_mode: string;
+  app_type: string;
+  logo_data: string;
+  performance: {
+    memory_mb: number | null; cpu_percent: number | null;
+    reach_status: string | null; reach_ms: number | null; reach_message: string;
+  };
+  privacy: {
+    fields_total: number; fields_unconfirmed: number; fields: string[];
+    has_purpose: boolean; retention: string; legal_basis: string;
+  };
+  risk: {
+    edges_out: number; edges_in: number; edges_unconfirmed: number; edges: string[];
+    flow_steps: number; steps: string[]; changes_unassessed: number;
+  };
+  security?: {
+    keys: number; key_names: string[]; ai_keys: number;
+    tokens: number; token_names: string[]; tunnel_open: boolean;
+  };
+}
+
+/** ข้อมูลส่วนบุคคลเดินผ่านเส้นไหน — คำถามของ ROPA */
+export interface PiiFlowEdge {
+  edge_id: number;
+  from: string;
+  to: string;
+  holder: string;
+  external: boolean;
+  origin: string;
+  confirmed: boolean;
+  via_gateway: boolean;
+  pii_fields: number;
+  pii_confirmed: number;
+  purpose: string;
+  policy: { block: number; mask: number; allow: number };
+  policy_unconfirmed: number;
+  /** ปลายทางภายในถือ PII และไม่มีจุดกรอง */
+  unfiltered_pii: boolean;
+  /** ออกนอกองค์กร — มองไม่เห็นเนื้อคำขอ จึงบอกไม่ได้ว่าส่งอะไร */
+  external_unknown: boolean;
+}
+
+export interface PiiFlow {
+  edges: PiiFlowEdge[];
+  totals: {
+    edges: number; with_pii: number; unfiltered_pii: number;
+    via_gateway: number; external: number;
+  };
+}
+
+export interface SystemMap {
+  nodes: MapNode[];
+  edges: DependencyEdge[];
+  apps_without_edges: string[];
+}
+
+/** แผนที่เปลี่ยนไปอย่างไรในช่วงที่ผ่านมา — ISO 13485 ข้อ 7.3.9 ถามคำถามนี้ */
+export interface SystemMapDelta {
+  days: number;
+  since: string;
+  last_scan_at: string | null;
+  /** ตอบเรื่อง "เส้นที่หายไป" ได้ก็ต่อเมื่อมีการสแกนจริงในช่วงนี้ */
+  vanished_answerable: boolean;
+  added: (DependencyEdge & { created_at: string | null })[];
+  confirmed: DependencyEdge[];
+  vanished: (DependencyEdge & { last_seen_at: string | null })[];
+  deploys: { app_id: number; slug: string; name: string; version: number; note: string; at: string | null }[];
+  tokens: {
+    id: number; label: string; caller: string; target: string;
+    expires_at: string | null;
+    state: "issued" | "revoked" | "expired" | "expiring";
+  }[];
+  totals: { added: number; confirmed: number; vanished: number; deploys: number; tokens: number };
+}
+
 // ─── API Catalog types ──────────────────────────────────────────── //
 export interface CatalogEntry {
   id: number;
@@ -292,6 +573,295 @@ export const api = {
   // "protected" puts the iVS login in front of the app: the container stops
   // publishing its port to the network and iVS serves it instead. Recreates
   // the container, so it takes a few seconds.
+  // ── Field-level PDPA policy ──────────────────────────────────── //
+  // Rules derived from the PII scan, enforced on data leaving an app.
+  getFieldPolicy: (appId: number) =>
+    request<{
+      total: number; pending_review: number; blocked: number; masked: number; allowed: number;
+      fields: { id: number; field_name: string; category: string; action: "block" | "mask" | "allow";
+                confirmed: boolean; origin: string; note: string }[];
+    }>(`/pdpa/${appId}/field-policy`),
+
+  deriveFieldPolicy: (appId: number) =>
+    request<{ created: number; kept: number; pending_review: number }>(
+      `/pdpa/${appId}/field-policy/derive`,
+      { method: "POST" }
+    ),
+
+  confirmFieldPolicy: (appId: number, field_name: string, action: "block" | "mask" | "allow", note = "") =>
+    request<{ field_name: string; action: string; confirmed: boolean }>(
+      `/pdpa/${appId}/field-policy`,
+      { method: "PUT", body: JSON.stringify({ field_name, action, note }) }
+    ),
+
+  previewFieldPolicy: (appId: number, sample: any) =>
+    request<{ result: any; applied: { field: string; action: string }[] }>(
+      `/pdpa/${appId}/field-policy/preview`,
+      { method: "POST", body: JSON.stringify({ sample }) }
+    ),
+
+  // ── System map — what depends on what ────────────────────────── //
+  getSystemMap: () => request<SystemMap>(`/dependencies`),
+
+  getSystemMapDelta: (days = 7) =>
+    request<SystemMapDelta>(`/dependencies/delta?days=${days}`),
+
+  getPiiFlow: () => request<PiiFlow>(`/dependencies/pii`),
+
+  /** ไฟล์เดียวเปิดได้เอง — ให้เบราว์เซอร์โหลดตรง ไม่ต้องผ่าน request() ที่คาด JSON */
+  // ดาวน์โหลดไฟล์ที่ต้องมีสิทธิ์ — ลิงก์ธรรมดาใช้ไม่ได้
+  //
+  // <a href> เป็นการนำทางของเบราว์เซอร์ ไม่ผ่านตัวห่อ request() จึงไม่มีหัว
+  // Authorization ติดไป และเซิร์ฟเวอร์ตอบ 401 ปุ่มส่งออกแผนที่ระบบเงียบมา
+  // ตลอดด้วยเหตุนี้ ไม่มีอะไรฟ้อง เพราะการนำทางที่ล้มเหลวไม่ขึ้นที่หน้าจอเดิม
+  downloadWithAuth: async (path: string, filename: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(detail.slice(0, 200) || `ส่งออกไม่สำเร็จ (HTTP ${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  // ── Vault scoping ─────────────────────────────────────────────── //
+  getVaultScope: () => request<VaultScopeOverview>(`/vault/scope/overview`),
+
+  grantVaultKey: (keyId: number, appId: number, note = "", envOverride = "") =>
+    request<VaultScopeKey>(`/vault/${keyId}/grants`, {
+      method: "POST",
+      body: JSON.stringify({
+        app_id: appId, capability: "inject", note, env_override: envOverride,
+      }),
+    }),
+
+  // ชื่อตัวแปรต่อสิทธิ์ — ความลับใบเดียวถึงสองระบบด้วยชื่อที่แต่ละฝั่งอ่านจริง
+  updateGrantEnvName: (grantId: number, envOverride: string) =>
+    request<VaultScopeKey>(`/vault/grants/${grantId}/env-name`, {
+      method: "PUT", body: JSON.stringify({ env_override: envOverride }),
+    }),
+
+  grantVaultNamespace: (keyId: number, namespace: string, appId: number) =>
+    request<{ granted: number; keys: string[] }>(`/vault/${keyId}/grants/by-namespace`, {
+      method: "POST", body: JSON.stringify({ namespace, app_id: appId }),
+    }),
+
+  revokeVaultGrant: (grantId: number) =>
+    request<any>(`/vault/grants/${grantId}`, { method: "DELETE" }),
+
+  updateVaultKeyScope: (keyId: number, patch: Record<string, any>) =>
+    request<VaultScopeKey>(`/vault/${keyId}/scope`, { method: "PUT", body: JSON.stringify(patch) }),
+
+  // ── Business flow — คนประกาศลำดับ เครื่องตรวจว่ายังจริง ──────────── //
+  getFlows: () => request<{ flows: Flow[] }>(`/flows`),
+
+  addFlowStep: (flowKey: string, data: Record<string, any>) =>
+    request<FlowStepRow>(`/flows/${flowKey}/steps`, { method: "POST", body: JSON.stringify(data) }),
+
+  updateFlowStep: (stepId: number, data: Record<string, any>) =>
+    request<FlowStepRow>(`/flows/steps/${stepId}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  moveFlowStep: (stepId: number, direction: "up" | "down") =>
+    request<{ moved: boolean }>(`/flows/steps/${stepId}/move`, {
+      method: "PUT", body: JSON.stringify({ direction }),
+    }),
+
+  deleteFlowStep: (stepId: number) =>
+    request<any>(`/flows/steps/${stepId}`, { method: "DELETE" }),
+
+  verifyFlow: (flowKey: string) =>
+    request<any>(`/flows/${flowKey}/verify`, { method: "POST" }),
+
+  verifyFlowStep: (stepId: number) =>
+    request<FlowStepRow>(`/flows/steps/${stepId}/verify`, { method: "POST" }),
+
+  verifyReachability: () =>
+    request<{ tested: number; ok: number; fail: number }>(`/dependencies/verify`, { method: "POST" }),
+
+  scanDependencies: (appId: number) =>
+    request<any>(`/dependencies/${appId}/scan`, { method: "POST" }),
+
+  declareDependency: (appId: number, data: Record<string, any>) =>
+    request<DependencyEdge>(`/dependencies/${appId}/declare`, {
+      method: "POST", body: JSON.stringify(data),
+    }),
+
+  confirmDependency: (depId: number) =>
+    request<DependencyEdge>(`/dependencies/edge/${depId}/confirm`, { method: "PUT" }),
+
+  deleteDependency: (depId: number) =>
+    request<any>(`/dependencies/edge/${depId}`, { method: "DELETE" }),
+
+  // ── Design controls (ISO 13485 §7.3 / ISO 14971) ─────────────── //
+  // ขอบเขตของเครื่องมือ — นับจากตารางจริงในหลังบ้าน ไม่ใช่ตัวเลขที่พิมพ์ไว้
+  isoScope: () =>
+    request<{
+      covers: { iso13485: string[]; iso14971: string[]; iec62304_count: number; total: number };
+      not_covered: { clause: string; th: string; en: string }[];
+    }>("/trace/scope"),
+
+  getTraceMatrix: (appId: number) => request<any>(`/trace/matrix/${appId}`),
+
+  createRequirement: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/requirements/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  updateRequirement: (reqId: number, data: Record<string, any>) =>
+    request<any>(`/trace/requirements/${reqId}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  createTest: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/tests/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  createRisk: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/risks/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  acceptRisk: (riskId: number) =>
+    request<any>(`/trace/risks/${riskId}/accept`, { method: "PUT" }),
+
+  // Returns the bundle itself, so it goes through fetch rather than request().
+  getDeviceCriteria: () => request<any>("/trace/device/criteria"),
+
+  getAiCriteria: () => request<any>("/trace/ai/criteria"),
+
+  listSnapshots: (appId: number) => request<any>(`/trace/snapshots/${appId}`),
+
+  diffSnapshots: (appId: number, a: number, b: number) =>
+    request<any>(`/trace/snapshots/${appId}/diff?a=${a}&b=${b}`),
+
+  getConformityReport: (appId: number) => request<any>(`/trace/conformity/${appId}`),
+
+  getSecurityRecord: (appId: number) => request<any>(`/trace/security/${appId}`),
+
+  saveSecurityRecord: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/security/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  getIecRecord: (appId: number) => request<any>(`/trace/iec/${appId}`),
+
+  saveIecRecord: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/iec/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  getEpChecklist: (appId: number) => request<any>(`/trace/ep/${appId}`),
+
+  saveEpChecklist: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/ep/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  getAiDossier: (appId: number) => request<any>(`/trace/ai/${appId}`),
+
+  saveAiDossier: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/ai/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  getDeviceDetermination: (appId: number) => request<any>(`/trace/device/${appId}`),
+
+  assessDevice: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/device/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  createChange: (appId: number, data: Record<string, any>) =>
+    request<any>(`/trace/changes/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  updateChange: (changeId: number, data: Record<string, any>) =>
+    request<any>(`/trace/changes/${changeId}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  approveChange: (changeId: number) =>
+    request<any>(`/trace/changes/${changeId}/approve`, { method: "PUT" }),
+
+  exportDhf: async (appId: number): Promise<Blob> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`/api/trace/dhf/${appId}`, { headers, credentials: "include" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.detail || `Export failed (HTTP ${res.status})`);
+    }
+    return res.blob();
+  },
+
+  // ── Data mart — outside data, fetched once and shared ────────── //
+  listDataMartSources: () =>
+    request<{ sources: any[] }>("/datamart/sources"),
+
+  createDataMartSource: (data: {
+    name: string; url: string; method: string; vault_key_name: string;
+    description: string; fetch_interval_minutes: number; retention_days: number;
+  }) =>
+    request<any>("/datamart/sources", { method: "POST", body: JSON.stringify(data) }),
+
+  fetchDataMartSource: (id: number) =>
+    request<any>(`/datamart/sources/${id}/fetch`, { method: "POST" }),
+
+  getDataMartLatest: (id: number) =>
+    request<{ fetched_at: string; expires_at: string | null; content_hash: string; data: any }>(
+      `/datamart/sources/${id}/latest`
+    ),
+
+  deleteDataMartSource: (id: number) =>
+    request<{ deleted: boolean }>(`/datamart/sources/${id}`, { method: "DELETE" }),
+
+  // ── Exchange tokens — credentials for calling an app's API ───── //
+  // The plaintext is in the create response and nowhere else, ever.
+  listExchangeTokens: (appId: number) =>
+    request<{ app_id: number; app_name: string; tokens: any[] }>(`/exchange/tokens/${appId}`),
+
+  createExchangeToken: (
+    appId: number,
+    data: {
+      caller_name: string; caller_kind: string; scope: "read" | "write";
+      allowed_paths: string[]; ttl_hours: number | null;
+      rate_limit_per_hour: number; label: string;
+    }
+  ) =>
+    request<any>(`/exchange/tokens/${appId}`, { method: "POST", body: JSON.stringify(data) }),
+
+  revokeExchangeToken: (tokenId: number) =>
+    request<any>(`/exchange/tokens/${tokenId}`, { method: "DELETE" }),
+
+  // Check what a token would be allowed to do, without making the call.
+  verifyExchangeToken: (token: string, method: string, path: string) =>
+    request<{ allowed: boolean; reason: string; caller_name?: string; scope?: string }>(
+      `/exchange/verify`,
+      { method: "POST", body: JSON.stringify({ token, method, path }) }
+    ),
+
+  // ── ROPA: recipients, lawful basis, erasure right ────────────── //
+  getRopa: (appId: number) =>
+    request<{
+      app_id: number; app_name: string; legal_basis: string;
+      erasure_right: "auto" | "allowed" | "restricted"; erasure_note: string;
+      recipients: { kind: string; name: string; purpose: string; note: string; added_at: string }[];
+      erasure: { erasable: boolean; reason_th: string; basis_label: string; source: string };
+      basis_options: { value: string; label_th: string; label_en: string; erasable: boolean; why: string }[];
+    }>(`/pdpa/${appId}/ropa`),
+
+  updateRopa: (appId: number, patch: Record<string, any>) =>
+    request<any>(`/pdpa/${appId}/ropa`, { method: "PUT", body: JSON.stringify(patch) }),
+
+  addRopaRecipient: (appId: number, kind: string, name: string, purpose = "", note = "") =>
+    request<{ added: boolean; recipients: any[] }>(`/pdpa/${appId}/ropa/recipients`, {
+      method: "POST",
+      body: JSON.stringify({ kind, name, purpose, note }),
+    }),
+
+  removeRopaRecipient: (appId: number, kind: string, name: string) =>
+    request<{ recipients: any[] }>(
+      `/pdpa/${appId}/ropa/recipients?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`,
+      { method: "DELETE" }
+    ),
+
+  // Answer a deletion request for one activity, with the reason to send back.
+  checkErasure: (appId: number) =>
+    request<{ erasable: boolean; reason_th: string; basis_label: string; source: string }>(
+      `/pdpa/${appId}/erasure-check`
+    ),
+
   setAccessMode: (id: number, mode: "public" | "protected") => {
     const fd = new FormData();
     fd.append("mode", mode);
@@ -350,19 +920,26 @@ export const api = {
 
   getSystemHealth: () => request<any>("/system/health"),
 
+  /** ภาพรวมหน้าแรก — คำขอเดียว คิวรีล้วน ไม่แตะ Docker */
+  getSystemOverview: () => request<SystemOverview>("/system/overview"),
+
+  getAppOverview: (appId: number) =>
+    request<AppOverview>(`/system/overview/app/${appId}`),
+
   getAuditLogs: () => request<any[]>("/system/audit-logs"),
 
   getTunnels: () => request<any[]>("/tunnels"),
 
-  createTunnel: (appId: number, durationMinutes: number) =>
+  // durationMinutes = null → ไม่มีกำหนดหมดอายุ (ต้องมีเหตุผลกำกับ)
+  createTunnel: (appId: number, durationMinutes: number | null, permanentReason = "") =>
     request<any>("/tunnels", {
       method: "POST",
       body: JSON.stringify({
         app_id: appId,
         duration_minutes: durationMinutes,
+        permanent_reason: permanentReason,
       }),
     }),
-
   revokeTunnel: (id: number) =>
     request<any>(`/tunnels/${id}`, { method: "DELETE" }),
 
@@ -528,9 +1105,11 @@ export const api = {
     `${API_BASE}/system/audit-logs/exports/${id}/download`,
 
   // Resources
-  getResources: () => request<any>("/system/resources"),
+  // live=true ถาม Docker ทีละคอนเทนเนอร์ ราวสองวินาทีต่อแอป — ให้คนกดเอง
+  getResources: (live = false) =>
+    request<any>(`/system/resources${live ? "?live=true" : ""}`),
 
-  getResourceHistory: (hours: number = 24) =>
+  getResourceHistory: (hours: number = 1) =>
     request<any[]>(`/system/resources/history?hours=${hours}`),
 
   exportResourceReport: () =>
@@ -565,6 +1144,19 @@ export const api = {
       "/system/mdns/toggle",
       { method: "PUT", body: JSON.stringify({ enabled }) }
     ),
+  getModules: () =>
+    request<{
+      variant: string;
+      label_th: string;
+      label_en: string;
+      edition: string;
+      public: boolean;
+      core_menus: string[];
+      visible_menus: string[];
+      menu_labels: Record<string, { th: string; en: string }>;
+      modules: Record<string, { state: "active" | "demo" | "absent"; menu: string; th: string; what: string }>;
+      demo_only: string[];
+    }>("/system/modules"),
 
   getLanIp: () =>
     request<{
@@ -847,3 +1439,5 @@ export const api = {
   deleteCatalogEntry: (id: number) =>
     request<void>(`/catalog/${id}`, { method: "DELETE" }),
 };
+
+// ─── OpenCLI Bridge types ─────────────────────────────────────────── //

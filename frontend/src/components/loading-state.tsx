@@ -75,7 +75,7 @@ export function PerfWarningBanner({ seconds }: { seconds: number }) {
   const { t } = useLang();
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-md p-2.5 flex items-start gap-2">
-      <span className="text-base flex-shrink-0">⏱</span>
+
       <div className="flex-1 min-w-0">
         <p className="text-[11px] font-medium text-amber-800">
           {t("perf.slow_title").replace("{n}", String(seconds))}

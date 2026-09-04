@@ -103,10 +103,10 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
         lines.push("");
       }
       if (notice.privacy_policy_url) {
-        lines.push(`📄 ${t("pn.link_policy")}: ${notice.privacy_policy_url}`);
+        lines.push(` ${t("pn.link_policy")}: ${notice.privacy_policy_url}`);
       }
       if (notice.privacy_notice_url) {
-        lines.push(`📋 ${t("pn.link_full_notice")}: ${notice.privacy_notice_url}`);
+        lines.push(` ${t("pn.link_full_notice")}: ${notice.privacy_notice_url}`);
       }
       lines.push("");
     } else {
@@ -120,7 +120,7 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
     lines.push(SEP);
     lines.push(tunnel.public_url);
     lines.push("");
-    lines.push(`⏱  ${t("tunnel.share.body.expires_at")}: ${formatLegalTimestamp(tunnel.expires_at)}`);
+    lines.push(`  ${t("tunnel.share.body.expires_at")}: ${formatLegalTimestamp(tunnel.expires_at)}`);
     lines.push("");
 
     // 3) Usage instructions
@@ -187,9 +187,6 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
           {/* Header */}
           <div className="bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-3 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-lg">📧</span>
-              </div>
               <div>
                 <h2 className="text-white font-semibold text-sm">{t("tunnel.share.title")}</h2>
                 <p className="text-brand-100 text-[11px] mt-0.5">{t("tunnel.share.subtitle")}</p>
@@ -254,7 +251,7 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
 
             {/* Tip */}
             <div className="bg-amber-50 border border-amber-200 rounded-md p-2.5 text-[11px] text-amber-800">
-              💡 {t("tunnel.share.tip")}
+               {t("tunnel.share.tip")}
             </div>
           </div>
 
@@ -264,7 +261,7 @@ export function TunnelShareModal({ tunnel, appName, onClose }: Props) {
               onClick={handleCopy}
               className={`px-3 py-1.5 text-xs font-medium rounded-md border transition ${
                 copied
-                  ? "bg-green-50 border-green-200 text-green-700"
+                  ? "bg-gray-50 border-green-200 text-brand-700"
                   : "bg-white border-gray-300 text-gray-700 hover:bg-gray-100"
               }`}
             >

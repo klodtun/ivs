@@ -1,5 +1,6 @@
 "use client";
 import { useLang } from "@/components/lang-provider";
+import { PageHeader } from "@/components/ui";
 
 export default function ConsultingPage() {
   const { t } = useLang();
@@ -7,8 +8,7 @@ export default function ConsultingPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{t("consulting.title")}</h1>
-        <p className="text-gray-600 leading-relaxed">{t("consulting.body")}</p>
+        <PageHeader title={t("consulting.title")} help={t("consulting.body")} />
       </div>
 
       <div className="border border-gray-200 rounded-xl p-6 space-y-4 bg-amber-50">

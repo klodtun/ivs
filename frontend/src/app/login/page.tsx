@@ -183,7 +183,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-1.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:ring-4 focus:ring-brand-200 transition disabled:opacity-50"
+              className="w-full py-1.5 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700 focus:ring-4 focus:ring-brand-200 transition disabled:opacity-50"
             >
               {loading ? t("login.signing_in") : t("login.submit")}
             </button>
@@ -221,7 +221,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => { setResetConfirm(false); setResetMessage(""); }}
                       disabled={resetWorking}
-                      className="flex-1 text-[10px] py-1.5 bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                      className="flex-1 text-[10px] py-1.5 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
                     >
                       {t("login.reset_cancel")}
                     </button>
@@ -229,7 +229,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={handleFactoryReset}
                       disabled={resetWorking}
-                      className="flex-1 text-[10px] py-1.5 bg-red-600 text-white font-semibold rounded hover:bg-red-700 disabled:opacity-50"
+                      className="flex-1 text-[10px] py-1.5 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 disabled:opacity-50"
                     >
                       {resetWorking ? t("login.reset_working") : t("login.reset_confirm_btn")}
                     </button>
@@ -251,7 +251,7 @@ export default function LoginPage() {
                 onClick={() => setShutdownOpen(true)}
                 className="w-full text-[10px] text-gray-400 hover:text-red-600 transition py-1"
               >
-                ⏻ {t("login.shutdown")}
+                 {t("login.shutdown")}
               </button>
             ) : (
               <form onSubmit={handleShutdown} className="bg-red-50 border border-red-200 rounded-lg p-2.5 space-y-2">
@@ -282,16 +282,16 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setShutdownOpen(false); setShutdownErr(""); setShutdownUser(""); setShutdownPass(""); }}
                     disabled={shutdownBusy}
-                    className="flex-1 text-[10px] py-1.5 bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="flex-1 text-[10px] py-1.5 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
                   >
                     {t("login.reset_cancel")}
                   </button>
                   <button
                     type="submit"
                     disabled={shutdownBusy || !shutdownUser || !shutdownPass}
-                    className="flex-1 text-[10px] py-1.5 bg-red-600 text-white font-semibold rounded hover:bg-red-700 disabled:opacity-50"
+                    className="flex-1 text-[10px] py-1.5 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 disabled:opacity-50"
                   >
-                    {shutdownBusy ? `⏻ ${t("login.shutdown_working")}` : `⏻ ${t("login.shutdown_confirm")}`}
+                    {shutdownBusy ? ` ${t("login.shutdown_working")}` : ` ${t("login.shutdown_confirm")}`}
                   </button>
                 </div>
               </form>

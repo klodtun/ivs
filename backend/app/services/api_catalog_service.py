@@ -55,13 +55,23 @@ def _decrypt(ciphertext: Optional[str]) -> Optional[str]:
 
 
 def _app_base_url(app: App) -> Optional[str]:
-    """Build the in-network URL to reach the app's API root."""
+    """Build the in-network URL to reach the app's API root.
+
+    An app in `protected` mode does not answer on `App.port` — the login gate
+    does, and the gate wants a browser session this probe will never have. The
+    container itself binds the shadow port. Calling the public port instead
+    reports a healthy app as unreachable, which is worse than no check at all:
+    a flow step reads BROKEN and whoever sees it goes looking for a fault in
+    the app rather than in the probe.
+
+    `exchange_gateway_service` already resolves the address this way. This is
+    the same rule, applied where the catalog and the flow verifier read it.
+    """
     if not app.port:
         return None
-    # On macOS dev: host.docker.internal works inside containers; for direct
-    # calls from the backend container, use the container name.
-    # Simplest cross-platform: use the host port mapping.
-    return f"http://localhost:{app.port}"
+    from app.services.app_gate_service import internal_port
+    port = internal_port(app.port) if app.access_mode == "protected" else app.port
+    return f"http://localhost:{port}"
 
 
 # --------------------------------------------------------------------------- #
@@ -85,6 +95,75 @@ def _try_fetch_openapi(base_url: str) -> Optional[Dict]:
     return None
 
 
+def scan_app(db: Session, app: App) -> Dict:
+    """
+    Discover one app's API root and upsert its catalog entry.
+
+    Does not commit — the caller decides when. Returns a result dict with a
+    ``status`` of NEW, UPDATED or NO_PORT, plus ``schema_changed`` when the
+    app's API shape moved under an entry that already existed.
+    """
+    result: Dict = {"slug": app.slug, "status": "NO_PORT", "schema_changed": False}
+
+    base_url = _app_base_url(app)
+    if not base_url:
+        return result
+
+    openapi = _try_fetch_openapi(base_url)
+    # Truncate schema if too big
+    schema_str = None
+    if openapi:
+        try:
+            schema_str = json.dumps(openapi)
+            if len(schema_str) > SCHEMA_MAX_BYTES:
+                # Keep only paths summary
+                minimal = {
+                    "openapi": openapi.get("openapi"),
+                    "info": openapi.get("info"),
+                    "paths": {k: list(v.keys()) for k, v in (openapi.get("paths") or {}).items()},
+                }
+                schema_str = json.dumps(minimal)
+        except Exception:
+            schema_str = None
+
+    # Upsert one entry per app — the API "root" entry
+    existing = db.query(ApiCatalogEntry).filter_by(
+        app_id=app.id, path="/", discovery_source="auto"
+    ).first()
+
+    if existing:
+        existing.encrypted_base_url = _encrypt(base_url)
+        if schema_str:
+            existing.encrypted_schema = _encrypt(schema_str)
+        existing.updated_at = _utcnow()
+        # A redeploy can change the app's API. Any MCP tool generated from
+        # the old shape would keep calling it and return answers that are
+        # wrong without being errors, so park the tool until the new schema
+        # is confirmed.
+        from app.services.mcp_service import check_drift
+        if check_drift(db, existing, existing.method or "GET", existing.path or "/", schema_str or ""):
+            result["schema_changed"] = True
+        result["status"] = "UPDATED"
+    else:
+        entry = ApiCatalogEntry(
+            app_id=app.id,
+            name=app.name,
+            method="GET",
+            path="/",
+            encrypted_base_url=_encrypt(base_url),
+            encrypted_schema=_encrypt(schema_str) if schema_str else None,
+            description=app.description or f"Auto-discovered API for {app.name}",
+            category="app",
+            current_version=1,
+            discovery_source="auto",
+            is_active=True,
+        )
+        db.add(entry)
+        result["status"] = "NEW"
+
+    return result
+
+
 def scan_all_apps(db: Session) -> Dict:
     """
     Walk every RUNNING app and discover its API root. Insert new catalog
@@ -97,86 +176,96 @@ def scan_all_apps(db: Session) -> Dict:
     running_apps = db.query(App).filter(App.status == AppStatus.RUNNING).all()
     for app in running_apps:
         summary["scanned"] += 1
-        base_url = _app_base_url(app)
-        if not base_url:
+        result = scan_app(db, app)
+        if result["status"] == "NO_PORT":
             summary["failed"] += 1
-            summary["details"].append({"slug": app.slug, "status": "NO_PORT"})
-            continue
-
-        openapi = _try_fetch_openapi(base_url)
-        # Truncate schema if too big
-        schema_str = None
-        if openapi:
-            try:
-                schema_str = json.dumps(openapi)
-                if len(schema_str) > SCHEMA_MAX_BYTES:
-                    # Keep only paths summary
-                    minimal = {
-                        "openapi": openapi.get("openapi"),
-                        "info": openapi.get("info"),
-                        "paths": {k: list(v.keys()) for k, v in (openapi.get("paths") or {}).items()},
-                    }
-                    schema_str = json.dumps(minimal)
-            except Exception:
-                schema_str = None
-
-        # Upsert one entry per app — the API "root" entry
-        existing = db.query(ApiCatalogEntry).filter_by(
-            app_id=app.id, path="/", discovery_source="auto"
-        ).first()
-
-        if existing:
-            existing.encrypted_base_url = _encrypt(base_url)
-            if schema_str:
-                existing.encrypted_schema = _encrypt(schema_str)
-            existing.updated_at = _utcnow()
-            summary["updated"] += 1
-            summary["details"].append({"slug": app.slug, "status": "UPDATED"})
-        else:
-            entry = ApiCatalogEntry(
-                app_id=app.id,
-                name=app.name,
-                method="GET",
-                path="/",
-                encrypted_base_url=_encrypt(base_url),
-                encrypted_schema=_encrypt(schema_str) if schema_str else None,
-                description=app.description or f"Auto-discovered API for {app.name}",
-                category="app",
-                current_version=1,
-                discovery_source="auto",
-                is_active=True,
-            )
-            db.add(entry)
+        elif result["status"] == "NEW":
             summary["new"] += 1
-            summary["details"].append({"slug": app.slug, "status": "NEW"})
+        else:
+            summary["updated"] += 1
+        if result.get("schema_changed"):
+            summary.setdefault("schema_changed", []).append(app.slug)
+        summary["details"].append({"slug": app.slug, "status": result["status"]})
 
     db.commit()
     return summary
 
 
 # --------------------------------------------------------------------------- #
+# Scan triggered by a lifecycle change
+# --------------------------------------------------------------------------- #
+
+# A container is up before the process inside it is listening. Give the app a
+# moment before asking it for its schema, or every first scan reads NO_PORT and
+# the catalog stays empty until someone presses the button by hand.
+POST_DEPLOY_SCAN_DELAY = 6.0
+
+
+def scan_after_lifecycle_change(app_id: int, delay: float = POST_DEPLOY_SCAN_DELAY) -> None:
+    """
+    Schedule a catalog scan for one app, off the request path.
+
+    The catalog exists so nobody has to remember to fill it in, so it is
+    refreshed by deploy, redeploy, start and restart rather than by a button.
+    Discovery makes blocking HTTP calls and the app may not answer at all, so
+    this never runs inline: a deploy must not get slower, and must never fail,
+    because discovery did.
+    """
+    import asyncio
+
+    async def _run() -> None:
+        await asyncio.sleep(delay)
+        # Own session, per the rule that background work never borrows the
+        # request's session — that one is closed by the time this wakes up.
+        from app.database import SessionLocal
+        db = SessionLocal()
+        try:
+            app = db.query(App).filter(App.id == app_id).first()
+            if not app or app.status != AppStatus.RUNNING:
+                return
+            result = scan_app(db, app)
+            # เส้นเชื่อมเปลี่ยนพร้อมกับแอป จึงหาใหม่ในรอบเดียวกัน
+            try:
+                from app.services import dependency_service
+                dep = dependency_service.discover_for_app(db, app)
+            except Exception as e:
+                dep = {"new": 0}
+                logger.warning("หาเส้นเชื่อมของ %s ไม่สำเร็จ: %s", app.slug, e)
+            db.commit()
+            logger.info(
+                "API catalog scan for %s: %s (เส้นเชื่อมใหม่ %d)",
+                app.slug, result["status"], dep.get("new", 0),
+            )
+            if result.get("schema_changed"):
+                logger.warning(
+                    "API shape of %s changed — MCP tools built from the old "
+                    "schema are parked until confirmed", app.slug
+                )
+        except Exception as e:
+            db.rollback()
+            logger.warning("API catalog scan failed for app %s: %s", app_id, e)
+        finally:
+            db.close()
+
+    try:
+        asyncio.get_running_loop().create_task(_run())
+    except RuntimeError:
+        # No event loop (a sync context or a test). Skip rather than block —
+        # the manual scan and the next lifecycle change both still work.
+        logger.debug("No running loop; skipped catalog scan for app %s", app_id)
+
+
+# --------------------------------------------------------------------------- #
 # Test
 # --------------------------------------------------------------------------- #
 
-def test_entry(db: Session, entry: ApiCatalogEntry) -> Dict:
+def _probe(url: str, method: str, headers: Dict) -> Dict:
+    """ยิงคำขอหนึ่งครั้งแล้วคืนผล — ไม่แตะฐานข้อมูล
+
+    แยกออกจาก test_entry เพื่อให้ยิงหลายปลายทางพร้อมกันได้จากหลายเธรด
+    Session ของ SQLAlchemy ใช้ข้ามเธรดไม่ได้ การเขียนผลจึงต้องกลับมาทำที่เธรด
+    หลักเสมอ
     """
-    Call the API endpoint and record the result on the entry.
-
-    Returns: {status, http_code, latency_ms, message, body_snippet}
-    """
-    base_url = _decrypt(entry.encrypted_base_url) or ""
-    api_key = _decrypt(entry.encrypted_api_key) or ""
-    url = base_url.rstrip("/") + (entry.path or "/")
-
-    headers = {}
-    if api_key:
-        # Convention: if key looks like JWT/Bearer use Authorization; else X-API-Key
-        if api_key.count(".") == 2 and len(api_key) > 40:
-            headers["Authorization"] = f"Bearer {api_key}"
-        else:
-            headers["X-API-Key"] = api_key
-
-    method = (entry.method or "GET").upper()
     start = time.monotonic()
     result = {"status": "FAIL", "http_code": None, "latency_ms": 0, "message": "", "body_snippet": ""}
     try:
@@ -185,8 +274,7 @@ def test_entry(db: Session, entry: ApiCatalogEntry) -> Dict:
         elapsed = int((time.monotonic() - start) * 1000)
         result["http_code"] = r.status_code
         result["latency_ms"] = elapsed
-        body = (r.text or "")[:500]
-        result["body_snippet"] = body
+        result["body_snippet"] = (r.text or "")[:500]
         if 200 <= r.status_code < 400:
             result["status"] = "OK"
             result["message"] = f"HTTP {r.status_code} in {elapsed} ms"
@@ -199,14 +287,71 @@ def test_entry(db: Session, entry: ApiCatalogEntry) -> Dict:
         result["message"] = f"Connection refused / DNS failure: {e}"
     except Exception as e:
         result["message"] = f"Error: {e}"
+    return result
 
+
+def _request_parts(entry: ApiCatalogEntry):
+    base_url = _decrypt(entry.encrypted_base_url) or ""
+    api_key = _decrypt(entry.encrypted_api_key) or ""
+    url = base_url.rstrip("/") + (entry.path or "/")
+    headers = {}
+    if api_key:
+        # Convention: if key looks like JWT/Bearer use Authorization; else X-API-Key
+        if api_key.count(".") == 2 and len(api_key) > 40:
+            headers["Authorization"] = f"Bearer {api_key}"
+        else:
+            headers["X-API-Key"] = api_key
+    return url, (entry.method or "GET").upper(), headers
+
+
+def _record(entry: ApiCatalogEntry, result: Dict) -> None:
     entry.last_test_at = _utcnow()
     entry.last_test_status = result["status"]
     entry.last_test_message = result["message"]
     entry.last_test_http_code = result["http_code"]
     entry.last_test_latency_ms = result["latency_ms"]
+
+
+def test_entry(db: Session, entry: ApiCatalogEntry) -> Dict:
+    """
+    Call the API endpoint and record the result on the entry.
+
+    Returns: {status, http_code, latency_ms, message, body_snippet}
+    """
+    url, method, headers = _request_parts(entry)
+    result = _probe(url, method, headers)
+    _record(entry, result)
     db.commit()
     return result
+
+
+def test_entries(db: Session, entries: List[ApiCatalogEntry]) -> Dict:
+    """ตรวจหลายปลายทางพร้อมกัน แล้วเขียนผลรวดเดียว
+
+    ตรวจทีละตัวแบบเรียงกันจะใช้เวลาเท่ากับผลรวมของ timeout ทุกตัว ซึ่งกับสิบห้า
+    แอปที่บางตัวไม่ตอบ กลายเป็นนานเกินกว่าที่คนจะรอหน้าจอค้าง
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    if not entries:
+        return {"tested": 0, "ok": 0, "fail": 0, "results": {}}
+
+    jobs = [(e, *_request_parts(e)) for e in entries]
+    with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
+        outcomes = list(pool.map(lambda j: _probe(j[1], j[2], j[3]), jobs))
+
+    results = {}
+    for (entry, *_), result in zip(jobs, outcomes):
+        _record(entry, result)
+        if entry.app_id is not None:
+            results[entry.app_id] = result
+    db.commit()
+    return {
+        "tested": len(outcomes),
+        "ok": sum(1 for r in outcomes if r["status"] == "OK"),
+        "fail": sum(1 for r in outcomes if r["status"] != "OK"),
+        "results": results,
+    }
 
 
 # --------------------------------------------------------------------------- #

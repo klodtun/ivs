@@ -17,3 +17,11 @@ pydantic-settings==2.5.2
 alembic==1.13.3
 jinja2==3.1.4
 ntplib==0.4.0
+pyyaml==6.0.2
+
+# PDF/A pipeline (ม.10(2) — เอกสารต้องแสดงข้อความในภายหลังได้)
+# WeasyPrint วาดผ่าน Pango ซึ่งจัด shaping ภาษาไทยและตัดบรรทัดได้ถูกต้อง
+# ต้องมี system libs: libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi
+weasyprint==62.3
+pikepdf==9.4.2
+fonttools==4.55.3

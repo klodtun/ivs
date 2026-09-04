@@ -106,7 +106,7 @@ export function UsersTableSection({
                   onClick={() => onToggleActive(u)}
                   className={cn(
                     "text-[10px] font-medium",
-                    u.is_active ? "text-red-600 hover:text-red-700" : "text-green-600 hover:text-green-700"
+                    u.is_active ? "text-red-600 hover:text-red-700" : "text-brand-700 hover:text-brand-700"
                   )}
                 >
                   {u.is_active ? t("settings.disable") : t("settings.enable")}
@@ -114,7 +114,7 @@ export function UsersTableSection({
                 {onDelete && u.id !== currentUserId && (
                   <button
                     onClick={() => onDelete(u)}
-                    className="text-[10px] font-medium text-red-700 hover:text-red-800 hover:bg-red-50 px-1.5 py-0.5 rounded"
+                    className="text-[10px] font-medium text-red-700 hover:text-red-800 hover:bg-red-50 px-1.5 py-0.5 rounded-md"
                     title={t("settings.delete_user_tooltip")}
                   >
                     {t("settings.delete_user")}

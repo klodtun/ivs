@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models import App, AppStatus, AppLogEntry
+from app.config import settings
 from app.services.docker_service import docker_service
 from app.services.pii_anonymizer import anonymize as anonymize_pii
 
@@ -107,7 +108,7 @@ def collect_one_pass(db: Session) -> int:
         # where someone rebuilt the container outside IVS, leaving the DB
         # row with a stale ID.
         container = None
-        for lookup in (app.container_id, f"ivs-{app.slug}"):
+        for lookup in (app.container_id, f"{settings.CONTAINER_PREFIX}{app.slug}"):
             if not lookup:
                 continue
             try:

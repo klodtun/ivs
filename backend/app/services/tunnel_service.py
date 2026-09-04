@@ -107,13 +107,32 @@ class TunnelService:
         self,
         db: Session,
         app: App,
-        duration_minutes: int,
+        duration_minutes: Optional[int],
         user_id: int,
+        permanent_reason: str = "",
+        token_id: Optional[int] = None,
     ) -> Tunnel:
+        """Open a tunnel. `duration_minutes=None` means no expiry.
+
+        A standing exchange between two systems is a real arrangement, and
+        forcing it to expire every N hours only makes people pick an absurdly
+        long duration instead — which is worse than saying plainly that it is
+        meant to stay open and recording why. A permanent tunnel therefore
+        requires a reason, and can be bound to an exchange token so revoking
+        the token closes the tunnel too.
+        """
         if not app.port:
             raise ValueError("App has no port assigned — cannot create tunnel")
+        if duration_minutes is None and not (permanent_reason or "").strip():
+            raise ValueError(
+                "อุโมงค์ที่ไม่มีกำหนดหมดอายุต้องระบุเหตุผล — "
+                "เพื่อให้คนที่มาดูทีหลังรู้ว่าเปิดค้างไว้ทำไม และปิดได้เมื่อหมดความจำเป็น"
+            )
 
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(minutes=duration_minutes)
+            if duration_minutes is not None else None
+        )
 
         # Read this iVS instance's tunnel credentials
         cfg = get_tunnel_config(db)
@@ -135,6 +154,8 @@ class TunnelService:
             public_url=public_url,
             status=TunnelStatus.ACTIVE,
             expires_at=expires_at,
+            permanent_reason=(permanent_reason or "")[:2000],
+            token_id=token_id,
             container_id=str(proc.pid) if proc else None,
             created_by=user_id,
         )
@@ -147,7 +168,8 @@ class TunnelService:
 
         logger.info(
             f"Tunnel created [{provider}] for {app.slug}: {public_url} "
-            f"(expires in {duration_minutes}m, pid={proc.pid if proc else 'N/A'})"
+            f"(expires {'in ' + str(duration_minutes) + 'm' if duration_minutes else 'never'}, "
+            f"pid={proc.pid if proc else 'N/A'})"
         )
         return tunnel
 
@@ -461,8 +483,13 @@ class TunnelService:
     async def cleanup_expired(self, db: Session):
         """Stop expired tunnel processes and update status."""
         now = datetime.now(timezone.utc)
+        # A tunnel with no expiry is a deliberate standing arrangement between
+        # two systems, so it is skipped here rather than quietly closed. It is
+        # still closable — by revoking it, or by revoking the token it is bound
+        # to — which is a decision someone makes, not one a timer makes.
         expired = db.query(Tunnel).filter(
             Tunnel.status == TunnelStatus.ACTIVE,
+            Tunnel.expires_at.isnot(None),
             Tunnel.expires_at <= now,
         ).all()
 

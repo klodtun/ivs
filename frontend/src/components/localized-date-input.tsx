@@ -141,7 +141,7 @@ export function LocalizedDateInput({ value, onChange, placeholder, className }: 
             <button
               type="button"
               onClick={prevMonth}
-              className="p-1 hover:bg-gray-100 rounded text-gray-600"
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-600"
               aria-label="Previous month"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -152,7 +152,7 @@ export function LocalizedDateInput({ value, onChange, placeholder, className }: 
             <button
               type="button"
               onClick={nextMonth}
-              className="p-1 hover:bg-gray-100 rounded text-gray-600"
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-600"
               aria-label="Next month"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -181,7 +181,7 @@ export function LocalizedDateInput({ value, onChange, placeholder, className }: 
                   key={i}
                   type="button"
                   onClick={() => pick(date)}
-                  className={`text-[10px] py-1 rounded transition ${
+                  className={`text-[10px] py-1 rounded-md transition ${
                     isSelected
                       ? "bg-brand-600 text-white font-semibold"
                       : isToday

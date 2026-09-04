@@ -26,10 +26,18 @@ class VaultService:
     def decrypt(self, ciphertext: str) -> str:
         return self._fernet.decrypt(ciphertext.encode()).decode()
 
+    # จำนวนดาวคงที่ ไม่ผูกกับความยาวจริง
+    #
+    # เดิมใส่ดาวเท่าจำนวนอักขระที่ซ่อน ซึ่งบอกความยาวของความลับออกไปด้วย โทเคน
+    # Cloudflare ยาวเกิน 180 ตัว หน้าจอจึงได้ดาวยาวพ้นขอบกรอบไปทั้งบรรทัด และ
+    # ความยาวเองก็เป็นเบาะแสว่าเป็นความลับชนิดใด เพราะแต่ละผู้ให้บริการมีความยาว
+    # เฉพาะตัว การปิดบังที่บอกความยาวจึงปิดบังได้ไม่หมด
+    MASK_STARS = 8
+
     def mask_value(self, value: str) -> str:
         if len(value) <= 8:
-            return "****"
-        return value[:4] + "*" * (len(value) - 8) + value[-4:]
+            return "*" * self.MASK_STARS
+        return value[:4] + "*" * self.MASK_STARS + value[-4:]
 
     def build_env_dict(self, vault_keys: list) -> dict:
         env = {}

@@ -205,7 +205,7 @@ export function ExportAppModal({ app, onClose }: Props) {
                 )}
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-[11px] text-blue-800">
-                  💡 {t("export.tip")}
+                   {t("export.tip")}
                 </div>
               </>
             )}

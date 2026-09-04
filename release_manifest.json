@@ -1,0 +1,901 @@
+{
+  "files": {
+    "backend/app/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "core"
+    },
+    "backend/app/config.py": {
+      "sha256": "46b569a67bed5ce91516001ff7724cb56c9e380ced9e3ce47126a11c4529c84a",
+      "size": 2793,
+      "zone": "gray"
+    },
+    "backend/app/custom/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "extend"
+    },
+    "backend/app/custom/migrations/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "extend"
+    },
+    "backend/app/custom/routers/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "extend"
+    },
+    "backend/app/custom/services/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "extend"
+    },
+    "backend/app/database.py": {
+      "sha256": "a0ea061123d07d502fc8b8f87e2f326b3401f5fb4af97fa1f88ff21f030cff3b",
+      "size": 597,
+      "zone": "core"
+    },
+    "backend/app/main.py": {
+      "sha256": "68c90736875d8c20ba869c22fc314b08339fc8a7cf8e9a23d01cfa9be5e16661",
+      "size": 25275,
+      "zone": "core"
+    },
+    "backend/app/middleware/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "core"
+    },
+    "backend/app/middleware/auth.py": {
+      "sha256": "b1d998a04ee0721e0ce4fd289c76e47e35dcf18aff9a80157c2a9700008a5116",
+      "size": 2562,
+      "zone": "core"
+    },
+    "backend/app/models.py": {
+      "sha256": "ebf91dd75f063400426be069c64d56bd8822ca78f18cf9fe6f27ea0207424bca",
+      "size": 124573,
+      "zone": "core"
+    },
+    "backend/app/routers/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "core"
+    },
+    "backend/app/routers/api_catalog.py": {
+      "sha256": "3605817624fb5657b3d43224422f4957ecffea8564c12ebec1d0c3a90cc9a4e4",
+      "size": 9184,
+      "zone": "core"
+    },
+    "backend/app/routers/apps.py": {
+      "sha256": "c03a2a78e3ca68d423b6305b6edc1ad29f2f846ef2e8c71245febb133631e6ee",
+      "size": 59736,
+      "zone": "core"
+    },
+    "backend/app/routers/auth.py": {
+      "sha256": "49ca1cceaedebe7fd1401a12747df7d9e8c6d6ba125fd54662530b944d72b684",
+      "size": 18468,
+      "zone": "core"
+    },
+    "backend/app/routers/datamart.py": {
+      "sha256": "4a0754d401dd6947a619f4564af232eb296860e4ff6022f918a52a93f6a83ec9",
+      "size": 6448,
+      "zone": "core"
+    },
+    "backend/app/routers/dependencies.py": {
+      "sha256": "766338e11343061cb3203b6b795d9ecdb0548c59a594a26ff92b43cd83ba7138",
+      "size": 20773,
+      "zone": "core"
+    },
+    "backend/app/routers/econtract.py": {
+      "sha256": "c229d31a38d70ebf58a6e916574d9d9cd3d1c2d9ff2843474dfa12ff6f915814",
+      "size": 35471,
+      "zone": "core"
+    },
+    "backend/app/routers/enterprise.py": {
+      "sha256": "5546b29dad90ea26161aae04c546ffc847784f8538fe1ec555902cfa643f089c",
+      "size": 10198,
+      "zone": "core"
+    },
+    "backend/app/routers/exchange.py": {
+      "sha256": "ed9ccbd93885f4fafc486941efdea07b4f3e524a0f7b45622fa7a0e4de3793b3",
+      "size": 11094,
+      "zone": "core"
+    },
+    "backend/app/routers/flows.py": {
+      "sha256": "33dd35d0dda984cfb50e31ee8fbae9fc5767f861b1f10bdf3885197f0359ab24",
+      "size": 10342,
+      "zone": "core"
+    },
+    "backend/app/routers/mcp.py": {
+      "sha256": "1cd3a9124ce8bb9c138e62bec401872d8e608364f49cd86e19c18ac80045b14c",
+      "size": 9327,
+      "zone": "core"
+    },
+    "backend/app/routers/opencli.py": {
+      "sha256": "7e988475b9c25601d41fc1128a0d43ec2dd01569f8fa61ebe7058e6f8cb4ed51",
+      "size": 36324,
+      "zone": "core"
+    },
+    "backend/app/routers/pdpa.py": {
+      "sha256": "2fc8e038ea5e8b0f3a1c644c4ed6836727e07c64d5db847ea9f37583d5716dcd",
+      "size": 40725,
+      "zone": "core"
+    },
+    "backend/app/routers/system.py": {
+      "sha256": "927ced3668cd3b4667f4f649d2106ba7f29870a930ee4a70576c8581ea208de3",
+      "size": 54787,
+      "zone": "core"
+    },
+    "backend/app/routers/traceability.py": {
+      "sha256": "9c76dac800c9bea62e47aa03f80a40b051553e1fdd7cfbd41c5b244caed45ad1",
+      "size": 47556,
+      "zone": "core"
+    },
+    "backend/app/routers/tunnels.py": {
+      "sha256": "9eccdb5335b2bb0802d94de70aadf6466278807097f874d8186b7e5a188a76bc",
+      "size": 5401,
+      "zone": "core"
+    },
+    "backend/app/routers/vault.py": {
+      "sha256": "5d5bc9899bf05264a706e322f5e57442327a590299a1bfc28a25a187b55219f3",
+      "size": 19273,
+      "zone": "core"
+    },
+    "backend/app/schemas.py": {
+      "sha256": "0afb99e6f0b292521496de6769bd800a1bed61c92806745df8608dbd539f31ae",
+      "size": 7384,
+      "zone": "core"
+    },
+    "backend/app/services/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "zone": "core"
+    },
+    "backend/app/services/ai_dossier_service.py": {
+      "sha256": "25c2a0eaa71deb71df351ba905bcc34c1aa99efaf3f8192d65e7b169faf0f555",
+      "size": 18966,
+      "zone": "core"
+    },
+    "backend/app/services/api_catalog_service.py": {
+      "sha256": "fbe52cfa3d8ccbefa7e221d8d6f4f0abcdae44edfdf8945d2d9e9753b60c5530",
+      "size": 19153,
+      "zone": "core"
+    },
+    "backend/app/services/app_gate_service.py": {
+      "sha256": "8c03fd11b6d558e239fbc1faa158ac939511fe719e2205de5754b7899eead4c0",
+      "size": 16567,
+      "zone": "core"
+    },
+    "backend/app/services/app_log_service.py": {
+      "sha256": "88ac5917fe6d27a9366ecdd22e3991d2f804f2eabcb99fc1acc72b75f6934fe4",
+      "size": 7176,
+      "zone": "core"
+    },
+    "backend/app/services/architecture_mcp_service.py": {
+      "sha256": "15a1915e835d80a995d85ef9449ebe76a7c69a6d85a133038957f02246c5f822",
+      "size": 18729,
+      "zone": "core"
+    },
+    "backend/app/services/audit_service.py": {
+      "sha256": "c7e4ba7ed98320062f2c14f4f49801f78884db1fe38e06d0891d4b7e6c7cbcf3",
+      "size": 3593,
+      "zone": "core"
+    },
+    "backend/app/services/baseline_service.py": {
+      "sha256": "c270139815a25af9cd4fdcebdd445b411039345ba597db26c4b6deebaed432e9",
+      "size": 13282,
+      "zone": "core"
+    },
+    "backend/app/services/chain_service.py": {
+      "sha256": "12073e1ba8bdd03602e25785e2f81a6d3fc3970fed6534e8d595b48252237c2e",
+      "size": 19332,
+      "zone": "core"
+    },
+    "backend/app/services/change_service.py": {
+      "sha256": "2196315471cc06d795d8e4dd62474e5987fd5a9defcb33397cee785b9a8d18a4",
+      "size": 15935,
+      "zone": "core"
+    },
+    "backend/app/services/compliance_service.py": {
+      "sha256": "54cd0ea27d71426617c62050b1e5b9c8f889126a1745507cc1cd1c7037b76c3d",
+      "size": 37862,
+      "zone": "core"
+    },
+    "backend/app/services/custom_loader.py": {
+      "sha256": "f0a15fadd9172cefde3f73142760f4c3529c3326658fbd92f8852daec9e40e6f",
+      "size": 13974,
+      "zone": "core"
+    },
+    "backend/app/services/datamart_service.py": {
+      "sha256": "d315bbaeb6e5a3e9d6c27842b61b964df48bc8d8c4a6e8060000ed41758e4987",
+      "size": 7786,
+      "zone": "core"
+    },
+    "backend/app/services/dependency_service.py": {
+      "sha256": "dabcc63cb64e23896ab6fe585c1d80f881ad215153bd20086c0975ace3bff3fa",
+      "size": 36224,
+      "zone": "core"
+    },
+    "backend/app/services/device_determination_service.py": {
+      "sha256": "d828947eb9d28faf01f60f9f25b276578f8e46fca6e72ad184466be116693b52",
+      "size": 35735,
+      "zone": "core"
+    },
+    "backend/app/services/dhf_service.py": {
+      "sha256": "e497e9b64771cc181faa98dc656d1f83ce896dedd338a1d73c0ee22e579e33ca",
+      "size": 54835,
+      "zone": "core"
+    },
+    "backend/app/services/dhf_snapshot_service.py": {
+      "sha256": "fad25f7be026b95590bbbb0ccb60d6c0fc55a2c48539bc180fa86094edf7b9cd",
+      "size": 17107,
+      "zone": "core"
+    },
+    "backend/app/services/dns_service.py": {
+      "sha256": "b34d04cfbe223696b64f7f17f437895a674e21ef24257f3b3f7d73458b015e9f",
+      "size": 4790,
+      "zone": "core"
+    },
+    "backend/app/services/docker_service.py": {
+      "sha256": "b5889cff6016b70eb3bcb290f92cc79b2e3f4c5f6a8318090d995709eef75e0b",
+      "size": 44637,
+      "zone": "core"
+    },
+    "backend/app/services/econtract_service.py": {
+      "sha256": "6cd700c17a39ddbfc751c547c50a24fb57c022ed9a533b6e83fb76f05d0410e5",
+      "size": 45501,
+      "zone": "core"
+    },
+    "backend/app/services/ep_checklist_service.py": {
+      "sha256": "3e2d86208d3b237906dadbaf5d048de5737a35fb1d87d8064ab23873b7950754",
+      "size": 15255,
+      "zone": "core"
+    },
+    "backend/app/services/exchange_gateway_service.py": {
+      "sha256": "67357975e92d9b1d9ce800454abedea31b786880afe90b83c88fa6c3af248187",
+      "size": 8221,
+      "zone": "core"
+    },
+    "backend/app/services/exchange_token_service.py": {
+      "sha256": "22608ecc5d9748d18cad318cd8136a1fc35e830b465792ded9155a1e99be362c",
+      "size": 9624,
+      "zone": "core"
+    },
+    "backend/app/services/field_policy_service.py": {
+      "sha256": "1c21cf2f53a51fb9358e5195d74ee0636098d06f3f888318e8ab1028390c633c",
+      "size": 8436,
+      "zone": "core"
+    },
+    "backend/app/services/flow_service.py": {
+      "sha256": "aa01aabe064f06521efe25de34f377f853fa1ef1b89410affd136cd2d48d5df3",
+      "size": 12267,
+      "zone": "core"
+    },
+    "backend/app/services/gdpr_erasure_service.py": {
+      "sha256": "1aed7d4524c6ecc5bc887de4b98f0fe280185c85b693e64117e59c6b3f6d287a",
+      "size": 11810,
+      "zone": "core"
+    },
+    "backend/app/services/iec62304_service.py": {
+      "sha256": "a9736549a5449535bcd300a3f7d86c46db02ba7e43eb9d81cf7c2e3338a5692b",
+      "size": 16483,
+      "zone": "core"
+    },
+    "backend/app/services/installation_service.py": {
+      "sha256": "32596149b84a2864d810b42c2cf35c2ce992e14c2966884915cfdabc728e0527",
+      "size": 15378,
+      "zone": "core"
+    },
+    "backend/app/services/integrity_service.py": {
+      "sha256": "903470bcb098e5660321c4e7a86cd5825de629d92dc8c48f3497ac49fe0dfb04",
+      "size": 6044,
+      "zone": "core"
+    },
+    "backend/app/services/iso_conformity_service.py": {
+      "sha256": "fa0e4b9ed9b1a977bbf30d28a3673084961fb668e56e38c39fb5dea540cf71e5",
+      "size": 29607,
+      "zone": "core"
+    },
+    "backend/app/services/license_service.py": {
+      "sha256": "d80aecb032ea94ac82f608795c20dd1d9a68803b09d4df0349a4a38d8d25fee7",
+      "size": 9329,
+      "zone": "core"
+    },
+    "backend/app/services/map_export_service.py": {
+      "sha256": "6799391734a15bd516b9622befb1030333972a7f6cb461da3abd8110634bbc1e",
+      "size": 11976,
+      "zone": "core"
+    },
+    "backend/app/services/mcp_service.py": {
+      "sha256": "d4da0b656f3de0c23661ce3d474cfcc214951e1932b7cdbac53dc653e11143d6",
+      "size": 9444,
+      "zone": "core"
+    },
+    "backend/app/services/mdns_service.py": {
+      "sha256": "057c1fe4fce41ca6e96b4d9df2ddd989a09825709381cabc86d6d395bf2d0da7",
+      "size": 5151,
+      "zone": "core"
+    },
+    "backend/app/services/ntp_service.py": {
+      "sha256": "68ad646be9d8e164d1a392cb9e70ffbf81acf3ec76fb3e94a1ffde1f81122195",
+      "size": 6474,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/__init__.py": {
+      "sha256": "f12da5d3621e1ae8220329c7f1254127dfcbbe7be068dc57c63f78591ae10c51",
+      "size": 224,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/chat_service.py": {
+      "sha256": "9be4f9ccd9e1404e5dc8f3a3a2cecab03b58b750efecde78ab7a3bb1765d9c3e",
+      "size": 3494,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/code_analyzer.py": {
+      "sha256": "71360302d24e05ed1e9df6ac8bb66887dd7dce8ffe3c8008d18a2764e14f3871",
+      "size": 5592,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/code_service.py": {
+      "sha256": "c95018890dda7380c213cbf764b421ea36ee92643c02939226e30545b55abdd4",
+      "size": 11744,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/connectors/__init__.py": {
+      "sha256": "751a9fe453add644e69a082df3720ffc32f7470ec5a026033932a4bf8b589f03",
+      "size": 141,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/connectors/base.py": {
+      "sha256": "5254ffc3c6d072e1d93b9a776600323365c133e8511f41836cb5168a1d448ee6",
+      "size": 2054,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/connectors/rest_conn.py": {
+      "sha256": "d109cce6855ae93bf35e18f2e3f137ba772f65092fc1b1c50a8d6e7242b94496",
+      "size": 3102,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/connectors/sqlalchemy_conn.py": {
+      "sha256": "12e3e2d33264c4c91a9397965a7874749a5a82ca04d0de62bb0567a9044a55e2",
+      "size": 5571,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/connectors/sqldump_conn.py": {
+      "sha256": "8594d852420ccbd767c1e30a19a205f22e561a25bb33b6087a4e2f29fe8707e9",
+      "size": 4582,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/connectors/sqlite_conn.py": {
+      "sha256": "a0e3c0536fa10edc33fef384e2d913f6619c59cd3acb50a6af5d9e3184d61aa1",
+      "size": 3320,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm/__init__.py": {
+      "sha256": "e2eeb817aaae80e721b867d12ea03de08c463bfd94e05e9cd2326ee28300be67",
+      "size": 339,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm/anthropic_provider.py": {
+      "sha256": "8cb5c9df337776b759a45819ea79ecc82616e615d7e67f80cfa212cf74fc7560",
+      "size": 1762,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm/base.py": {
+      "sha256": "54ebaab3d0f9b9a7dbddd59d1b472dd622890936b8a96e045607dd229a235e04",
+      "size": 3992,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm/manual.py": {
+      "sha256": "df75cc5366c2ac3d7cb787c152af3b6a06e498f931cb9e333bede7be64c1ed77",
+      "size": 928,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm/openai_provider.py": {
+      "sha256": "5d75d1ab7de6e4bf6982da8d6eb4ce64e141bcd5ad8712bfb6cc75bb0f680e58",
+      "size": 2722,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm/registry.py": {
+      "sha256": "e5aafd3f886dc77bc101a4b1a02421b16c2aed2a5a42f023d98909a24baf496e",
+      "size": 776,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/llm_models_service.py": {
+      "sha256": "81f982b4c75ebf29ef0758030abcb3caea81e5397dd574fab3276c144a1fd05a",
+      "size": 2555,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/mcp_server.py": {
+      "sha256": "ef0a46dd8ca58ac7d2bb9edaae6fff1ccbf659d17a35870210323b7f1cfde058",
+      "size": 5461,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/mcp_token_service.py": {
+      "sha256": "46e3ccf7e4ce40aa028eed2debd6122d046669f417c0ea1f7e9001850139ba1c",
+      "size": 2429,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/module_graph.py": {
+      "sha256": "a35858bc3543cf93cff3b120c9e573d64f87abdce10dc789adf066094d76342e",
+      "size": 9104,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/modules.py": {
+      "sha256": "d5fd2ef686e34b24313711310aabbdc55efc6b30e22345f9c558eb0279ec1fb4",
+      "size": 2805,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/pipeline.py": {
+      "sha256": "efc9a260a8ae24efb0c788ad36c67e4e220ce24d00d116e8e4b477dfadd5f9d2",
+      "size": 7338,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/preflight.py": {
+      "sha256": "9757f1ea7ec7d9f79ae3a6a9f0bd82827d5e3b11b2879f93750589c63ea26391",
+      "size": 13621,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/project_ops.py": {
+      "sha256": "6ce9cff65ffa5dcd9da3d3fee3438215f5e6321e3a69f4e7b299bd94aa773580",
+      "size": 3169,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/project_service.py": {
+      "sha256": "e1085cb4bc1cbf7b6ce5c7134bd2bb251acb525c789f5eff8a4403d7e12f7958",
+      "size": 2242,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/reader.py": {
+      "sha256": "59c4f42b57d1b5e3b05d5b34ba8ba543036cee9a34f13b8b8ac723d1b755528d",
+      "size": 1679,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/regen.py": {
+      "sha256": "0a24cd9cdebbd0f732cf06a30b8d7d9a6e3433caff71c4d750e74301d14faf27",
+      "size": 3484,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/regen_service.py": {
+      "sha256": "a0a75e5f8a197902749a305a5267019299057c58f2cdee23c38571a9e513c538",
+      "size": 13627,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/roundtrip.py": {
+      "sha256": "20778ca342cb9f8c9b87c2c7a7d3a32b3cddec4616749b5b7273be99da7a3252",
+      "size": 4929,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/transform.py": {
+      "sha256": "bd31a51e677ffcf4398af854c3e90c5b051d4037a4916588617876ae461d0140",
+      "size": 2952,
+      "zone": "core"
+    },
+    "backend/app/services/opencli/vector.py": {
+      "sha256": "2d79a459568aa4d7d767120d7065fa07ab12e53cf58fb52f6888b35d761e455c",
+      "size": 7315,
+      "zone": "core"
+    },
+    "backend/app/services/overview_service.py": {
+      "sha256": "8c1f938c6cf98936dd857e6e824f8d3dc606760a19f201683fb9e9deea847871",
+      "size": 36552,
+      "zone": "core"
+    },
+    "backend/app/services/password_policy.py": {
+      "sha256": "af5bb434c6e17172cd5d4cba02d37e184f9fd3216c00a82fad2a1b771d96faf6",
+      "size": 3488,
+      "zone": "core"
+    },
+    "backend/app/services/pdfa_service.py": {
+      "sha256": "c855d4dc4dd0c0c735b246b48c571c08b012e8b297973ed138bad37677d64f88",
+      "size": 32090,
+      "zone": "core"
+    },
+    "backend/app/services/pdpa_service.py": {
+      "sha256": "6bb8324e3a49d33c5bf4db203317ae6afc3d01c1eacba2ff472b0e2234526289",
+      "size": 17682,
+      "zone": "core"
+    },
+    "backend/app/services/pii_anonymizer.py": {
+      "sha256": "cd82db0a8365fb7c558bbad003119577fa1fbf0a09c06e9f83d7d38ac12212d7",
+      "size": 4904,
+      "zone": "core"
+    },
+    "backend/app/services/profile_service.py": {
+      "sha256": "8fb50872ad6dc22b89f408845ce368f1b79f581ea007c314e19779554bdd207d",
+      "size": 30222,
+      "zone": "core"
+    },
+    "backend/app/services/resource_service.py": {
+      "sha256": "25b2b7bd0faa83736ebc00ae355ee038bba920de04e08fad82c44f415275051f",
+      "size": 13988,
+      "zone": "core"
+    },
+    "backend/app/services/retention_service.py": {
+      "sha256": "ca5904f2a3e3c2b0cf0c938176edb0fcc8469e91f2aa7f7cd82e2a4b381d5a8d",
+      "size": 7748,
+      "zone": "core"
+    },
+    "backend/app/services/ropa_service.py": {
+      "sha256": "9a5080d59c44860d3c7d3d52fd1ebe55a865ea1d0e3e1d811b9237d7004087aa",
+      "size": 8806,
+      "zone": "core"
+    },
+    "backend/app/services/security_lifecycle_service.py": {
+      "sha256": "14a86766ecc9c5d82e9cc8e3471a2ff5cefdb7ecf75afa7eba5eb4a8ae2a2f3f",
+      "size": 19758,
+      "zone": "core"
+    },
+    "backend/app/services/traceability_service.py": {
+      "sha256": "4d56ab754cad3a00b426c4c2ff77f113dbea3c6e263e81cd5bf1a57ac095c735",
+      "size": 12932,
+      "zone": "core"
+    },
+    "backend/app/services/tunnel_service.py": {
+      "sha256": "0c4283040449fe7265c5b0d845aa8b8b8f823b6bc0362a04c32f9eb87b848bed",
+      "size": 21918,
+      "zone": "core"
+    },
+    "backend/app/services/upgrade_service.py": {
+      "sha256": "b6b19e83a0964e70c2e4a30b8cbcfa7368e20976d4bf4b59fcebf77dd6a29bdf",
+      "size": 13177,
+      "zone": "core"
+    },
+    "backend/app/services/vault_scope_service.py": {
+      "sha256": "13d47325a3265c0f3004618d72eaec4e9942f0e8177ca3ca61d22d172dd3bda7",
+      "size": 23311,
+      "zone": "core"
+    },
+    "backend/app/services/vault_service.py": {
+      "sha256": "cfce7994c8da71eaa94edf1f4ad46f404fa156b582c7bde40c4dd62fbe2df5ca",
+      "size": 1328,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/api-catalog/page.tsx": {
+      "sha256": "fa11cc8f4b41a08428dd333b2bb74fe2df6045a2d6302ad4d9c427dcedf8f506",
+      "size": 531,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/apps/page.tsx": {
+      "sha256": "017b864b5b3a4701c34ea7858ae0ba123d3570026f969e82927c58a4e4c6ae46",
+      "size": 4728,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/bridge/page.tsx": {
+      "sha256": "07dc669a1e7d7f0344a84a25cb8fd2548b4b081d9fec11fa55ea8e5966108710",
+      "size": 85865,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/consulting/page.tsx": {
+      "sha256": "be93e1c2b15e78071b8491f0c2ee1b87d246898c8a77a3d18cb9e1b612c31459",
+      "size": 2346,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/custom/[slug]/page.tsx": {
+      "sha256": "847afa144dbec262c4694f7834c8b430d0d91354c2d1eeaeb186310a9512a889",
+      "size": 3502,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/design-controls/page.tsx": {
+      "sha256": "492fc248512cd197de741931dce492a829745738d6bdc89fa8569c8c32e858e4",
+      "size": 91852,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/econtract/page.tsx": {
+      "sha256": "43d2343071806a5bb1614471a328455d2efadb9fcf3dc3b31b116ed1abe189fd",
+      "size": 123693,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/flows/page.tsx": {
+      "sha256": "bc55f69394ccf87264481589b1fa1e1c5a818b284f7f154609b6feff5486403a",
+      "size": 19880,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/layout.tsx": {
+      "sha256": "8106b277ec746fc2e318b7c2a3f5595a053c398cd9741be35e635d736d33aa81",
+      "size": 2596,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/loading.tsx": {
+      "sha256": "e7b25b9637d8535ce4d8289fe4bc9a33167e165b3b9cfc28c3c39745b5124dab",
+      "size": 153,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/page.tsx": {
+      "sha256": "fa180def6935eb92c07e5fb3ed65cc9e61b00eb8f69ae39d689df932cfa3d5b8",
+      "size": 6533,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/resources/page.tsx": {
+      "sha256": "785a3cf9a777e172c72e0568af16eff7104d72c7bd6a705ea2ba8a1e257af35a",
+      "size": 17239,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/settings/page.tsx": {
+      "sha256": "c4f794040605273e7e75e6e3e632424d74f97b68f53c553b3f18bba8354cb094",
+      "size": 149203,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/system-map/page.tsx": {
+      "sha256": "5261c961a5bc8cd3ddaafe99c125595c6a575135319f76165ab0672074eb75c1",
+      "size": 49206,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/tunnels/page.tsx": {
+      "sha256": "9ac0d5a34cac127f9a6f08f07a5512e86f3cacf65498a83f644a98f0713c66d7",
+      "size": 15061,
+      "zone": "core"
+    },
+    "frontend/src/app/dashboard/vault/page.tsx": {
+      "sha256": "62cae3b28564bbb835708b6ef4934dab7c2080b6eb98cff2a5a19e41c0535c11",
+      "size": 16027,
+      "zone": "core"
+    },
+    "frontend/src/app/layout.tsx": {
+      "sha256": "9d5e2ff517b19badb1f5d57ba3ba0a19b8fc47ff10779a83418cdd218de371df",
+      "size": 736,
+      "zone": "core"
+    },
+    "frontend/src/app/login/page.tsx": {
+      "sha256": "114e6ba17a9e026ac0c5bfd700dcae9debf1f951b01e5b36c322b59a75b98614",
+      "size": 13311,
+      "zone": "core"
+    },
+    "frontend/src/app/page.tsx": {
+      "sha256": "288060e6fa0015921f70c44c8306d58d7e3a2f70e13e0cc7f46c08da3f3caea6",
+      "size": 469,
+      "zone": "core"
+    },
+    "frontend/src/components/api-catalog-view.tsx": {
+      "sha256": "3ad29529e213e8a631c76c86cffd49920996d3cfe976ebfc5e96d81b7313cf21",
+      "size": 19657,
+      "zone": "core"
+    },
+    "frontend/src/components/app-card.tsx": {
+      "sha256": "60ec67a0aa0c93a16a3904f3ed7e64c0a07bc272168c5f5a02abd136fabf6655",
+      "size": 16398,
+      "zone": "core"
+    },
+    "frontend/src/components/app-overview-cards.tsx": {
+      "sha256": "95092b3bf1c9de9c346ca17b1ae85b272f82b9fac5cf753d631412c42343dde3",
+      "size": 12292,
+      "zone": "core"
+    },
+    "frontend/src/components/audit-log-detail-modal.tsx": {
+      "sha256": "04bcaff48924bd4decdf124ad4e309688fe49ac3f4c43d9102a538f2609aaaec",
+      "size": 10677,
+      "zone": "core"
+    },
+    "frontend/src/components/audit-log-table.tsx": {
+      "sha256": "6bf02c0626b226fd3cb55ca5afd51c15fa0b53cb4056f540d96c118e6a179a7d",
+      "size": 6899,
+      "zone": "core"
+    },
+    "frontend/src/components/datamart-view.tsx": {
+      "sha256": "62b53225fc81f818dec9af689afb22f0079b0d59d5ce9f0f34c11828239ca572",
+      "size": 14202,
+      "zone": "core"
+    },
+    "frontend/src/components/delete-app-modal.tsx": {
+      "sha256": "4fe47a495248b419ddec6c7c5cc009e19652fff75e1afe817ad22d78cb3628d1",
+      "size": 11355,
+      "zone": "core"
+    },
+    "frontend/src/components/deploy-guide.tsx": {
+      "sha256": "7cdd020309a5ace7d7b0d5a5362363b3ee4758f86b1576d42b3ce19f72e1ae9a",
+      "size": 15999,
+      "zone": "core"
+    },
+    "frontend/src/components/deploy-zone.tsx": {
+      "sha256": "2bd76b3a7c1ce355c5cb9664b8d4bf20838f77a3ae8caa35a604d786085918d9",
+      "size": 28582,
+      "zone": "core"
+    },
+    "frontend/src/components/docker-status-banner.tsx": {
+      "sha256": "96845f0ca20d904ac82d538748f323c688a211a180632b07892add9fe7af1c30",
+      "size": 3466,
+      "zone": "core"
+    },
+    "frontend/src/components/econtract-guide.tsx": {
+      "sha256": "47a4032735fc883ea494872199f645b3e75ab848062aa7218c5982370a26655d",
+      "size": 22362,
+      "zone": "core"
+    },
+    "frontend/src/components/exchange-token-view.tsx": {
+      "sha256": "298721a298dbb14beaaf5041d381b3ff19888fea6b0a82a459ba4684da626e32",
+      "size": 24615,
+      "zone": "core"
+    },
+    "frontend/src/components/export-app-modal.tsx": {
+      "sha256": "64446b42a2e15579d67fabae7b4e5f2a49d8be7e91392ada015d9aedc2acda7e",
+      "size": 10901,
+      "zone": "core"
+    },
+    "frontend/src/components/export-history-table.tsx": {
+      "sha256": "da63a673b95e9c5ae0dfa2966ab301ff77f01a7991b89ab41b32712811e25ba4",
+      "size": 3854,
+      "zone": "core"
+    },
+    "frontend/src/components/field-policy-panel.tsx": {
+      "sha256": "59b8c58bd69360f802aef1571bd1ba06c6bf97a2c2a8302ebadd9bda6c5ee339",
+      "size": 9319,
+      "zone": "core"
+    },
+    "frontend/src/components/flow-diagram.tsx": {
+      "sha256": "da665412bfa4b83e0e9442457c08b1082e096c20284aa2eb94fd05f4e82858d9",
+      "size": 10312,
+      "zone": "core"
+    },
+    "frontend/src/components/gdpr-erasure-panel.tsx": {
+      "sha256": "8df02df5d015680682c71684d8f40740d24a2f4427d854904345e995f0ed2279",
+      "size": 13292,
+      "zone": "core"
+    },
+    "frontend/src/components/gitea-credentials-card.tsx": {
+      "sha256": "be0ec8aa5e025be00f6a7d3730799a858708e79cc7226cec01161fa488ab855f",
+      "size": 8120,
+      "zone": "core"
+    },
+    "frontend/src/components/lang-provider.tsx": {
+      "sha256": "3d9aeb7aada05d082a9db592edcdd45543d69492d4ee07720c86e979bb4d0101",
+      "size": 1804,
+      "zone": "core"
+    },
+    "frontend/src/components/lang-toggle.tsx": {
+      "sha256": "42c58e8e9ec770240d5d46e59433e9bfb46d9f9e9670aa1f2f52d353acde7d3a",
+      "size": 2940,
+      "zone": "core"
+    },
+    "frontend/src/components/loading-state.tsx": {
+      "sha256": "30fc72bf24b7c21cf30739aee780647ef758c47d83e86f10e4bcfe2d7400610c",
+      "size": 2796,
+      "zone": "core"
+    },
+    "frontend/src/components/localized-date-input.tsx": {
+      "sha256": "7cda75659342deee36589b8dc9deab937007ee3d8f46c44463d60439bdd37714",
+      "size": 7717,
+      "zone": "core"
+    },
+    "frontend/src/components/overview-cards.tsx": {
+      "sha256": "3e24514c3513a170c6802a21424b18790a038e8f82b8d6f2401d4a9ec1798966",
+      "size": 27813,
+      "zone": "core"
+    },
+    "frontend/src/components/pagination.tsx": {
+      "sha256": "9e4a0ab26b842c7e6aa4441f9190ab8f6e7921fd0439ac1312868bd2bd1cfe9c",
+      "size": 6367,
+      "zone": "core"
+    },
+    "frontend/src/components/password-confirm-modal.tsx": {
+      "sha256": "935ffab1bc1fe8f8be43a4c821f5f93fa70c9d9d6ea6682a3a7d0f7d87352b35",
+      "size": 10323,
+      "zone": "core"
+    },
+    "frontend/src/components/pii-flow-panel.tsx": {
+      "sha256": "2b562032056513e5b096812462e91e3cc365df605ebe80521e1d1caa7368e32e",
+      "size": 5890,
+      "zone": "core"
+    },
+    "frontend/src/components/privacy-notice-popup.tsx": {
+      "sha256": "be86e454882d37085a80199917751f3b7fd8e28d4e7ecbaa5b02236426bca8a4",
+      "size": 13193,
+      "zone": "core"
+    },
+    "frontend/src/components/retention-policy-panel.tsx": {
+      "sha256": "42ef2e64e8f3d1cc72073ed47cbd2dbb2d48f4c719c4ae95d3c76e06e79c5df3",
+      "size": 13206,
+      "zone": "core"
+    },
+    "frontend/src/components/ropa-panel.tsx": {
+      "sha256": "816d0ced4bc1623f2d25de48d815bd1846a2e8741c1cd50e426bfa15e01decb2",
+      "size": 9315,
+      "zone": "core"
+    },
+    "frontend/src/components/route-loader.tsx": {
+      "sha256": "b684170dc00061588994db9cd01a79aa9d98ba679d7bfb3d9906d4b1921031f1",
+      "size": 1572,
+      "zone": "core"
+    },
+    "frontend/src/components/sidebar.tsx": {
+      "sha256": "ceebc907ba19eb8306cbe7168dac797cc3c7d3c0af2791b4bb75a2297a875b2d",
+      "size": 14374,
+      "zone": "core"
+    },
+    "frontend/src/components/system-health.tsx": {
+      "sha256": "335e291276425d57181bbc1403292062d4e76ebd89b5bf1c071980a5a2dc636b",
+      "size": 3566,
+      "zone": "core"
+    },
+    "frontend/src/components/system-map-delta.tsx": {
+      "sha256": "387fc04b58e722167794195bd813fd4b55ea034e61b4a61cde2cb882caec50e7",
+      "size": 7965,
+      "zone": "core"
+    },
+    "frontend/src/components/tunnel-share-modal.tsx": {
+      "sha256": "b2303df98781660856d3cfa62ab2bb5563b4dcd1e023043096e49c4bd6fd54d0",
+      "size": 11985,
+      "zone": "core"
+    },
+    "frontend/src/components/users-table-section.tsx": {
+      "sha256": "0abf0bcabfb0508e1f8f9015ac4e5e031a70691f515e75542e646d96ae403803",
+      "size": 5781,
+      "zone": "core"
+    },
+    "frontend/src/components/vault-scope-view.tsx": {
+      "sha256": "4ed72cea78b0970de97a87a69a16c631501eb423ef460c3b847d94ed0fd503da",
+      "size": 19012,
+      "zone": "core"
+    },
+    "frontend/src/custom/pages.ts": {
+      "sha256": "25d6a20f396e8e4f455e39a12ac5611e31248cac8aab6b60482fa4c009a47467",
+      "size": 3227,
+      "zone": "extend"
+    },
+    "frontend/src/lib/api.ts": {
+      "sha256": "8ca4bb1f1d28566b2671823b5f77d82a8b8949a0b8815fc4e1d6daa6db2966ec",
+      "size": 71670,
+      "zone": "core"
+    },
+    "frontend/src/lib/features.ts": {
+      "sha256": "69fbe47f4151533e2a95ed8f3045840c26d264daf3100dc015ae391bc1451d16",
+      "size": 973,
+      "zone": "gray"
+    },
+    "frontend/src/lib/i18n/en-EU.ts": {
+      "sha256": "191898499371bcbb66cc0488e8d129757505943c7bae3bb182be70863854ea19",
+      "size": 4414,
+      "zone": "core"
+    },
+    "frontend/src/lib/i18n/en.ts": {
+      "sha256": "e5d7fe1bcccc0aafc936e47baba4fc559d4f491cdf6ec7e2c0199132efdab8de",
+      "size": 117630,
+      "zone": "core"
+    },
+    "frontend/src/lib/i18n/index.ts": {
+      "sha256": "68279e58f4f4bccbc8c7f3f0beb8525d29886759714b0612dc3bb71e1458b266",
+      "size": 1647,
+      "zone": "core"
+    },
+    "frontend/src/lib/i18n/ja.ts": {
+      "sha256": "083dc9c9a6ab0a111c47fa24d339eedc7df7804fe3e3a4c9772e154692c929f6",
+      "size": 9194,
+      "zone": "core"
+    },
+    "frontend/src/lib/i18n/th.ts": {
+      "sha256": "a8849a7308e77eb10fd474c80a49fedcb22c09babd5b136c9c98742399c92e8c",
+      "size": 194693,
+      "zone": "core"
+    },
+    "frontend/src/lib/utils.ts": {
+      "sha256": "b2f79b7e8ab64eebad0d47111248c50ed8384238be11bb142eeb61d3f0f5a0a4",
+      "size": 5477,
+      "zone": "core"
+    },
+    "frontend/src/types/index.ts": {
+      "sha256": "b12bb1358620774fde94c439dc4d0eac4937345dd859e4b65fa8412e3d41df60",
+      "size": 3363,
+      "zone": "core"
+    },
+    "scripts/backup.sh": {
+      "sha256": "a293790675cc8480687778a98b8c9f2e330d58051cd63db6b41439c3c62360f0",
+      "size": 1746,
+      "zone": "core"
+    },
+    "scripts/setup.sh": {
+      "sha256": "ae611bb8ca8cab61549286d893c8df1e78322638cd3bf10eee1fff09e72c3774",
+      "size": 3156,
+      "zone": "core"
+    },
+    "scripts/start-ivs.sh": {
+      "sha256": "b4bffed58c58461c81cd2183587b0ec8c4dc856ffe65235b38328565c7af3cf3",
+      "size": 4660,
+      "zone": "core"
+    },
+    "scripts/stop-ivs.sh": {
+      "sha256": "6c36a7253895dfdf36a2b0c985e5f31ee80acdf47b3acd3521ebab7c59c6a302",
+      "size": 246,
+      "zone": "core"
+    }
+  },
+  "generated_at": "2026-09-04T03:50:18.189615+00:00",
+  "version": "1.9.2"
+}

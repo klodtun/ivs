@@ -76,9 +76,6 @@ export function DockerStatusBanner({ onChange }: { onChange?: (running: boolean)
 
   return (
     <div className="bg-red-50 border border-red-300 rounded-lg p-3 flex items-center gap-3">
-      <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-        <span className="text-base">🐳</span>
-      </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-red-800">{t("docker.banner_title")}</p>
         <p className="text-[10px] text-red-700 mt-0.5">

@@ -93,7 +93,7 @@ export function AuditLogDetailModal({ log, user, onClose }: Props) {
           <button
             type="button"
             onClick={() => copy(copyable, label)}
-            className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded hover:bg-brand-50"
+            className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded-md hover:bg-brand-50"
             title={t("audit_detail.copy")}
           >
             {copied === label ? `✓ ${t("audit_detail.copied")}` : t("audit_detail.copy")}
@@ -119,11 +119,6 @@ export function AuditLogDetailModal({ log, user, onClose }: Props) {
           {/* Header */}
           <div className="bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-3 flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
               <div className="min-w-0">
                 <h2 id="audit-detail-title" className="text-white font-semibold text-sm">
                   {t("audit_detail.title")} #{log.id}
@@ -254,7 +249,7 @@ export function AuditLogDetailModal({ log, user, onClose }: Props) {
                   <button
                     type="button"
                     onClick={() => copy(log.details, "details")}
-                    className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded hover:bg-brand-50"
+                    className="text-[9px] text-brand-600 hover:text-brand-700 px-1 py-px rounded-md hover:bg-brand-50"
                   >
                     {copied === "details" ? `✓ ${t("audit_detail.copied")}` : t("audit_detail.copy")}
                   </button>

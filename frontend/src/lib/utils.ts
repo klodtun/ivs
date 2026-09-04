@@ -13,10 +13,29 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
+/**
+ * แปลงเวลาที่ backend ส่งมาให้เป็น Date ที่ถูกต้อง
+ *
+ * SQLAlchemy เก็บ `utcnow()` แบบไม่มีเขตเวลา แล้ว FastAPI ส่งออกเป็น
+ * "2026-09-02T03:19:19.551617" ซึ่ง JS ตีความว่าเป็น **เวลาท้องถิ่น**
+ * ที่กรุงเทพฯ (UTC+7) เวลาที่เพิ่งบันทึกจึงกลายเป็น "7h ago" ทันที
+ *
+ * บางส่วนของระบบใช้ datetime ที่มีเขตเวลาแล้ว (ลงท้าย Z หรือ +00:00)
+ * จึงต้องเติม Z เฉพาะตัวที่ยังไม่มีเท่านั้น ไม่ใช่เติมทุกตัว
+ */
+export function parseServerDate(date: string | null | undefined): Date | null {
+  if (!date) return null;
+  const naive =
+    !date.endsWith("Z") && !date.includes("+") && !/-\d{2}:\d{2}$/.test(date);
+  const d = new Date(naive ? date + "Z" : date);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function timeAgo(date: string): string {
-  const seconds = Math.floor(
-    (new Date().getTime() - new Date(date).getTime()) / 1000
-  );
+  const d = parseServerDate(date);
+  if (!d) return "—";
+  const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (seconds < 0) return "just now";   // นาฬิกาเครื่องช้ากว่าเซิร์ฟเวอร์เล็กน้อย
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -75,15 +94,8 @@ export function formatDateTimeSeconds(date: string): string {
  */
 export function formatLegalTimestamp(date: string | null | undefined): string {
   if (!date) return "—";
-  // Backend often returns naive UTC ("2026-05-27T13:09:03.387627" with no
-  // suffix). The browser would otherwise interpret it as local time and
-  // skew the result by the offset. Normalize to UTC explicitly.
-  const normalized =
-    typeof date === "string" && !date.endsWith("Z") && !date.includes("+") && !/-\d{2}:\d{2}$/.test(date)
-      ? date + "Z"
-      : date;
-  const d = new Date(normalized);
-  if (Number.isNaN(d.getTime())) return "—";
+  const d = parseServerDate(date);
+  if (!d) return "—";
 
   const pad = (n: number) => n.toString().padStart(2, "0");
   const year = d.getFullYear();

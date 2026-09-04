@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { ResourceData, ResourceHistory } from "@/types";
 import { Pagination, usePagination } from "@/components/pagination";
+import { PageHeader } from "@/components/ui";
 
 /* ─── SVG Mini-Chart (no external deps) ─── */
 function MiniChart({
@@ -80,7 +81,7 @@ function UsageBar({ percent, label, used, total, unit, colorClass }: {
 
 /* ─── Main Page ─── */
 export default function ResourcesPage() {
-  const { t } = useLang();
+  const { t, locale } = useLang();
   const [data, setData] = useState<ResourceData | null>(null);
   const [history, setHistory] = useState<ResourceHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,27 +90,46 @@ export default function ResourcesPage() {
   const [exportError, setExportError] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
 
-  const fetchData = useCallback(async () => {
+  // ช่วงเวลาของกราฟ — ค่าตั้งต้นหนึ่งชั่วโมง
+  //
+  // เดิมโหลดหนึ่งวันเสมอ ได้ 969 จุด 2.5 MB ทั้งที่กราฟกว้างไม่กี่ร้อยพิกเซล
+  // ช่วงที่ยาวกว่านั้นเป็นสิ่งที่คนเลือกเอง ไม่ใช่สิ่งที่ต้องรอทุกครั้งที่เปิดหน้า
+  const [hours, setHours] = useState(1);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  const fetchData = useCallback(async (live = false) => {
     try {
       const [res, hist] = await Promise.all([
-        api.getResources(),
-        api.getResourceHistory(24),
+        api.getResources(live),
+        api.getResourceHistory(hours),
       ]);
       setData(res);
       setHistory(hist);
       setLastUpdated(new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error("Failed to load resources:", e);
+      setLoadError("");
+    } catch (e: any) {
+      // ความล้มเหลวต้องขึ้นหน้าจอ ไม่ใช่ค้างที่วงหมุน
+      setLoadError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hours]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 15000); // refresh every 15s
+    const interval = setInterval(() => fetchData(), 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const refreshLive = async () => {
+    setLiveBusy(true);
+    try {
+      await fetchData(true);
+    } finally {
+      setLiveBusy(false);
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -158,18 +178,46 @@ export default function ResourcesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">{t("res.title")}</h1>
-          <p className="text-xs text-gray-500">{t("res.subtitle")}</p>
+          <PageHeader title={t("res.title")} help={t("res.subtitle")} />
         </div>
         <div className="flex items-center gap-2">
           {lastUpdated && (
             <span className="text-[10px] text-gray-400">{t("res.last_updated")}: {lastUpdated}</span>
           )}
+          {/* ช่วงเวลาของกราฟ — เริ่มที่ชั่วโมงเดียว ยาวกว่านั้นเลือกเอง */}
+          <div className="flex gap-1">
+            {([[1, "1 ชม."], [24, "1 วัน"], [168, "7 วัน"], [720, "30 วัน"]] as const).map(
+              ([h, label]) => (
+                <button
+                  key={h}
+                  onClick={() => setHours(h)}
+                  className={
+                    "px-2 py-1 text-[10px] rounded-md border transition-colors " +
+                    (hours === h
+                      ? "bg-brand-600 border-brand-600 text-white"
+                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50")
+                  }
+                >
+                  {locale === "th" ? label : ["1h", "24h", "7d", "30d"][[1, 24, 168, 720].indexOf(h)]}
+                </button>
+              )
+            )}
+          </div>
           <button
-            onClick={fetchData}
-            className="px-2.5 py-1 text-[10px] bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition"
+            onClick={() => fetchData()}
+            className="px-2.5 py-1 text-[10px] bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition"
           >
             {t("res.refresh")}
+          </button>
+          {/* ถาม Docker ตรง ๆ — ราวสองวินาทีต่อแอป จึงต้องให้คนกดเอง */}
+          <button
+            onClick={refreshLive}
+            disabled={liveBusy}
+            className="px-2.5 py-1 text-[10px] bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition disabled:opacity-40"
+          >
+            {liveBusy
+              ? locale === "th" ? "กำลังวัด…" : "Measuring…"
+              : locale === "th" ? "วัดสดจาก Docker" : "Measure live"}
           </button>
           <button
             onClick={handleExport}
@@ -202,12 +250,12 @@ export default function ResourcesPage() {
       {/* Export error (inline) */}
       {exportError && (
         <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
-          <span className="text-red-500">⚠</span>
+
           <span className="text-xs text-red-700 flex-1">{exportError}</span>
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="px-2 py-0.5 text-[10px] bg-red-600 text-white rounded hover:bg-red-700 transition disabled:opacity-50"
+            className="px-2 py-0.5 text-[10px] bg-red-600 text-white rounded-md hover:bg-red-700 transition disabled:opacity-50"
           >
             {t("res.export")}
           </button>
@@ -228,7 +276,7 @@ export default function ResourcesPage() {
               }`}
             >
               <span className="text-sm">
-                {alert.level === "critical" ? "🔴" : "🟡"}
+                {alert.level === "critical" ? "" : ""}
               </span>
               <span
                 className={`text-xs font-medium ${
@@ -244,7 +292,7 @@ export default function ResourcesPage() {
 
       {data.alerts.length === 0 && (
         <div className="flex items-center gap-2 p-2.5 bg-green-50 border border-green-200 rounded-lg">
-          <span className="text-sm">🟢</span>
+
           <span className="text-xs text-green-700">{t("res.no_alerts")}</span>
         </div>
       )}
@@ -332,7 +380,21 @@ export default function ResourcesPage() {
 
       {/* Per-App Resource Usage */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <h2 className="text-xs font-semibold text-gray-700 mb-3">{t("res.per_app")}</h2>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="text-xs font-semibold text-gray-700">{t("res.per_app")}</h2>
+          {/* ตัวเลขชุดนี้อาจเก่าได้ถึงหนึ่งนาที หน้าจอต้องบอก ไม่ใช่แสดงเป็นค่าสด */}
+          {data.per_app_at && !data.per_app_live && (
+            <span className="text-[10px] text-gray-400">
+              {locale === "th" ? "วัดเมื่อ " : "measured "}
+              {new Date(data.per_app_at).toLocaleTimeString()}
+            </span>
+          )}
+          {data.per_app_live && (
+            <span className="text-[10px] text-green-700">
+              {locale === "th" ? "วัดสดจาก Docker" : "measured live"}
+            </span>
+          )}
+        </div>
         {data.per_app.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -396,7 +458,16 @@ export default function ResourcesPage() {
       {/* Historical Charts */}
       {history.length >= 2 && (
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h2 className="text-xs font-semibold text-gray-700 mb-3">{t("res.history")}</h2>
+          <h2 className="text-xs font-semibold text-gray-700 mb-3">
+            {t("res.history")}{" "}
+            <span className="font-normal text-gray-400">
+              {{ 1: locale === "th" ? "1 ชม." : "1h",
+                 24: locale === "th" ? "1 วัน" : "24h",
+                 168: locale === "th" ? "7 วัน" : "7d",
+                 720: locale === "th" ? "30 วัน" : "30d" }[hours]}
+              {" · "}{history.length}{locale === "th" ? " จุด" : " points"}
+            </span>
+          </h2>
           <div className="flex flex-wrap gap-4">
             <MiniChart data={cpuHistory} color="#3b82f6" maxVal={100} label={t("res.history_cpu")} />
             <MiniChart data={ramHistory} color="#8b5cf6" maxVal={sys.memory_total_mb} label={t("res.history_ram")} />

@@ -250,6 +250,24 @@ def scan_app_for_pii(source_path: str, deadline_seconds: float = 20.0) -> dict:
     }
 
 
+# ป้ายภาษาไทยสำหรับรายงาน — ค่าจริงอยู่ที่ ropa_service ซึ่งเป็นแหล่งเดียว
+# ของตรรกะสิทธิ ที่นี่เก็บเฉพาะข้อความที่พิมพ์ลงรายงาน
+LEGAL_BASIS_LABELS = {
+    "consent": "ความยินยอม (ม.24)",
+    "contract": "การปฏิบัติตามสัญญา (ม.24(3))",
+    "legal_obligation": "การปฏิบัติตามกฎหมาย (ม.24(6))",
+    "vital_interest": "ป้องกันอันตรายต่อชีวิต (ม.24(1))",
+    "public_task": "ภารกิจของรัฐ (ม.24(4))",
+    "legitimate_interest": "ประโยชน์โดยชอบด้วยกฎหมาย (ม.24(5))",
+}
+
+RECIPIENT_LABELS = {
+    "app": "แอปใน iVS",
+    "external": "หน่วยงานภายนอก",
+    "ai": "โมเดล AI",
+}
+
+
 def generate_ropa_markdown(apps_data: list[dict], ntp_info: dict, exporter: str) -> str:
     """
     Generate ROPA report in Markdown format matching the PDF template.
@@ -270,7 +288,13 @@ def generate_ropa_markdown(apps_data: list[dict], ntp_info: dict, exporter: str)
     lines.append(f"- **วันที่ออกรายงาน**: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     lines.append(f"- **ผู้ออกรายงาน**: {exporter}")
     lines.append(f"- **ระบบ**: IVS - Internal Vibe Server")
+    # ยอดรวมอย่างเดียวอ่านผิดได้ — "44 กิจกรรม" ฟังเหมือนกำลังประมวลผลอยู่ 44 อย่าง
+    # ทั้งที่ 28 อย่างเลิกทำไปแล้ว บันทึกยังอยู่เพราะเคยเกิดขึ้นจริง
+    ceased = sum(1 for a in apps_data if a.get("removed_at"))
     lines.append(f"- **จำนวนกิจกรรม**: {len(apps_data)}")
+    if ceased:
+        lines.append(f"  - ยังดำเนินอยู่: {len(apps_data) - ceased}")
+        lines.append(f"  - เลิกดำเนินการแล้ว (แอปถูกลบ แต่บันทึกคงอยู่ตาม PDPA): {ceased}")
     lines.append("")
 
     # NTP info
@@ -286,11 +310,17 @@ def generate_ropa_markdown(apps_data: list[dict], ntp_info: dict, exporter: str)
     # ROPA Table
     lines.append("## ส่วนที่ 2: บันทึกรายการกิจกรรม")
     lines.append("")
-    lines.append("| ลำดับ | ชื่อกิจกรรม | วัตถุประสงค์ | ข้อมูลส่วนบุคคลที่เก็บรวบรวม | การใช้/เปิดเผย | ระยะเวลา | มาตรการรักษาความปลอดภัย |")
-    lines.append("|-------|-------------|-------------|-------------------------------|---------------|---------|------------------------|")
+    lines.append("| ลำดับ | ชื่อกิจกรรม | วัตถุประสงค์ | ข้อมูลส่วนบุคคลที่เก็บรวบรวม | ฐานการประมวลผล | ผู้รับข้อมูล | สิทธิขอให้ลบ | ระยะเวลา | มาตรการรักษาความปลอดภัย |")
+    lines.append("|-------|-------------|-------------|-------------------------------|---------------|-------------|-------------|---------|------------------------|")
 
     for i, app in enumerate(apps_data, 1):
         name = app.get("app_name", "-")
+        # แอปที่ถูกลบออกจาก iVS ยังอยู่ในบันทึกตลอดไป — PDPA ไม่ได้สั่งให้ลบ
+        # ผู้อ่านต้องรู้ว่ากิจกรรมนี้เลิกทำแล้วเมื่อไร ไม่ใช่เข้าใจว่ายังดำเนินอยู่
+        removed_at = (app.get("removed_at") or "")[:10]
+        if removed_at:
+            name = (f"{name}<br><sub>แอปถูกลบออกจาก iVS เมื่อ {removed_at} · "
+                    f"บันทึกคงอยู่ถาวรตาม PDPA</sub>")
         purpose = (app.get("purpose", "") or "-").replace("|", "\\|").replace("\n", " ")
         pii = ", ".join(app.get("pii_fields", [])) or "-"
         usage = app.get("usage", name)
@@ -309,7 +339,26 @@ def generate_ropa_markdown(apps_data: list[dict], ntp_info: dict, exporter: str)
         pii_escaped = pii.replace("|", "\\|")
         security_escaped = security.replace("|", "\\|")
 
-        lines.append(f"| {i} | {name} | {purpose} | {pii_escaped} | {usage} | {retention} | {security_escaped} |")
+        # ฐานการประมวลผลเป็นตัวกำหนดสิทธิขอให้ลบ จึงต้องอยู่คู่กันในตาราง
+        basis_raw = app.get("legal_basis") or ""
+        basis_label = LEGAL_BASIS_LABELS.get(basis_raw, "ยังไม่ระบุ")
+        recipients = app.get("recipients") or []
+        if recipients:
+            recipient_text = "<br>".join(
+                f"{RECIPIENT_LABELS.get(r.get('kind'), r.get('kind', ''))}: {r.get('name', '')}"
+                for r in recipients[:8]
+            )
+        else:
+            recipient_text = "ไม่มีการเปิดเผยออกนอกกิจกรรม"
+        erasure = app.get("erasure") or {}
+        erasure_text = "ได้" if erasure.get("erasable") else "ไม่ได้"
+        if erasure.get("reason_th"):
+            erasure_text += f"<br><sub>{erasure['reason_th']}</sub>"
+
+        lines.append(
+            f"| {i} | {name} | {purpose} | {pii_escaped} | {basis_label} | "
+            f"{recipient_text} | {erasure_text} | {retention} | {security_escaped} |"
+        )
 
     lines.append("")
     lines.append("---")

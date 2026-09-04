@@ -227,9 +227,9 @@ export function AppCard({
             type="button"
             onClick={() => setShowPrivacyReview(true)}
             title={t("app.privacy_review_tooltip")}
-            className="inline-flex items-center gap-0.5 text-[10px] text-gray-500 hover:text-purple-700 transition"
+            className="inline-flex items-center gap-0.5 text-[10px] text-gray-500 hover:text-brand-700 transition"
           >
-            <span className="text-xs leading-none">🛡️</span>
+
             <span className="hidden sm:inline">{t("app.privacy_review")}</span>
           </button>
         </div>
@@ -250,7 +250,7 @@ export function AppCard({
           )}
           title={app.access_mode === "protected" ? t("app.access.protected_hint") : t("app.access.public_hint")}
         >
-          <span>{app.access_mode === "protected" ? "🔒" : "🌐"}</span>
+          <span>{app.access_mode === "protected" ? "" : ""}</span>
           {app.access_mode === "protected" ? t("app.access.protected") : t("app.access.public")}
         </span>
         {userRole === "admin" && (
@@ -273,10 +273,10 @@ export function AppCard({
               }
             }}
             className={cn(
-              "text-[9px] px-2 py-0.5 rounded transition disabled:opacity-50",
+              "text-[9px] px-2 py-0.5 rounded-md transition disabled:opacity-50",
               app.access_mode === "protected"
                 ? "text-gray-600 bg-gray-100 hover:bg-gray-200"
-                : "text-white bg-green-600 hover:bg-green-700"
+                : "text-white bg-brand-600 hover:bg-brand-700"
             )}
           >
             {accessBusy
@@ -298,7 +298,7 @@ export function AppCard({
         <div className="flex gap-1.5 pt-2 border-t border-gray-100">
           {app.status === "stopped" ? (
             <button onClick={() => action(() => api.startApp(app.id), "start")} disabled={!!loading}
-              className="flex-1 text-[10px] py-1 bg-green-50 text-green-700 rounded-md hover:bg-green-100 transition disabled:opacity-50">
+              className="flex-1 text-[10px] py-1 bg-gray-50 text-brand-700 rounded-md hover:bg-gray-100 transition disabled:opacity-50">
               {loading === "start" ? "..." : t("app.start")}
             </button>
           ) : (
@@ -308,7 +308,7 @@ export function AppCard({
             </button>
           )}
           <button onClick={() => action(() => api.restartApp(app.id), "restart")} disabled={!!loading}
-            className="flex-1 text-[10px] py-1 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition disabled:opacity-50">
+            className="flex-1 text-[10px] py-1 bg-gray-50 text-brand-700 rounded-md hover:bg-gray-100 transition disabled:opacity-50">
             {loading === "restart" ? "..." : t("app.restart")}
           </button>
           {canExport ? (
@@ -361,7 +361,7 @@ export function AppCard({
       )}
 
       {/* Privacy Notice Popup — review mode (user explicitly clicked
-          the 🛡️ link to view / change their decision) */}
+          the  link to view / change their decision) */}
       {showPrivacyReview && (
         <PrivacyNoticePopup
           appId={app.id}

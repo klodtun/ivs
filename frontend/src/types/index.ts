@@ -139,6 +139,10 @@ export interface ResourceData {
   system: ResourceSystem;
   capacity: ResourceCapacity;
   per_app: ResourceAppStats[];
+  /** เวลาที่ตัวเลขต่อแอปถูกวัด — ว่างเมื่อวัดสด */
+  per_app_at?: string;
+  /** true เมื่อวัดจาก Docker ตรง ๆ ไม่ใช่จากภาพถ่ายล่าสุด */
+  per_app_live?: boolean;
   alerts: ResourceAlert[];
 }
 

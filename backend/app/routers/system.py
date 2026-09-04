@@ -21,6 +21,7 @@ from app.services.ntp_service import ntp_service
 from app.services.resource_service import get_current_resources, get_history, generate_report, collect_snapshot
 from app.services.app_log_service import get_logs_for_export as get_app_logs_for_export
 from app.services import retention_service
+from app.services import overview_service
 from app.services import gdpr_erasure_service
 from app.services.mdns_service import mdns_service, DEFAULT_MDNS_HOSTNAME
 from app.services import license_service, integrity_service
@@ -291,7 +292,7 @@ async def export_audit_logs(
                     f"{body.end_date.isoformat() if body.end_date else 'now'}",
                     f"- **This Chunk**: lines {ci * max_per_file + 1}–{ci * max_per_file + len(seg)}",
                     f"- **Total Lines (this app)**: {len(app_logs)}",
-                    f"- **Retention Policy**: 90 days (พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560 §26)",
+                    f"- **Retention Policy**: 90 days (พ.ร.บ. คอมพิวเตอร์ พ.ศ. 2560 มาตรา 26)",
                     "",
                     "---",
                     "",
@@ -446,23 +447,66 @@ async def download_audit_log_export(
     )
 
 
-@router.get("/resources")
-async def get_resources(
+@router.get("/overview")
+async def get_overview(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get current system resources, capacity analysis, per-app stats, and alerts."""
-    return get_current_resources(db)
+    """ภาพรวมสำหรับหน้าแรก — สิ่งที่ควรรู้ ไม่ใช่สิ่งที่ต้องกด
+
+    คำขอเดียว คิวรีล้วน ไม่แตะ Docker หน้าแรกเป็นหน้าที่เปิดบ่อยที่สุด และหน้าที่
+    เรียก Docker ตอนโหลดจะช้าลงทุกครั้งที่มีแอปเพิ่ม
+
+    ตัวเลขทุกตัวกรองตามสิทธิ์ของผู้เรียก — ยอดรวมที่นับแอปซึ่งผู้เรียกไม่มีสิทธิ์เห็น
+    ก็คือการบอกว่ามีอะไรอยู่ในระบบบ้าง กับคนที่ไม่ควรรู้
+    """
+    return overview_service.build(db, user)
+
+
+@router.get("/overview/app/{app_id}")
+async def get_app_overview(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """หกมุมมองเดียวกับหน้าแรก แต่ของแอปตัวเดียว
+
+    ตอบ 404 เมื่อผู้ใช้ไม่มีสิทธิ์เห็นแอปนี้ ไม่ใช่ 403 — การบอกว่า "แอปนี้มีอยู่
+    แต่คุณดูไม่ได้" ก็คือการเปิดเผยว่ามีอะไรอยู่ในระบบ กับคนที่ไม่ควรรู้
+    """
+    data = overview_service.app_overview(db, user, app_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="ไม่พบแอป")
+    return data
+
+
+@router.get("/resources")
+async def get_resources(
+    live: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """สถานะปัจจุบัน ความจุ ตัวเลขต่อแอป และคำเตือน
+
+    live=true ถาม Docker ทีละคอนเทนเนอร์ ซึ่งใช้เวลาราวสองวินาทีต่อแอป เก็บไว้ให้
+    คนกดเองเมื่ออยากได้ตัวเลขวินาทีนี้จริง ๆ ค่าตั้งต้นอ่านจากภาพถ่ายล่าสุดที่ลูป
+    เบื้องหลังเก็บทุกนาที
+    """
+    return get_current_resources(db, live=live)
 
 
 @router.get("/resources/history")
 async def get_resources_history(
-    hours: int = Query(default=24, ge=1, le=168),
+    hours: int = Query(default=1, ge=1, le=8760),
+    points: int = Query(default=240, ge=10, le=2000),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get historical resource metrics for charts."""
-    return get_history(db, hours)
+    """ประวัติสำหรับกราฟ — ค่าตั้งต้นหนึ่งชั่วโมง ไม่ใช่หนึ่งวัน
+
+    ช่วงที่ยาวกว่านั้นเป็นสิ่งที่คนเลือกเอง ไม่ใช่สิ่งที่ต้องรอทุกครั้งที่เปิดหน้า
+    """
+    return get_history(db, hours, points)
 
 
 @router.post("/resources/snapshot")
@@ -1198,3 +1242,139 @@ async def ws_health(websocket: WebSocket):
         pass
     except Exception:
         pass
+
+
+@router.get("/footprint")
+def get_footprint(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """รอยเท้าของเครื่องนี้ — ตัวตน บัญชี migration และสภาพเขตของลูกค้า
+
+    รวมสามอย่างไว้ในคำตอบเดียวเพราะทั้งสามถูกอ่านพร้อมกันเสมอ ทั้งตอนวินิจฉัย
+    ปัญหาและตอนออกรายงานก่อนอัปเกรดรุ่น การแยกเป็นสามเส้นทางจะทำให้ผู้เรียก
+    ต้องประกอบเอง แล้วภาพที่ได้จะไม่ตรงกันเมื่อสถานะเปลี่ยนระหว่างสามคำขอ
+    """
+    from app.services import installation_service, custom_loader
+    return {
+        "installation": installation_service.summary(db),
+        "custom_zone": custom_loader.load_report(),
+    }
+
+
+@router.get("/custom-zone")
+def get_custom_zone(
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """สิ่งที่เขตของลูกค้าโหลดได้และโหลดไม่ได้ในการบูตครั้งล่าสุด
+
+    เปิดถึงระดับผู้พัฒนาด้วย ไม่ใช่เฉพาะผู้ดูแล เพราะคนที่เขียนโค้ดในเขตนั้นคือ
+    คนที่ต้องเห็นว่ามันพังตรงไหน และการบังคับให้ต้องรบกวนผู้ดูแลทุกครั้งที่ดีบัก
+    จะผลักให้เขากลับไปแก้ในแกนแทน ซึ่งเป็นสิ่งที่เขตนี้มีไว้กัน
+    """
+    from app.services import custom_loader
+    return custom_loader.load_report()
+
+
+@router.get("/baseline/drift")
+def get_baseline_drift(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """ไฟล์ที่ต่างจากฐาน แยกตามเขต
+
+    ผลลัพธ์มาพร้อมข้อจำกัดของตัวเองเสมอ (`trustworthy`, `caveat`) เพราะฐานที่จด
+    จากเครื่องตอนบูตแรกบอกได้แค่ว่าเปลี่ยนหลังจากนั้น ไม่ใช่ว่าต่างจากรุ่นที่
+    ปล่อย ผู้อ่านที่ไม่รู้ข้อนี้จะเชื่อคำว่า "ไม่มีไฟล์ถูกแก้" มากเกินจริง
+    """
+    from app.services import baseline_service
+    return baseline_service.drift(db)
+
+
+@router.post("/baseline/record")
+def post_baseline_record(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """บันทึกฐานใหม่ทับของเดิม — ลบหลักฐานการแก้ที่ผ่านมาทั้งหมด
+
+    ใช้หลังจากที่ตั้งใจรับสภาพปัจจุบันเป็นค่าตั้งต้นแล้วเท่านั้น เช่นหลังรวมโค้ด
+    เสร็จ บันทึกเป็น WARNING เพราะหลังจากนี้จะไม่มีทางรู้ว่าเคยมีอะไรต่างอยู่
+    """
+    from app.services import baseline_service
+    result = baseline_service.record(db, force=True)
+    create_audit_log(
+        db, request, user, "record_file_baseline", "system",
+        details=f"บันทึกฐานลายนิ้วมือใหม่ {result['recorded']} ไฟล์ (source={result['source']})",
+        log_level="WARNING",
+    )
+    return result
+
+
+@router.get("/upgrade/preflight")
+def get_upgrade_preflight(
+    to_edition: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """ตรวจก่อนอัปเกรด อ่านอย่างเดียว ไม่เปลี่ยนอะไรบนเครื่อง
+
+    เป็น GET โดยเจตนา — การตรวจที่มีผลข้างเคียงคือการตรวจที่คนไม่กล้ากดดู
+    """
+    from app.services import upgrade_service
+    return upgrade_service.preflight(db, to_edition or None)
+
+
+@router.post("/upgrade/snapshot")
+def post_upgrade_snapshot(
+    request: Request,
+    to_edition: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """เก็บรายงานและสำเนาฐานข้อมูลไว้ก่อนเริ่มอัปเกรดจริง
+
+    ไม่ปฏิเสธเมื่อมี blockers แต่บันทึกไว้ว่ามีอะไรค้างตอนนั้น การตัดสินใจเดินต่อ
+    ทั้งที่มีคำเตือนเป็นสิทธิ์ของผู้ดูแล ส่วนหน้าที่ของระบบคือทำให้ภายหลังพิสูจน์
+    ได้ว่าคำเตือนนั้นเคยแสดง
+    """
+    from app.services import upgrade_service
+    report = upgrade_service.preflight(db, to_edition or None)
+    snap = upgrade_service.save_snapshot(db, report, user_id=user.id)
+    create_audit_log(
+        db, request, user, "upgrade_snapshot", "system", resource_id=str(snap.id),
+        details=(
+            f"{report['from']['edition']} → {report['to']['edition']} · "
+            f"blockers={len(report['blockers'])} warnings={len(report['warnings'])} · "
+            f"สำรองฐานข้อมูลที่ {snap.db_backup_path or 'ไม่สำเร็จ'}"
+        ),
+        log_level="WARNING",
+    )
+    return {
+        "snapshot_id": snap.id,
+        "db_backup_path": snap.db_backup_path,
+        "can_proceed": report["can_proceed"],
+        "blockers": report["blockers"],
+        "warnings": report["warnings"],
+    }
+
+
+@router.get("/modules")
+def get_modules(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """โมดูลของกล่องนี้ และสถานะของแต่ละตัว
+
+    เปิดให้ทุกบทบาทที่ล็อกอินได้ เพราะหน้าจอต้องใช้ตอบว่าเมนูไหนเป็นการสาธิต
+    ไม่ใช่ข้อมูลลับ — เป็นการประกาศว่ากล่องนี้แจกมาพร้อมอะไร
+
+    สถานะ demo สำคัญกว่าที่เห็น: มันคือความต่างระหว่าง "ของที่คุณได้" กับ "ของ
+    ที่เราให้ดู" ถ้าไม่แยก ผู้ใช้จะวางแผนงานจริงบนของที่ยังไม่ได้ซื้อ แล้วเราจะ
+    เป็นฝ่ายผิดคำพูดเองตอนเขาย้ายไปเครื่องที่แจกจริง
+    """
+    from app import variants
+    from app.services import installation_service
+    inst = installation_service.ensure_installation(db)
+    return variants.summary(settings.IVS_VARIANT, inst.edition or "FREE")

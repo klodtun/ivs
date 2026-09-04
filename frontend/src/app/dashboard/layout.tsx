@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { RouteLoader } from "@/components/route-loader";
 import { api } from "@/lib/api";
@@ -13,7 +13,13 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+
+  // หน้าที่กินความกว้างเต็ม — แผนที่ระบบวาดเส้นเชื่อมระหว่างการ์ด การบีบให้อยู่
+  // ในคอลัมน์กลางทำให้ต้องเลื่อนแนวนอนเพื่อดูให้ครบ ซึ่งขัดกับจุดประสงค์ของ
+  // แผนที่ หน้าอื่นเป็นข้อความและตาราง จึงยังอ่านง่ายกว่าเมื่อจำกัดความกว้าง
+  const fullBleed = pathname?.startsWith("/dashboard/system-map");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -47,8 +53,10 @@ export default function DashboardLayout({
       <RouteLoader />
       <Sidebar user={user} />
       <main className="flex-1 overflow-auto flex flex-col">
-        <div className="p-4 max-w-6xl mx-auto flex-1 w-full">{children}</div>
-        <CopyrightFooter />
+        <div className={fullBleed ? "flex-1 w-full" : "p-4 max-w-6xl mx-auto flex-1 w-full"}>
+          {children}
+        </div>
+        {!fullBleed && <CopyrightFooter />}
       </main>
     </div>
   );

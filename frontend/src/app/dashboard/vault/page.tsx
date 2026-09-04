@@ -2,13 +2,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { VaultScopeView } from "@/components/vault-scope-view";
 import { useLang } from "@/components/lang-provider";
 import { cn, timeAgo } from "@/lib/utils";
 import { VaultKey, User } from "@/types";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import ApiCatalogView from "@/components/api-catalog-view";
+import { ExchangeTokenView } from "@/components/exchange-token-view";
+import { DataMartView } from "@/components/datamart-view";
+import { PageHeader } from "@/components/ui";
 
-type VaultTab = "keys" | "programs";
+type VaultTab = "keys" | "scope" | "programs" | "tokens" | "datamart";
 
 const providerIcons: Record<string, string> = { openai: "AI", claude: "CL", anthropic: "AN", google: "GG", default: "KY" };
 const categories = ["general", "ai", "maps", "weather", "finance", "other"];
@@ -17,17 +21,22 @@ export default function VaultPage() {
   const { t } = useLang();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const initialTab: VaultTab = searchParams.get("tab") === "programs" ? "programs" : "keys";
+  const tabParam = searchParams.get("tab");
+  const TABS: VaultTab[] = ["keys", "scope", "programs", "tokens", "datamart"];
+  const initialTab: VaultTab =
+    TABS.includes(tabParam as VaultTab) ? (tabParam as VaultTab) : "keys";
   const [tab, setTab] = useState<VaultTab>(initialTab);
   const switchTab = (next: VaultTab) => {
     setTab(next);
-    const url = next === "keys" ? "/dashboard/vault" : "/dashboard/vault?tab=programs";
+    // เดิมเขียน tab=programs ทุกครั้งที่ไม่ใช่ keys ทำให้ลิงก์ที่คัดลอกไปพาไป
+    // ผิดแท็บ และรีเฟรชแล้วเด้งกลับ
+    const url = next === "keys" ? "/dashboard/vault" : `/dashboard/vault?tab=${next}`;
     router.replace(url);
   };
   const [keys, setKeys] = useState<VaultKey[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", provider: "", category: "general", value: "", description: "" });
+  const [form, setForm] = useState({ name: "", provider: "", category: "general", value: "", description: "", env_override: "", namespace: "", allow_reveal: true });
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -39,10 +48,13 @@ export default function VaultPage() {
     loadKeys();
   }, [loadKeys]);
 
+  /** ชื่อตัวแปรที่ใช้ได้จริง — ตรวจฝั่งหน้าจอก่อน จะได้ไม่ต้องรอเซิร์ฟเวอร์ปฏิเสธ */
+  const envOk = !form.env_override || /^[A-Za-z_][A-Za-z0-9_]*$/.test(form.env_override);
+
   const handleAdd = async () => {
-    if (!form.name || !form.provider || !form.value) return;
+    if (!form.name || !form.provider || !form.value || !envOk) return;
     setSaving(true);
-    try { await api.createVaultKey(form); setForm({ name: "", provider: "", category: "general", value: "", description: "" }); setShowAdd(false); await loadKeys(); } catch (e: any) { alert(e.message); } finally { setSaving(false); }
+    try { await api.createVaultKey(form); setForm({ name: "", provider: "", category: "general", value: "", description: "", env_override: "", namespace: "", allow_reveal: true }); setShowAdd(false); await loadKeys(); } catch (e: any) { alert(e.message); } finally { setSaving(false); }
   };
 
   const [pendingDeleteKey, setPendingDeleteKey] = useState<VaultKey | null>(null);
@@ -86,8 +98,7 @@ export default function VaultPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">{t("vault.title")}</h1>
-        <p className="text-gray-500 text-[10px] mt-0.5">{t("vault.subtitle")}</p>
+        <PageHeader title={t("vault.title")} help={t("vault.subtitle")} />
       </div>
 
       {/* Tab strip */}
@@ -104,6 +115,17 @@ export default function VaultPage() {
           {t("vault.tab.keys")}
         </button>
         <button
+          onClick={() => switchTab("scope")}
+          className={cn(
+            "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+            tab === "scope"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          {t("vault.tab.scope")}
+        </button>
+        <button
           onClick={() => switchTab("programs")}
           className={cn(
             "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
@@ -114,9 +136,37 @@ export default function VaultPage() {
         >
           {t("vault.tab.programs")}
         </button>
+        <button
+          onClick={() => switchTab("tokens")}
+          className={cn(
+            "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+            tab === "tokens"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          {t("vault.tab.tokens")}
+        </button>
+        <button
+          onClick={() => switchTab("datamart")}
+          className={cn(
+            "px-4 py-2 text-xs font-medium border-b-2 transition-colors",
+            tab === "datamart"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          )}
+        >
+          {t("vault.tab.datamart")}
+        </button>
       </div>
 
+      {tab === "scope" && <VaultScopeView />}
+
       {tab === "programs" && <ApiCatalogView />}
+
+      {tab === "tokens" && <ExchangeTokenView />}
+
+      {tab === "datamart" && <DataMartView />}
 
       {tab === "keys" && <>
       <div className="flex items-center justify-end">
@@ -145,7 +195,37 @@ export default function VaultPage() {
           </div>
           <input type="text" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
             placeholder={t("vault.description")} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
-          <button onClick={handleAdd} disabled={saving || !form.name || !form.provider || !form.value}
+
+          {/* ตั้งขอบเขตตั้งแต่ตอนสร้าง — กุญแจที่ออกใหม่มักออกมาแทนใบที่รั่ว
+              การให้กลับมาตั้งชื่อทีหลังคือขั้นตอนที่คนข้าม แล้วกุญแจก็ไปอยู่ใน
+              คอนเทนเนอร์ภายใต้ชื่อที่ไม่มีโปรแกรมไหนอ่าน */}
+          <div className="border-t border-gray-100 pt-2.5 space-y-2">
+            <p className="text-[10.5px] text-gray-600">{t("vault.scope_at_create")}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <input type="text" value={form.env_override}
+                  onChange={(e) => setForm({ ...form, env_override: e.target.value })}
+                  placeholder={t("vscope.env_name")}
+                  className={`w-full px-2.5 py-1.5 border rounded-md text-xs font-mono outline-none
+                    focus:ring-2 focus:ring-brand-500 focus:border-transparent ${
+                    envOk ? "border-gray-300" : "border-red-300 bg-red-50"}`} />
+                {!envOk && (
+                  <p className="text-[9.5px] text-red-600 mt-0.5">{t("vault.env_invalid")}</p>
+                )}
+              </div>
+              <input type="text" value={form.namespace}
+                onChange={(e) => setForm({ ...form, namespace: e.target.value })}
+                placeholder={t("vscope.namespace")}
+                className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-mono focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none" />
+            </div>
+            <label className="flex items-center gap-1.5 text-[10.5px] text-gray-700">
+              <input type="checkbox" checked={form.allow_reveal}
+                onChange={(e) => setForm({ ...form, allow_reveal: e.target.checked })} />
+              {t("vscope.allow_reveal")}
+            </label>
+            <p className="text-[9.5px] text-gray-500 leading-relaxed">{t("vault.scope_note")}</p>
+          </div>
+          <button onClick={handleAdd} disabled={saving || !form.name || !form.provider || !form.value || !envOk}
             className="px-4 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition disabled:opacity-50">
             {saving ? t("vault.saving") : t("vault.save")}
           </button>
@@ -183,9 +263,9 @@ export default function VaultPage() {
                       onClick={() => handleCopy(key.id)}
                       title={t("vault.copy_tooltip")}
                       className={cn(
-                        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded transition font-medium",
+                        "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md transition font-medium",
                         copiedKeyId === key.id
-                          ? "bg-green-100 text-green-700"
+                          ? "bg-gray-100 text-brand-700"
                           : copyError === key.id
                           ? "bg-red-100 text-red-700"
                           : "bg-brand-50 text-brand-700 hover:bg-brand-100"

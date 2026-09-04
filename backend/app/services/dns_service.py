@@ -70,14 +70,14 @@ class DNSService:
 
     async def _update_caddy_route(self, app_slug: str, domain: str, port: int) -> bool:
         """Update Caddy reverse proxy route. Returns True if successful."""
-        route_id = f"ivs-{app_slug}"
+        route_id = f"{settings.CONTAINER_PREFIX}{app_slug}"
         route_config = {
             "@id": route_id,
             "match": [{"host": [domain]}],
             "handle": [
                 {
                     "handler": "reverse_proxy",
-                    "upstreams": [{"dial": f"ivs-{app_slug}:{port}"}],
+                    "upstreams": [{"dial": f"{settings.CONTAINER_PREFIX}{app_slug}:{port}"}],
                 }
             ],
         }
@@ -97,7 +97,7 @@ class DNSService:
             return False
 
     async def _remove_caddy_route(self, app_slug: str):
-        route_id = f"ivs-{app_slug}"
+        route_id = f"{settings.CONTAINER_PREFIX}{app_slug}"
         try:
             async with httpx.AsyncClient() as client:
                 await client.delete(f"{self.caddy_api}/id/{route_id}", timeout=5.0)

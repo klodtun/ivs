@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import require_role
-from app.models import ApiCatalogEntry, ApiCatalogVersion, User, UserRole
+from app.models import ApiCatalogEntry, ApiCatalogVersion, App, User, UserRole
 from app.services import api_catalog_service as svc
 from app.services.audit_service import create_audit_log
 
@@ -57,8 +57,19 @@ async def list_entries(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
-    """List all catalog entries (API keys masked)."""
-    entries = db.query(ApiCatalogEntry).order_by(ApiCatalogEntry.created_at.desc()).all()
+    """List all catalog entries (API keys masked).
+
+    Entries whose app no longer exists are left out. They name a probe target
+    that cannot be reached and cannot be repaired, so every test of them fails
+    forever — and a red number nobody can clear teaches people to ignore the
+    rest. Deleting an app now removes its entries, so this filter only covers
+    rows orphaned before that fix.
+    """
+    live = {a.id for a in db.query(App.id).all()}
+    entries = [
+        e for e in db.query(ApiCatalogEntry).order_by(ApiCatalogEntry.created_at.desc()).all()
+        if e.app_id is None or e.app_id in live
+    ]
     return [svc.to_safe_dict(e) for e in entries]
 
 

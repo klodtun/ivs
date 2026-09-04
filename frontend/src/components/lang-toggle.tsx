@@ -36,7 +36,7 @@ export function LangToggle({ compact }: { compact?: boolean }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
+        className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 transition"
         title={`Current: ${current.label} (${current.regulator})`}
       >
         <span>{current.flag}</span>

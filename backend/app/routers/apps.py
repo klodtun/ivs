@@ -6,11 +6,15 @@ import logging
 import tempfile
 import zipfile
 import asyncio
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, UserRole, App, AppStatus, AppType, AppVersion, AuditLog, VaultKey, UserAppAccess, Tunnel
+from app.models import (
+    User, UserRole, App, AppStatus, AppType, AppVersion, AuditLog, VaultKey,
+    UserAppAccess, Tunnel, ApiCatalogEntry, AppDependency, AppFieldPolicy, AppPdpa,
+)
 from app.schemas import AppResponse, AppDetailResponse, AppCreate, AppVersionResponse
 from app.middleware.auth import get_current_user, require_role
 from app.services.docker_service import docker_service
@@ -20,6 +24,9 @@ from app.services.app_gate_service import app_gate_manager
 from app.config import settings
 from app.services.audit_service import create_audit_log
 from app.services import license_service
+from app.services import change_service
+from app.services import api_catalog_service
+from app.services import vault_scope_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/apps", tags=["Applications"])
@@ -70,7 +77,7 @@ def _heal_container_id(app: "App", db: Session) -> str:
     by the conventional name `ivs-<slug>` and update the row. Returns
     the live id or "" if no container exists.
     """
-    live = docker_service.resolve_live_container_id(app.container_id or "", f"ivs-{app.slug}")
+    live = docker_service.resolve_live_container_id(app.container_id or "", f"{settings.CONTAINER_PREFIX}{app.slug}")
     if live and live != app.container_id:
         app.container_id = live
         try:
@@ -664,8 +671,8 @@ async def deploy_app(
         app.source_path = source_path
 
         parsed_env = json.loads(env_vars) if isinstance(env_vars, str) else env_vars
-        vault_keys = db.query(VaultKey).all()
-        injected_env = vault_service.build_env_dict(vault_keys)
+        # ปฏิเสธไว้ก่อน — แอปได้เฉพาะกุญแจที่มีคนให้สิทธิ์ไว้ ไม่ใช่ทุกใบในคลัง
+        injected_env = vault_scope_service.env_for_app(db, app)
         injected_env.update(parsed_env)
 
         container_id = docker_service.build_and_run(
@@ -707,6 +714,9 @@ async def deploy_app(
         db.commit()
         raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
+    # What the app exposes is part of what it is. Discover it now rather than
+    # waiting for someone to press the scan button, which nobody does.
+    api_catalog_service.scan_after_lifecycle_change(app.id)
     return app
 
 
@@ -731,8 +741,8 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
 
         app_type = docker_service.detect_app_type(source_path)
         parsed_env = json.loads(app.env_vars) if app.env_vars else {}
-        vault_keys = db.query(VaultKey).all()
-        injected_env = vault_service.build_env_dict(vault_keys)
+        # ปฏิเสธไว้ก่อน — แอปได้เฉพาะกุญแจที่มีคนให้สิทธิ์ไว้ ไม่ใช่ทุกใบในคลัง
+        injected_env = vault_scope_service.env_for_app(db, app)
         injected_env.update(parsed_env)
 
         container_id = docker_service.build_and_run(
@@ -748,6 +758,12 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
             app_id=app.id, version=app.current_version, commit_message=f"Redeployment v{app.current_version}"
         )
         db.add(version)
+        # ปล่อยเวอร์ชันใหม่ = การเปลี่ยนแปลงการออกแบบ (ISO 13485 ข้อ 7.3.9)
+        # บันทึกเป็นร่างที่ยังไม่ประเมิน ให้ไปโผล่ในรายการช่องว่างเอง
+        change_service.record_deployment(
+            db, app, app.current_version, user=user,
+            summary=f"ปล่อยเวอร์ชัน {app.current_version} จากการอัปโหลดใหม่",
+        )
         create_audit_log(
             db, request, user=user, action="redeploy", resource_type="app",
             resource_id=str(app.id), details=f"Redeployed {app.name} v{app.current_version}",
@@ -755,6 +771,9 @@ async def _redeploy(app: App, file: UploadFile, db: Session, user: User, request
         db.commit()
         db.refresh(app)
         os.remove(upload_path)
+        # A redeploy is the change most likely to move the API's shape, which
+        # is exactly when a stale catalog does damage.
+        api_catalog_service.scan_after_lifecycle_change(app.id)
         return app
 
     except HTTPException:
@@ -809,6 +828,27 @@ async def set_app_logo(
     return {"message": "Logo updated", "has_logo": bool(value)}
 
 
+def _mark_container_missing(app: App, db: Session):
+    """Record that this app has no container, and say so instead of pretending.
+
+    start/restart used to set RUNNING unconditionally, so an app whose deploy
+    never finished (the upload was interrupted, the backend restarted mid-build)
+    showed as "running" on the dashboard while nothing was listening on its
+    port — the state that sends people hunting for a Docker problem that isn't
+    there. A missing container is a deploy that has to be redone.
+    """
+    app.status = AppStatus.ERROR
+    app.container_id = None
+    db.commit()
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"แอป {app.name} ไม่มีคอนเทนเนอร์ — การดีพลอยไม่สำเร็จหรือถูกขัดจังหวะ "
+            f"กรุณาดีพลอยไฟล์ .zip ของแอปนี้ใหม่อีกครั้ง"
+        ),
+    )
+
+
 def _rebuild_for_access_mode(app: App, db: Session, mode: str) -> bool:
     """Recreate the app's container so its port binding matches `mode`.
 
@@ -818,7 +858,7 @@ def _rebuild_for_access_mode(app: App, db: Session, mode: str) -> bool:
     """
     if not app.source_path or not os.path.isdir(app.source_path):
         return False
-    injected_env = vault_service.build_env_dict(db.query(VaultKey).all())
+    injected_env = vault_scope_service.env_for_app(db, app)
     try:
         injected_env.update(json.loads(app.env_vars or "{}"))
     except Exception:
@@ -901,6 +941,7 @@ async def set_access_mode(
 @router.post("/{app_id}/start")
 async def start_app(
     app_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -910,8 +951,9 @@ async def start_app(
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
     live_id = _heal_container_id(app, db)
-    if live_id:
-        docker_service.start_container(live_id)
+    if not live_id:
+        _mark_container_missing(app, db)
+    docker_service.start_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
 
@@ -919,15 +961,24 @@ async def start_app(
         # A container created while the app was public still holds a 0.0.0.0
         # binding, which would leave the app reachable without a login and
         # occupy the port the gate needs. Rebuild it before opening the gate.
-        if docker_service.is_published_to_network(f"ivs-{app.slug}") and app.source_path:
+        if docker_service.is_published_to_network(f"{settings.CONTAINER_PREFIX}{app.slug}") and app.source_path:
             _rebuild_for_access_mode(app, db, "protected")
         await app_gate_manager.start_gate(app)
+
+    create_audit_log(
+        db, request, user=user, action="start_app", resource_type="app",
+        resource_id=str(app.id),
+        details=f"Started {app.name} (v{app.current_version}) on port {app.port}",
+    )
+    db.commit()
+    api_catalog_service.scan_after_lifecycle_change(app.id)
     return {"message": f"{app.name} started"}
 
 
 @router.post("/{app_id}/stop")
 async def stop_app(
     app_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -942,12 +993,23 @@ async def stop_app(
     app.status = AppStatus.STOPPED
     db.commit()
     await app_gate_manager.stop_gate(app.id)
+
+    # WARNING: an app that is stopped is an app nobody can reach. When someone
+    # asks later why the service was down, this row is the answer.
+    create_audit_log(
+        db, request, user=user, action="stop_app", resource_type="app",
+        resource_id=str(app.id),
+        details=f"Stopped {app.name} (v{app.current_version}) — app is now unreachable",
+        log_level="WARNING",
+    )
+    db.commit()
     return {"message": f"{app.name} stopped"}
 
 
 @router.post("/{app_id}/restart")
 async def restart_app(
     app_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
@@ -957,10 +1019,24 @@ async def restart_app(
     if not _can_access_app(user, app, db):
         raise HTTPException(status_code=403, detail="Access denied to this app")
     live_id = _heal_container_id(app, db)
-    if live_id:
-        docker_service.restart_container(live_id)
+    if not live_id:
+        _mark_container_missing(app, db)
+    docker_service.restart_container(live_id)
     app.status = AppStatus.RUNNING
     db.commit()
+
+    # WARNING: a restart drops every session the app was serving. For an app
+    # that keeps state per connected terminal, that is not a neutral act — it
+    # is the difference between a gate that keeps working and one that has to
+    # be set up again by hand, mid-event.
+    create_audit_log(
+        db, request, user=user, action="restart_app", resource_type="app",
+        resource_id=str(app.id),
+        details=f"Restarted {app.name} (v{app.current_version}) — active sessions dropped",
+        log_level="WARNING",
+    )
+    db.commit()
+    api_catalog_service.scan_after_lifecycle_change(app.id)
     return {"message": f"{app.name} restarted"}
 
 
@@ -1121,7 +1197,7 @@ async def export_app(
         if app.container_id:
             try:
                 data_summary = docker_service.export_container_data(
-                    f"ivs-{app.slug}", data_dest
+                    f"{settings.CONTAINER_PREFIX}{app.slug}", data_dest
                 )
             except Exception as e:
                 logger.warning(f"Could not export container data for {app.slug}: {e}")
@@ -1278,7 +1354,7 @@ async def delete_app(
     # Stop and remove Docker container (gracefully handle Docker being down)
     if app.container_id:
         try:
-            docker_service.stop_and_remove(f"ivs-{app.slug}")
+            docker_service.stop_and_remove(f"{settings.CONTAINER_PREFIX}{app.slug}")
         except Exception as e:
             logger.warning(f"Could not remove container for {app.slug}: {e}")
 
@@ -1305,10 +1381,40 @@ async def delete_app(
         shutil.rmtree(source_path)
 
     # Clean up all related records before deleting app
+    #
+    # Rows that outlive their app cannot be read or fixed by anyone: the catalog
+    # entry names a probe target that no longer exists, and the dependency edge
+    # names an endpoint of the graph that is gone. They then sit in every count
+    # as a failure nobody can clear, and a flag that can never go green is one
+    # people stop reading — which costs more than the rows are worth.
+    #
+    # Nineteen such catalog rows were found on this box in September 2026, from
+    # apps deleted long before. That is what this block is preventing.
     app_name = app.name
     db.query(Tunnel).filter(Tunnel.app_id == app_id).delete()
     db.query(UserAppAccess).filter(UserAppAccess.app_id == app_id).delete()
     db.query(AppVersion).filter(AppVersion.app_id == app_id).delete()
+    db.query(ApiCatalogEntry).filter(ApiCatalogEntry.app_id == app_id).delete()
+    db.query(AppDependency).filter(
+        (AppDependency.from_app_id == app_id) | (AppDependency.to_app_id == app_id)
+    ).delete(synchronize_session=False)
+    db.query(AppFieldPolicy).filter(AppFieldPolicy.app_id == app_id).delete()
+
+    # ROPA ไม่ถูกลบ — ประทับหมายเหตุแล้วอยู่ต่อไป
+    #
+    # บันทึกรายการกิจกรรมการประมวลผลเป็นเอกสารตามกฎหมาย ไม่ใช่สถานะของระบบ
+    # การถอดแอปออกไม่ได้ย้อนความจริงที่ว่าเคยมีการประมวลผลข้อมูลของใครบางคน
+    # PDPA ไม่ได้สั่งให้ลบบันทึกนี้ตามแอป และผู้ตรวจถามถึงกิจกรรมที่ "เคยเกิด"
+    # ไม่ใช่เฉพาะที่ยังเกิดอยู่
+    #
+    # ชื่อกับ slug ถ่ายสำเนาไว้ตรงนี้ เพราะแถวใน apps กำลังจะหายไปในบรรทัดถัดไป
+    # ถ้าไม่เก็บ บันทึกจะเหลือแค่ app_id ที่ไม่มีใครแปลได้ว่าคือแอปอะไร
+    pdpa_row = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    if pdpa_row:
+        pdpa_row.app_removed_at = datetime.now(timezone.utc)
+        pdpa_row.app_name_at_removal = app.name[:200]
+        pdpa_row.app_slug_at_removal = app.slug[:200]
+
     db.delete(app)
     data_note = (
         "data volume destroyed" if data_deleted

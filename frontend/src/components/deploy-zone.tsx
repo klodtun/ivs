@@ -33,13 +33,13 @@ const TYPE_PROMPT_MAP: Record<string, string> = {
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  static: "🌐",
-  nodejs: "🟢",
-  fastapi: "⚡",
-  streamlit: "📊",
-  fullstack: "🔮",
-  python: "🐍",
-  unknown: "❓",
+  static: "",
+  nodejs: "",
+  fastapi: "",
+  streamlit: "",
+  fullstack: "",
+  python: "",
+  unknown: "",
 };
 
 const FILE_SIZE_WARN_MB = 50;
@@ -270,9 +270,6 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
             {/* Warning header */}
             <div className="bg-amber-50 px-5 pt-5 pb-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-2xl">⚠️</span>
-                </div>
                 <div>
                   <h3 className="text-sm font-bold text-amber-900">{t("deploy.file_too_large_title")}</h3>
                   <p className="text-xs text-amber-700 mt-0.5">{selectedFile.name} — {fileSizeMB} MB</p>
@@ -285,7 +282,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
                 {t("deploy.file_too_large_msg").replace("{size}", fileSizeMB)}
               </p>
               <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-[10px] font-semibold text-blue-800 mb-1">🧹 Auto-Sanitize</p>
+                <p className="text-[10px] font-semibold text-blue-800 mb-1">Auto-Sanitize</p>
                 <p className="text-[10px] text-blue-700">{t("deploy.auto_sanitize_desc")}</p>
               </div>
             </div>
@@ -293,13 +290,13 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
             <div className="px-5 pb-5 flex gap-2">
               <button
                 onClick={handleSizeWarningAccept}
-                className="flex-1 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition"
+                className="flex-1 py-2 bg-amber-500 text-white text-xs font-semibold rounded-md hover:bg-brand-600 transition"
               >
                 {t("deploy.auto_sanitize")}
               </button>
               <button
                 onClick={handleSizeWarningCancel}
-                className="flex-1 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition"
+                className="flex-1 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-md hover:bg-gray-200 transition"
               >
                 {t("deploy.cancel_upload")}
               </button>
@@ -332,7 +329,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
               <p className="text-[10px] text-gray-500 mt-0.5">
                 {fileSizeMB} MB
                 {parseFloat(fileSizeMB) > FILE_SIZE_WARN_MB && (
-                  <span className="text-amber-600 ml-1">⚠️ {t("deploy.auto_sanitize_note")}</span>
+                  <span className="text-amber-600 ml-1">{t("deploy.auto_sanitize_note")}</span>
                 )}
               </p>
             </div>
@@ -366,11 +363,11 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs text-gray-500">{t("deploy.detected_type")}</span>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-700">
-              {TYPE_ICONS[validation.app_type] || "📦"} {t(`deploy.type.${validation.app_type}`)}
+              {TYPE_ICONS[validation.app_type] || ""} {t(`deploy.type.${validation.app_type}`)}
             </span>
           </div>
 
-          {/* ✅ Valid */}
+          {/*  Valid */}
           {isValid && (
             <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
               <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -380,7 +377,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
             </div>
           )}
 
-          {/* ❌ Invalid — Show issues + prompt */}
+          {/*  Invalid — Show issues + prompt */}
           {isInvalid && (
             <div className="space-y-2">
               {/* Issues */}
@@ -406,7 +403,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
                     onClick={copyPrompt}
                     className={`flex items-center gap-1 px-2 py-0.5 text-[10px] rounded-md transition-all ${
                       promptCopied
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-gray-100 text-brand-700"
                         : "bg-brand-600 text-white hover:bg-brand-700"
                     }`}
                   >
@@ -468,7 +465,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
 
                   return (
                     <li key={i} className={`flex items-start gap-1.5 text-[10px] ${isCritical ? "text-red-700 font-semibold" : "text-amber-700"}`}>
-                      <span className="mt-px">{isCritical ? "🚨" : "⚠️"}</span>
+                      <span className="mt-px">{isCritical ? "" : ""}</span>
                       {message}
                     </li>
                   );
@@ -504,7 +501,7 @@ export function DeployZone({ onDeployed }: { onDeployed: () => void }) {
                   />
                   <span className="flex-1">
                     <span className="text-[11px] font-medium text-gray-800">
-                      {mode === "protected" ? `🔒 ${t("deploy.access_protected")}` : `🌐 ${t("deploy.access_public")}`}
+                      {mode === "protected" ? ` ${t("deploy.access_protected")}` : ` ${t("deploy.access_public")}`}
                     </span>
                     <span className="block text-[10px] text-gray-500 leading-snug">
                       {mode === "protected" ? t("deploy.access_protected_desc") : t("deploy.access_public_desc")}
@@ -531,7 +528,7 @@ X-IVS-Email: <email>`}
           {validation?.data_mount && (
             <div className="border border-green-200 bg-green-50/70 rounded-lg p-2.5">
               <p className="text-[11px] font-semibold text-green-800 flex items-center gap-1.5">
-                <span>💾</span>{t("deploy.data_mount_title")}
+                {t("deploy.data_mount_title")}
               </p>
               <p className="text-[10px] text-green-700 mt-1 leading-relaxed">
                 {t("deploy.data_mount_desc").replace("{path}", validation.data_mount)}
@@ -543,7 +540,7 @@ X-IVS-Email: <email>`}
           {validation?.env_schema && validation.env_schema.length > 0 && (
             <div className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/60">
               <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-[11px]">🔧</span>
+
                 <p className="text-[11px] font-semibold text-gray-700">{t("deploy.env_title")}</p>
                 <span className="text-[10px] text-gray-400">({validation.env_schema.length})</span>
               </div>
@@ -614,7 +611,7 @@ X-IVS-Email: <email>`}
               )}
               {buildStatus === "success" && <span className="text-green-500 text-xs">✓</span>}
               {buildStatus === "error" && <span className="text-red-500 text-xs">✗</span>}
-              {buildStatus === "timeout" && <span className="text-amber-500 text-xs">⏱</span>}
+              {buildStatus === "timeout" && <span className="text-amber-600 text-xs">○</span>}
             </div>
             <button onClick={() => setShowBuildLog(false)} className="text-[10px] text-gray-400 hover:text-gray-600">
               ✕ {t("deploy.close")}
@@ -636,7 +633,7 @@ X-IVS-Email: <email>`}
           </div>
           {buildStatus === "timeout" && (
             <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700">
-              ⏱ {t("deploy.build_timeout")}
+               {t("deploy.build_timeout")}
             </div>
           )}
         </div>

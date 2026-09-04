@@ -150,7 +150,7 @@ class DockerService:
 
     @staticmethod
     def volume_name(app_slug: str) -> str:
-        return f"ivs-{app_slug}-data"
+        return f"{settings.CONTAINER_PREFIX}{app_slug}-data"
 
     @staticmethod
     def data_mount_path(app_type: str) -> str:
@@ -513,6 +513,27 @@ class DockerService:
                     logger.info("Detected pre-built Vite/static app with dist/ folder")
                     return "static_prebuilt"
 
+                # A start script that launches something other than Vite means
+                # this app runs its own server — Vite is only building its
+                # frontend. Seat Event is the case that exposed this: it has
+                # `vite build` for the UI and `node server.js` for an Express
+                # API, and was being classified as a static Vite site. The
+                # generated image then ran `vite preview`, which serves files
+                # and never starts the server, so the container comes up
+                # healthy with every API endpoint dead.
+                #
+                # The start script is the app telling us how to run it. It wins.
+                server_start = bool(start_script) and not has_vite_preview and any(
+                    start_script.strip().startswith(cmd)
+                    for cmd in ("node ", "nodemon ", "tsx ", "ts-node ", "bun ", "npm run start:")
+                )
+                if server_start:
+                    logger.info(
+                        "Detected Node server app (start: %s) — Vite only builds its frontend",
+                        start_script[:60],
+                    )
+                    return "nodejs"
+
                 # If it's a Vite project with vite preview as start script
                 if is_vite and has_vite_preview:
                     logger.info("Detected Vite app with 'vite preview' start script")
@@ -760,8 +781,8 @@ CMD ["/start-app.sh"]
         if not self._ensure_client():
             raise RuntimeError("Docker Desktop is not running. Please start Docker Desktop and try again.")
 
-        image_tag = f"ivs-app-{app_slug}:latest"
-        container_name = f"ivs-{app_slug}"
+        image_tag = f"{settings.CONTAINER_PREFIX}app-{app_slug}:latest"
+        container_name = f"{settings.CONTAINER_PREFIX}{app_slug}"
 
         # Initialize build log
         _build_logs[app_slug] = []
@@ -959,6 +980,14 @@ CMD ["/start-app.sh"]
             return result
 
         # Common app data locations — tried in order; any that exist get copied.
+        #
+        # The Prisma entries are not optional extras. Prisma's own convention
+        # puts a SQLite file next to the schema, so an app scaffolded with it
+        # keeps its entire database under prisma/ and nowhere else. Guest Event
+        # is that shape: /app/api/prisma/data/app.db, no volume, nothing under
+        # any of the paths above. Exporting it reported success with zero paths
+        # copied, which reads as "backed up" and is not — the redeploy that
+        # follows takes the database with it.
         candidate_paths = [
             "/app/backend/data",
             "/app/backend/uploads",
@@ -966,6 +995,11 @@ CMD ["/start-app.sh"]
             "/app/data",
             "/app/uploads",
             "/app/db",
+            "/app/api/prisma/data",
+            "/app/prisma/data",
+            "/app/backend/prisma/data",
+            "/app/api/data",
+            "/app/api/uploads",
             "/data",
             "/uploads",
         ]

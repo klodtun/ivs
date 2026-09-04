@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, CatalogEntry, CatalogVersion } from "@/lib/api";
 import { useLang } from "@/components/lang-provider";
 import { cn, formatLegalTimestamp } from "@/lib/utils";
+import { SectionHeader } from "@/components/ui";
 
 type TestResult = {
   status: string;
@@ -26,9 +27,10 @@ type TestResult = {
 };
 
 export default function ApiCatalogView() {
-  const { t } = useLang();
+  const { t, locale } = useLang();
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [guide, setGuide] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSummary, setScanSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,21 +146,24 @@ export default function ApiCatalogView() {
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{t("catalog.title")}</h1>
-          <p className="text-gray-500 text-[10px] mt-0.5">{t("catalog.subtitle")}</p>
-        </div>
+        <SectionHeader title={t("catalog.title")} help={t("catalog.subtitle")} />
         <div className="flex gap-2">
+          <button
+            onClick={() => setGuide((v) => !v)}
+            className="px-3 py-1.5 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            {guide ? t("catalog.guide_close") : t("catalog.guide")}
+          </button>
           <button
             onClick={scan}
             disabled={scanning}
-            className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
+            className="px-3 py-1.5 text-xs bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50"
           >
             {scanning ? t("catalog.scanning") : t("catalog.scan_now")}
           </button>
           <button
             onClick={() => setEditFor({} as CatalogEntry)}
-            className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50"
           >
             {t("catalog.add_manual")}
           </button>
@@ -170,6 +175,58 @@ export default function ApiCatalogView() {
           {scanSummary}
         </div>
       )}
+      {guide && (
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
+          {/* โซ่ความเชื่อมโยง — สามหน้าจอนี้อ่านของชุดเดียวกัน คนละมุม
+            * ถ้าไม่วาดให้เห็น ผู้ใช้จะคิดว่าเป็นสามระบบแยกกันที่บังเอิญชื่อคล้ายกัน
+            *
+            * วาดด้วยกล่องจริง ไม่ใช่ ASCII art — อักษรไทยในฟอนต์ monospace กว้าง
+            * ไม่เท่ากับอักษรละติน เส้นที่วาดด้วยตัวอักษรจึงไม่มีทางตรงกัน
+            */}
+          <div className="rounded border border-gray-200 bg-white px-3 py-3">
+            <div className="flex flex-col items-start gap-1 text-[10.5px]">
+              <span className="px-2 py-1 rounded border border-gray-200 bg-gray-50 text-gray-700">
+                {locale === "th" ? "แอปที่ดีพลอย" : "Deployed apps"}
+              </span>
+              <span className="ml-3 text-gray-400">
+                ↓ {locale === "th" ? "iVS ดึง /openapi.json เอง" : "iVS fetches /openapi.json"}
+              </span>
+              <span className="px-2 py-1 rounded border border-brand-300 bg-brand-50 text-brand-700 font-medium">
+                {t("catalog.title")}
+              </span>
+              <div className="ml-3 mt-1 space-y-1.5 border-l border-gray-300 pl-3">
+                <div>
+                  <span className="px-2 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-700">
+                    {locale === "th" ? "เส้นทางการทำงาน" : "Business Flows"}
+                  </span>
+                  <span className="text-gray-500 ml-2">
+                    {locale === "th"
+                      ? "ขั้นหนึ่งผูกกับรายการหนึ่ง ตรวจทุกวัน — ปกติ · หน้าตาเปลี่ยน · ปลายทางไม่ตอบ"
+                      : "a step binds to an entry, checked daily — fine · shape changed · no answer"}
+                  </span>
+                </div>
+                <div>
+                  <span className="px-2 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-700">
+                    {locale === "th" ? "แผนที่ระบบ" : "System Map"}
+                  </span>
+                  <span className="text-gray-500 ml-2">
+                    {locale === "th"
+                      ? "เส้นมาจาก env · โทเคน · คนวาด · AI เดา"
+                      : "edges from env · tokens · drawn · inferred"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          {([1, 2, 3, 4] as const).map((n) => (
+            <div key={n}>
+              <p className="text-[11px] font-medium text-gray-800">{t(`cg${n}_t`)}</p>
+              <p className="text-[10.5px] text-gray-600 mt-0.5 leading-relaxed">{t(`cg${n}_b`)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
           {error}
@@ -229,13 +286,13 @@ export default function ApiCatalogView() {
                     <button
                       onClick={() => runTest(entry.id)}
                       disabled={testing[entry.id]}
-                      className="px-2 py-1 text-[10px] bg-brand-600 text-white rounded hover:bg-brand-700 disabled:opacity-50"
+                      className="px-2 py-1 text-[10px] bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50"
                     >
                       {testing[entry.id] ? "..." : t("catalog.test")}
                     </button>
                     <button
                       onClick={() => setExpanded(isExpanded ? null : entry.id)}
-                      className="px-2 py-1 text-[10px] border border-gray-300 rounded hover:bg-gray-50"
+                      className="px-2 py-1 text-[10px] border border-gray-300 rounded-md hover:bg-gray-50"
                     >
                       {isExpanded ? t("catalog.collapse") : t("catalog.details")}
                     </button>
@@ -296,15 +353,15 @@ export default function ApiCatalogView() {
                     )}
                     <div className="flex gap-2 pt-2">
                       <button onClick={() => setEditFor(entry)}
-                        className="px-2 py-1 text-[10px] bg-amber-600 text-white rounded hover:bg-amber-700">
+                        className="px-2 py-1 text-[10px] bg-brand-600 text-white rounded-md hover:bg-brand-700">
                         {t("catalog.replace")}
                       </button>
                       <button onClick={() => openHistory(entry.id)}
-                        className="px-2 py-1 text-[10px] border border-gray-300 rounded hover:bg-gray-50">
+                        className="px-2 py-1 text-[10px] border border-gray-300 rounded-md hover:bg-gray-50">
                         {t("catalog.history")} ({entry.current_version - 1})
                       </button>
                       <button onClick={() => deleteEntry(entry.id, entry.name)}
-                        className="px-2 py-1 text-[10px] text-red-600 border border-red-200 rounded hover:bg-red-50 ml-auto">
+                        className="px-2 py-1 text-[10px] text-red-600 border border-red-200 rounded-md hover:bg-red-50 ml-auto">
                         {t("catalog.delete")}
                       </button>
                     </div>
@@ -422,11 +479,11 @@ function EditModal({ entry, onClose, onSaved, t }: {
         )}
         <div className="flex gap-2 pt-2">
           <button onClick={save} disabled={saving}
-            className="flex-1 px-3 py-1.5 text-xs bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50">
+            className="flex-1 px-3 py-1.5 text-xs bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50">
             {saving ? "..." : (isNew ? t("catalog.create") : t("catalog.replace"))}
           </button>
           <button onClick={onClose}
-            className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50">
+            className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50">
             Cancel
           </button>
         </div>
@@ -472,7 +529,7 @@ function HistoryModal({ versions, entryId, onClose, onRestore, t }: {
                   </div>
                   <button
                     onClick={() => onRestore(entryId, v.id)}
-                    className="shrink-0 px-2 py-1 text-[10px] bg-amber-600 text-white rounded hover:bg-amber-700"
+                    className="shrink-0 px-2 py-1 text-[10px] bg-brand-600 text-white rounded-md hover:bg-brand-700"
                   >
                     {t("catalog.restore")}
                   </button>

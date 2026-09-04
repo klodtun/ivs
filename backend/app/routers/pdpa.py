@@ -6,6 +6,7 @@ import os
 import json
 import hashlib
 import logging
+from typing import Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -18,6 +19,9 @@ from app.schemas import PdpaUpdate, PdpaResponse, PdpaScanResult, RopaExportResp
 from app.middleware.auth import get_current_user, require_role
 from app.services.audit_service import create_audit_log
 from app.services.pdpa_service import scan_app_for_pii, generate_ropa_markdown
+from app.services import field_policy_service as field_policy
+from app.services import ropa_service
+from app.models import AppFieldPolicy, FieldAction
 from app.services.ntp_service import ntp_service
 from app.config import settings
 
@@ -69,13 +73,19 @@ def _compute_status(pdpa: AppPdpa) -> PdpaStatus:
     return PdpaStatus.NOT_STARTED
 
 
-def _pdpa_to_response(pdpa: AppPdpa, app: App) -> dict:
-    """Convert AppPdpa model to response dict."""
+def _pdpa_to_response(pdpa: AppPdpa, app: Optional[App]) -> dict:
+    """Convert AppPdpa model to response dict.
+
+    `app` เป็น None ได้เมื่อแอปถูกลบไปแล้ว — บันทึก ROPA ยังอยู่ ชื่อจึงมาจาก
+    สำเนาที่ประทับไว้ตอนลบ ไม่ใช่จากตาราง apps ที่ไม่มีแถวนั้นแล้ว
+    """
+    removed = getattr(pdpa, "app_removed_at", None)
     return {
         "id": pdpa.id,
         "app_id": pdpa.app_id,
-        "app_name": app.name,
-        "app_slug": app.slug,
+        "app_name": app.name if app else (getattr(pdpa, "app_name_at_removal", "") or f"app#{pdpa.app_id}"),
+        "app_slug": app.slug if app else (getattr(pdpa, "app_slug_at_removal", "") or ""),
+        "app_removed_at": removed,
         "purpose": pdpa.purpose or "",
         "pii_fields": json.loads(pdpa.pii_fields or "[]"),
         "pii_auto_detected": json.loads(pdpa.pii_auto_detected or "[]"),
@@ -101,19 +111,25 @@ async def list_pdpa_records(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get PDPA/ROPA records for all apps."""
-    apps = db.query(App).order_by(App.created_at.desc()).all()
+    """บันทึกรายการกิจกรรมการประมวลผล — รวมแอปที่ถูกลบไปแล้ว
+
+    ROPA ไม่ถูกล้างและไม่ถูกลบ รายการสะสมต่อไปเรื่อย ๆ แอปที่ถูกถอดออกจาก iVS
+    ยังปรากฏอยู่พร้อมหมายเหตุว่าถูกลบเมื่อไร เพราะ PDPA ไม่ได้สั่งให้ลบบันทึกนี้
+    และการถอดแอปไม่ได้ย้อนความจริงที่ว่าเคยมีการประมวลผลข้อมูลของใครบางคน
+
+    เรียงตามลำดับที่บันทึกถูกสร้าง ไม่ใช่ตามวันที่แอปถูกสร้าง เพื่อให้ลำดับใน
+    เอกสารคงที่ตลอด — แถวที่มีอยู่แล้วจะไม่ขยับเมื่อมีแอปใหม่เข้ามา
+    """
+    apps = {a.id: a for a in db.query(App).all()}
     result = []
 
-    for app in apps:
-        pdpa = db.query(AppPdpa).filter(AppPdpa.app_id == app.id).first()
-        if not pdpa:
-            # Auto-create empty PDPA record
-            pdpa = AppPdpa(app_id=app.id)
-            db.add(pdpa)
-            db.commit()
-            db.refresh(pdpa)
-        result.append(_pdpa_to_response(pdpa, app))
+    for app_id, app in sorted(apps.items()):
+        if not db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first():
+            db.add(AppPdpa(app_id=app_id))
+    db.commit()
+
+    for pdpa in db.query(AppPdpa).order_by(AppPdpa.id).all():
+        result.append(_pdpa_to_response(pdpa, apps.get(pdpa.app_id)))
 
     return result
 
@@ -358,27 +374,47 @@ async def export_ropa_report(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.ADMIN)),
 ):
-    """Export ROPA report as Markdown file."""
+    """ส่งออกบันทึกรายการกิจกรรมการประมวลผลเป็นไฟล์ Markdown
+
+    รวมกิจกรรมของแอปที่ถูกลบไปแล้วด้วย เดินจากตาราง ROPA ไม่ใช่จากตาราง apps
+    เดิมเดินจาก apps ทำให้รายงานที่ส่งถึงผู้ตรวจตกกิจกรรมของระบบที่ปลดไปแล้ว
+    ทั้งหมด — ซึ่งเป็นคำถามที่ผู้ตรวจถามพอดี และเป็นสิ่งที่กฎใน OPERATIONS.md
+    ห้ามไว้ ("ROPA is never cleared")
+
+    เรียงตาม id ของบันทึก เพื่อให้ลำดับในรายงานที่ออกไปแล้วยังชี้แถวเดิมเสมอ
+    """
     os.makedirs(EXPORTS_DIR, exist_ok=True)
 
-    apps = db.query(App).order_by(App.created_at.desc()).all()
+    apps = {a.id: a for a in db.query(App).all()}
     apps_data = []
 
-    for app in apps:
-        pdpa = db.query(AppPdpa).filter(AppPdpa.app_id == app.id).first()
-        pii_fields = json.loads(pdpa.pii_fields) if pdpa and pdpa.pii_fields else []
+    for pdpa in db.query(AppPdpa).order_by(AppPdpa.id).all():
+        app = apps.get(pdpa.app_id)
+        removed_at = getattr(pdpa, "app_removed_at", None)
+        name = app.name if app else (
+            getattr(pdpa, "app_name_at_removal", "") or f"app#{pdpa.app_id}")
+
+        pii_fields = json.loads(pdpa.pii_fields) if pdpa.pii_fields else []
         # If no manual PII, use auto-detected
-        if not pii_fields and pdpa and pdpa.pii_auto_detected:
+        if not pii_fields and pdpa.pii_auto_detected:
             pii_fields = json.loads(pdpa.pii_auto_detected)
 
         apps_data.append({
-            "app_name": app.name,
-            "purpose": pdpa.purpose if pdpa else "",
+            "app_name": name,
+            # แอปถูกลบแล้ว แต่บันทึกยังอยู่ — รายงานต้องบอกให้ผู้อ่านรู้ว่ากิจกรรมนี้
+            # เลิกทำแล้วเมื่อไร ไม่ใช่ปล่อยให้เข้าใจว่ายังดำเนินอยู่
+            "removed_at": removed_at.isoformat() if removed_at else "",
+            "purpose": pdpa.purpose or "",
             "pii_fields": pii_fields,
-            "usage": app.name,
-            "retention_period": pdpa.retention_period if pdpa else "",
-            "has_masking": pdpa.has_masking if pdpa else False,
-            "security_notes": pdpa.security_notes if pdpa else "",
+            "usage": name,
+            "retention_period": pdpa.retention_period or "",
+            "has_masking": pdpa.has_masking,
+            "security_notes": pdpa.security_notes or "",
+            # ฐานการประมวลผลและผู้รับข้อมูล — ROPA ที่ไม่ระบุสองอย่างนี้
+            # ไม่ครบตามที่ผู้ควบคุมข้อมูลต้องจัดทำ
+            "legal_basis": (pdpa.legal_basis or ""),
+            "recipients": ropa_service.get_recipients(pdpa),
+            "erasure": ropa_service.erasure_decision(pdpa),
         })
 
     ntp_info = ntp_service.get_status()
@@ -678,3 +714,291 @@ async def list_my_consents(
         }
         for consent, app in rows
     ]
+
+
+# ── Field-level policy (policy as code) ──────────────────────────────
+#
+# The PII scan says which fields hold personal data; these endpoints turn that
+# into rules the exchange layer enforces on every response. Until this existed,
+# opening an app's API meant opening whatever the app happened to return.
+
+
+@router.get("/{app_id}/field-policy")
+async def get_field_policy(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Field rules for this app, unreviewed ones first."""
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    return field_policy.summary(db, app_id)
+
+
+@router.post("/{app_id}/field-policy/derive")
+async def derive_field_policy(
+    app_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Scan the app and draft a rule for every field found that has none.
+
+    Existing rules are kept as they are — a later scan must never quietly
+    reverse a decision someone already made.
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    if not app.source_path or not os.path.isdir(app.source_path):
+        raise HTTPException(status_code=400, detail="App source not found on disk")
+
+    try:
+        scan = scan_app_for_pii(app.source_path)
+    except Exception as e:
+        logger.warning(f"PII scan failed for app {app_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)[:200]}")
+
+    result = field_policy.derive_from_scan(db, app_id, scan)
+    create_audit_log(
+        db, request, user=user, action="derive_field_policy", resource_type="pdpa",
+        resource_id=str(app_id),
+        details=(
+            f"{app.name}: สร้างกฎรายฟิลด์จากผลสแกน {result['created']} ฟิลด์ใหม่ "
+            f"(คงของเดิม {result['kept']}) รอตรวจสอบ {result['pending_review']}"
+        ),
+    )
+    db.commit()
+    return result
+
+
+@router.put("/{app_id}/field-policy")
+async def confirm_field_policy(
+    app_id: int,
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Confirm one field's rule. Body: {field_name, action, note?}."""
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    field_name = (payload.get("field_name") or "").strip()
+    action_raw = (payload.get("action") or "").strip()
+    if not field_name:
+        raise HTTPException(status_code=422, detail="field_name is required")
+    try:
+        action = FieldAction(action_raw)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="action must be block, mask or allow")
+
+    row = field_policy.confirm(
+        db, app_id, field_name, action, user.id, payload.get("note") or ""
+    )
+    create_audit_log(
+        db, request, user=user, action="confirm_field_policy", resource_type="pdpa",
+        resource_id=str(app_id),
+        details=f"{app.name}: ฟิลด์ {field_name} ตั้งเป็น {action.value}",
+        # Widening access is the decision worth finding later, so it is logged
+        # at a level that stands out in the audit view.
+        log_level="WARNING" if action == FieldAction.ALLOW else "INFO",
+    )
+    db.commit()
+    return {
+        "field_name": row.field_name,
+        "action": row.action.value,
+        "confirmed": bool(row.confirmed),
+    }
+
+
+@router.post("/{app_id}/field-policy/preview")
+async def preview_field_policy(
+    app_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Run a sample payload through the rules and show what would leave.
+
+    Reviewing a list of field names tells you very little; seeing the actual
+    response with the national ID gone and the email replaced tells you exactly
+    what the rules do before anything is opened up.
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    sample = payload.get("sample")
+    if sample is None:
+        raise HTTPException(status_code=422, detail="sample is required")
+
+    filtered, applied = field_policy.apply_policy(db, app_id, sample)
+    return {"result": filtered, "applied": applied}
+
+
+# ── ROPA: ผู้รับข้อมูล ฐานการประมวลผล และสิทธิขอให้ลบ ────────────────
+#
+# One app is one processing activity. Opening an API or an MCP tool adds a
+# recipient to that activity, which has to show up both here and in the privacy
+# notice — a recipient the data subject was never told about is the problem.
+
+
+@router.get("/{app_id}/ropa")
+async def get_ropa_detail(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    """Lawful basis, recipients, and what a deletion request would get."""
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    record = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    return {
+        "app_id": app_id,
+        "app_name": app.name,
+        "legal_basis": record.legal_basis if record else "",
+        "erasure_right": (record.erasure_right if record else "auto") or "auto",
+        "erasure_note": (record.erasure_note if record else "") or "",
+        "recipients": ropa_service.get_recipients(record) if record else [],
+        "erasure": ropa_service.erasure_decision(record),
+        "basis_options": ropa_service.basis_options(),
+    }
+
+
+@router.put("/{app_id}/ropa")
+async def update_ropa_detail(
+    app_id: int,
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Set the lawful basis and the erasure rule for this activity.
+
+    Body: {legal_basis?, erasure_right?, erasure_note?}
+    """
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    record = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    if not record:
+        record = AppPdpa(app_id=app_id)
+        db.add(record)
+        db.flush()
+
+    if "legal_basis" in payload:
+        basis = (payload.get("legal_basis") or "").strip()
+        if basis and basis not in ropa_service.LEGAL_BASIS:
+            raise HTTPException(status_code=422, detail="Unknown legal basis")
+        record.legal_basis = basis
+    if "erasure_right" in payload:
+        setting = (payload.get("erasure_right") or "auto").strip()
+        if setting not in ("auto", "allowed", "restricted"):
+            raise HTTPException(status_code=422, detail="erasure_right must be auto, allowed or restricted")
+        # An override is what gets quoted back to the person who asked, so it
+        # cannot be a bare switch with no explanation behind it.
+        if setting != "auto" and not (payload.get("erasure_note") or record.erasure_note or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="ต้องระบุเหตุผลเมื่อกำหนดสิทธิการลบเอง เพราะเหตุผลนี้จะถูกแจ้งกลับไปยังเจ้าของข้อมูล",
+            )
+        record.erasure_right = setting
+    if "erasure_note" in payload:
+        record.erasure_note = (payload.get("erasure_note") or "")[:2000]
+
+    db.commit()
+    db.refresh(record)
+    decision = ropa_service.erasure_decision(record)
+    create_audit_log(
+        db, request, user=user, action="update_ropa", resource_type="pdpa",
+        resource_id=str(app_id),
+        details=(
+            f"{app.name}: ฐานการประมวลผล {record.legal_basis or '-'} · "
+            f"สิทธิขอให้ลบ {'ได้' if decision['erasable'] else 'ไม่ได้'} ({record.erasure_right})"
+        ),
+        log_level="WARNING",
+    )
+    db.commit()
+    return {
+        "legal_basis": record.legal_basis,
+        "erasure_right": record.erasure_right,
+        "erasure_note": record.erasure_note,
+        "erasure": decision,
+    }
+
+
+@router.post("/{app_id}/ropa/recipients")
+async def add_ropa_recipient(
+    app_id: int,
+    request: Request,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    """Record a recipient of this activity's data. Body: {kind, name, purpose?, note?}."""
+    app = db.query(App).filter(App.id == app_id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    record = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    if not record:
+        record = AppPdpa(app_id=app_id)
+        db.add(record)
+        db.flush()
+
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+
+    added, recipients = ropa_service.add_recipient(
+        db, record, payload.get("kind") or "external", name,
+        payload.get("purpose") or "", payload.get("note") or "",
+    )
+    if added:
+        create_audit_log(
+            db, request, user=user, action="ropa_add_recipient", resource_type="pdpa",
+            resource_id=str(app_id),
+            details=f"{app.name}: เพิ่มผู้รับข้อมูล {name} — ต้องปรากฏในประกาศแจ้งเตือนด้วย",
+            log_level="WARNING",
+        )
+        db.commit()
+    return {"added": added, "recipients": recipients}
+
+
+@router.delete("/{app_id}/ropa/recipients")
+async def remove_ropa_recipient(
+    app_id: int,
+    request: Request,
+    kind: str,
+    name: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN)),
+):
+    record = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="No ROPA record for this app")
+    recipients = ropa_service.remove_recipient(db, record, kind, name)
+    create_audit_log(
+        db, request, user=user, action="ropa_remove_recipient", resource_type="pdpa",
+        resource_id=str(app_id), details=f"ลบผู้รับข้อมูล {name}", log_level="WARNING",
+    )
+    db.commit()
+    return {"recipients": recipients}
+
+
+@router.get("/{app_id}/erasure-check")
+async def erasure_check(
+    app_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.VIEWER)),
+):
+    """Answer a deletion request for this activity, with the reason to send back.
+
+    A data subject names the activity; this says whether the right applies to it
+    and why. Deleting data held under a legal obligation would be the violation,
+    so the answer comes from the recorded basis, not from discretion.
+    """
+    record = db.query(AppPdpa).filter(AppPdpa.app_id == app_id).first()
+    return ropa_service.erasure_decision(record)

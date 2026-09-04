@@ -7,6 +7,7 @@ import { DeployZone } from "@/components/deploy-zone";
 import { DockerStatusBanner } from "@/components/docker-status-banner";
 import { LoadingState, PerfWarningBanner } from "@/components/loading-state";
 import { App, User } from "@/types";
+import { PageHeader } from "@/components/ui";
 
 export default function AppsPage() {
   const { t } = useLang();
@@ -55,8 +56,7 @@ export default function AppsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-gray-900">{t("apps.title")}</h1>
-        <p className="text-gray-500 text-[10px] mt-0.5">{t("apps.subtitle")}</p>
+        <PageHeader title={t("apps.title")} help={t("apps.subtitle")} />
       </div>
 
       <DockerStatusBanner onChange={(running) => running && loadApps()} />

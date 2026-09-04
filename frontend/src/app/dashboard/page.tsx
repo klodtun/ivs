@@ -1,18 +1,21 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
+import Link from "next/link";
 import { useLang } from "@/components/lang-provider";
 import { SystemHealthPanel } from "@/components/system-health";
-import { AppCard } from "@/components/app-card";
-import { DeployZone } from "@/components/deploy-zone";
+import { OverviewCards } from "@/components/overview-cards";
+import { AppOverviewCards } from "@/components/app-overview-cards";
 import { DockerStatusBanner } from "@/components/docker-status-banner";
 import { LoadingState, PerfWarningBanner } from "@/components/loading-state";
-import { App, SystemHealth, User } from "@/types";
+import { SystemHealth, User } from "@/types";
+import { SystemOverview } from "@/lib/api";
+import { PageHeader } from "@/components/ui";
 
 export default function DashboardPage() {
   const { t } = useLang();
   const [health, setHealth] = useState<SystemHealth | null>(null);
-  const [apps, setApps] = useState<App[]>([]);
+  const [overview, setOverview] = useState<SystemOverview | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -25,9 +28,11 @@ export default function DashboardPage() {
     setIsRefreshing(true);
     setRefreshError(null);
     try {
-      const [h, a] = await Promise.all([api.getSystemHealth(), api.getApps()]);
+      // ไม่ดึงรายการแอปอีกแล้ว — การ์ดแอปย้ายไปหน้าแอปพลิเคชันทั้งหมด
+      // หน้านี้ตอบว่า "มีอะไรที่ควรรู้" ไม่ใช่ "มีแอปอะไรบ้าง"
+      const [h, o] = await Promise.all([api.getSystemHealth(), api.getSystemOverview()]);
       setHealth(h);
-      setApps(a);
+      setOverview(o);
       setLastRefresh(new Date());
     } catch (e) {
       console.error("Failed to load dashboard data", e);
@@ -72,8 +77,7 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">{t("dash.title")}</h1>
-          <p className="text-gray-500 text-[10px] mt-0.5">{t("dash.subtitle")}</p>
+          <PageHeader title={t("dash.title")} help={t("dash.subtitle")} />
         </div>
         <div className="flex items-center gap-2">
           {lastRefresh && !refreshError && (
@@ -83,7 +87,7 @@ export default function DashboardPage() {
           )}
           {refreshError && (
             <span className="text-[10px] text-red-500" title={refreshError}>
-              ⚠ {t("dash.refresh_failed")}
+               {t("dash.refresh_failed")}
             </span>
           )}
           <button
@@ -121,28 +125,25 @@ export default function DashboardPage() {
         <SystemHealthPanel health={health} />
       )}
 
-      {canDeploy && <DeployZone onDeployed={loadData} />}
+      {/* สี่มุมมอง — ตอบว่ามีอะไรที่ควรรู้ แล้วส่งต่อไปหน้าที่แก้ได้จริง
+          ไม่มีการ์ดแอปและไม่มีช่องดีพลอยที่นี่ ทั้งสองอย่างคือการลงมือ ซึ่งเป็น
+          หน้าที่ของหน้าแอปพลิเคชัน หน้านี้มีไว้สังเกต */}
+      {initialLoading ? (
+        <LoadingState variant="card" label={t("common.loading")} />
+      ) : overview ? (
+        <OverviewCards data={overview} />
+      ) : null}
 
-      <div>
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">
-          {t("dash.applications")} ({apps.length})
-        </h2>
-        {apps.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-            <svg className="w-8 h-8 mx-auto text-gray-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-            <p className="text-gray-400 text-xs">{t("dash.no_apps")}</p>
-            {canDeploy && <p className="text-[10px] text-gray-400 mt-0.5">{t("dash.no_apps_hint")}</p>}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {apps.map((app) => (
-              <AppCard key={app.id} app={app} userRole={user?.role || "viewer"} userId={user?.id} onRefresh={loadData} />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* การ์ดเฉพาะแอปที่ผู้ดูแลเลือกเอง — ต่อจากหกใบที่เป็นภาพรวมทั้งระบบ */}
+      {!initialLoading && <AppOverviewCards canAdd={!!canDeploy} />}
+
+      <p className="text-[10px] text-gray-400">
+        {t("ov.apps_moved")}{" "}
+        <Link href="/dashboard/apps" className="text-brand-600 hover:underline">
+          {t("dash.applications")}
+        </Link>
+      </p>
+
     </div>
   );
 }
