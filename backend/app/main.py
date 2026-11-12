@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import engine, SessionLocal, Base
 from app.models import User, UserRole
 from app.middleware.auth import hash_password
-from app.routers import auth, apps, system, tunnels, vault, pdpa, enterprise, api_catalog, exchange, datamart
+from app.routers import auth, apps, system, tunnels, vault, pdpa, enterprise, api_catalog, exchange, datamart, mail
 from app.services.tunnel_service import tunnel_service
 from app.services.ntp_service import ntp_service
 from app.services.resource_service import collect_snapshot
@@ -123,6 +123,32 @@ async def flow_drift_loop():
         except Exception as e:
             logger.error(f"Flow drift check error: {e}")
         await asyncio.sleep(86400)  # 24h
+
+
+async def mail_queue_loop():
+    """ส่งจดหมายที่ค้างในคิวทุก 30 วินาที และสแกนเหตุการณ์ที่ควรแจ้งทุก 5 นาที
+
+    แยกจากลูปอื่นด้วยเหตุผลเดียวกับ datamart: ตัวรีเลย์ภายนอกช้าหรือล่มได้
+    และห้ามให้มันหน่วงการเก็บบันทึกหรือการลบตามนโยบาย ความล้มเหลวของจดหมาย
+    หนึ่งฉบับถูกจดในแถวของมันเอง ไม่ใช่โยนออกมาหยุดลูป
+    """
+    from app.services import mail_service
+    tick = 0
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                mail_service.process_queue(db)
+                if tick % 10 == 0:          # ทุก 5 นาที
+                    mail_service.scan_events(db)
+                if tick % 2880 == 0:        # วันละครั้ง
+                    mail_service.purge_outbox(db)
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Mail queue error: {e}")
+        tick += 1
+        await asyncio.sleep(30)
 
 
 async def datamart_fetch_loop():
@@ -357,6 +383,12 @@ def _guard_installation():
             db, "0001_baseline", lambda: None,
             checksum=installation_service.checksum_of("pre-ledger schema"),
         )
+        # โมดูลจดหมาย ระยะที่ 0: ตาราง mail_outbox ถูกสร้างโดย create_all แล้ว
+        # จดเป็นขั้นในบัญชีเพื่อให้รายงานอัปเกรดบอกได้ว่ากล่องนี้ผ่านอะไรมา
+        installation_service.run_step(
+            db, "0002_mail_outbox", lambda: None,
+            checksum=installation_service.checksum_of("mail_outbox table (create_all)"),
+        )
         # The customer's own migrations share the ledger but not the number
         # series, so an upgrade report shows both in one place while a future
         # core migration can never collide with one they already applied.
@@ -411,6 +443,7 @@ async def lifespan(app: FastAPI):
     app_log_purge_task = asyncio.create_task(retention_purge_loop())
     datamart_task = asyncio.create_task(datamart_fetch_loop())
     flow_drift_task = asyncio.create_task(flow_drift_loop())
+    mail_task = asyncio.create_task(mail_queue_loop())
     # Anti-tamper / copyright integrity check (logs CRITICAL on breach)
     try:
         from app.services.integrity_service import check_on_startup
@@ -440,6 +473,7 @@ async def lifespan(app: FastAPI):
     app_log_task.cancel()
     app_log_purge_task.cancel()
     datamart_task.cancel()
+    mail_task.cancel()
 
 
 def _seed_admin():
@@ -533,6 +567,7 @@ app.include_router(enterprise.router)
 app.include_router(api_catalog.router)
 app.include_router(exchange.router)
 app.include_router(datamart.router)
+app.include_router(mail.router)
 
 # The customer's own routers, mounted last and under their own prefix.
 #

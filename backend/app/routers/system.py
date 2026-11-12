@@ -1,4 +1,5 @@
 import os
+import logging
 import hashlib
 import socket
 import platform
@@ -411,6 +412,18 @@ async def export_audit_logs(
     )
     db.commit()
     db.refresh(export)
+    # แจ้งผู้ดูแลทางจดหมายพร้อมค่าแฮช — ถ้าโมดูลจดหมายปิด ฟังก์ชันคืน 0 เงียบ ๆ
+    try:
+        from app.services import mail_service
+        mail_service.notify_admins(db, "audit_export", {
+            "exported_by": user.username,
+            "filename": filename,
+            "record_count": total_records,
+            "date_range": range_label,
+            "sha256": sha256,
+        }, dedupe_key=f"audit_export:{export.id}")
+    except Exception as e:  # noqa: BLE001 — จดหมายล้มต้องไม่ทำให้การส่งออกล้ม
+        logging.getLogger(__name__).warning(f"mail: audit export notice not queued: {e}")
     return export
 
 
@@ -1174,6 +1187,18 @@ async def execute_gdpr_erasure(
         log_level="CRITICAL" if "CRITICAL" in {"CRITICAL"} else "WARNING",
     )
     db.commit()
+    try:
+        from app.services import mail_service
+        mail_service.notify_admins(db, "erasure_done", {
+            "request_id": result["id"],
+            "target_type": target_type,
+            "executed_by": user.username,
+            "legal_basis": legal_basis or "-",
+            "rows_affected": result["rows_affected"],
+            "sha256": result["sha256_proof"],
+        }, dedupe_key=f"erasure_done:{result['id']}")
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning(f"mail: erasure notice not queued: {e}")
     return result
 
 

@@ -1474,3 +1474,36 @@ class AppEndpointExposure(Base):
     __table_args__ = (
         UniqueConstraint("app_id", "method", "path", name="uq_app_endpoint_exposure"),
     )
+
+
+class MailOutbox(Base):
+    """คิวจดหมายขาออกของ iVS เอง (โมดูลจดหมาย ระยะที่ 0)
+
+    จดหมายทุกฉบับที่ระบบจะส่ง ต้องผ่านตารางนี้ก่อน ไม่ส่งตรงจาก request handler
+    ด้วยเหตุผลสองข้อ: เซิร์ฟเวอร์รีเลย์ภายนอกล่มได้ และการส่งใช้เวลาหลายวินาที
+    ซึ่งไม่ควรให้ผู้ใช้รอหน้าจอ ตัวประมวลผลพื้นหลังหยิบจากคิวแล้วลองซ้ำแบบถอยหลัง
+    (1, 5, 30 นาที) ก่อนทิ้งพร้อมบันทึก
+
+    เก็บเฉพาะสิ่งที่ต้องใช้สร้างจดหมายขึ้นใหม่ (ชื่อแม่แบบ + ข้อมูลแม่แบบ) ไม่เก็บ
+    เนื้อหาที่เรนเดอร์แล้ว และแถวที่จบแล้วถูกลบเมื่อครบกำหนด เพราะข้อมูลแม่แบบ
+    มีชื่อผู้ใช้และที่อยู่จดหมาย ส่วนหลักฐานว่า "ส่งถึงใคร เรื่องอะไร เมื่อไร"
+    อยู่ใน audit_logs ตามนโยบายเก็บรักษาของมันเอง
+    """
+    __tablename__ = "mail_outbox"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    to_email        = Column(String(320), nullable=False)
+    template        = Column(String(60), nullable=False)
+    context         = Column(Text, default="{}")        # JSON ข้อมูลที่ใส่ลงแม่แบบ
+    locale          = Column(String(8), default="th")
+    subject         = Column(String(500), default="")   # เก็บไว้ให้หน้าจออ่าน ไม่ใช่เนื้อหา
+    # queued → sending → sent | failed (รอลองซ้ำ) | dead (ยกเลิกหลังลองครบ)
+    status          = Column(String(12), default="queued", index=True)
+    attempts        = Column(Integer, default=0)
+    next_attempt_at = Column(DateTime, default=utcnow, index=True)
+    last_error      = Column(Text, default="")
+    # กันส่งซ้ำ: เหตุการณ์เดียวกันภายใน 24 ชั่วโมงส่งครั้งเดียว เช่น แอปล้มตัวเดิม
+    dedupe_key      = Column(String(160), default="", index=True)
+    created_by      = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, default=utcnow, index=True)
+    sent_at         = Column(DateTime, nullable=True)

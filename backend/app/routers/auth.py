@@ -232,6 +232,17 @@ async def create_user(
     )
     db.commit()
     db.refresh(user)
+    # แจ้งเจ้าของบัญชีว่าบัญชีถูกสร้าง — ไม่ส่งรหัสผ่านทางจดหมายเด็ดขาด
+    try:
+        from app.services import mail_service
+        mail_service.enqueue(db, user.email, "account_created", {
+            "username": user.username,
+            "role": str(req.role),
+            "created_by": admin.username,
+        }, dedupe_key=f"account_created:{user.id}", created_by=admin.id)
+    except Exception as e:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning(f"mail: account notice not queued: {e}")
     return _enrich_user_response(user, db)
 
 

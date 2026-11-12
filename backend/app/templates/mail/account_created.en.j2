@@ -1,0 +1,12 @@
+{% block subject %}[iVS] Your account has been created ({{ username }}){% endblock %}
+{% block body %}
+Hello {{ username }},
+
+An administrator ({{ created_by }}) has created an account for you on {{ box_name }}.
+
+Username: {{ username }}
+Role: {{ role }}
+Sign in at: {{ dashboard_url }}
+
+For security the password is not included in this message. The administrator will give it to you through another channel. Please change it right after your first sign-in.
+{% endblock %}

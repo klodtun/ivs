@@ -417,6 +417,16 @@ async def export_ropa_report(
             "erasure": ropa_service.erasure_decision(pdpa),
         })
 
+    # กิจกรรมของตัว iVS เอง (การแจ้งเตือนทางจดหมาย) ไม่ได้ผูกกับแอป แต่เป็นการ
+    # ประมวลผลข้อมูลส่วนบุคคลเหมือนกัน จึงต้องอยู่ในทะเบียนเดียวกัน
+    try:
+        from app.services import mail_service
+        mail_activity = mail_service.ropa_as_activity(db)
+        if mail_activity:
+            apps_data.append(mail_activity)
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning(f"ROPA export: mail activity skipped: {e}")
+
     ntp_info = ntp_service.get_status()
     report = generate_ropa_markdown(apps_data, ntp_info, user.username)
 

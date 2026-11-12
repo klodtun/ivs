@@ -16,11 +16,12 @@ import { LocalizedDateInput } from "@/components/localized-date-input";
 import { PasswordConfirmModal } from "@/components/password-confirm-modal";
 import { AuditLogTable } from "@/components/audit-log-table";
 import { UsersTableSection } from "@/components/users-table-section";
+import { MailSettingsTab } from "@/components/mail-settings-tab";
 import { User, App, AuditLog, AuditLogExport } from "@/types";
 import { MachineRegistryEntry, DiscoveredMachine } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
 
-type Tab = "users" | "logs" | "dns" | "network" | "pdpa" | "gitea" | "autostart" | "license" | "enterprise" | "tunnel";
+type Tab = "users" | "logs" | "dns" | "network" | "pdpa" | "gitea" | "autostart" | "license" | "enterprise" | "tunnel" | "mail";
 
 interface NetworkInfo {
   server_ip: string;
@@ -295,7 +296,7 @@ export default function SettingsPage() {
   // ลิงก์ที่พาไปหน้าถูกแต่แท็บผิด ทำให้คนต้องหาเองต่อ ซึ่งเท่ากับไม่ได้ลิงก์
   const searchParams = useSearchParams();
   const TABS: Tab[] = ["users", "logs", "dns", "network", "pdpa", "gitea",
-                       "autostart", "license", "enterprise", "tunnel"];
+                       "autostart", "license", "enterprise", "tunnel", "mail"];
   const requested = searchParams.get("tab") as Tab | null;
   const [tab, setTab] = useState<Tab>(
     requested && TABS.includes(requested) ? requested : "users"
@@ -842,6 +843,7 @@ export default function SettingsPage() {
     { key: "pdpa", labelKey: "settings.tab.pdpa" },
     ...(isEnabled("gitea_tab") ? [{ key: "gitea" as Tab, labelKey: "settings.tab.gitea" }] : []),
     { key: "tunnel", labelKey: "settings.tab.tunnel" },
+    { key: "mail", labelKey: "settings.tab.mail" },
     { key: "autostart", labelKey: "settings.tab.autostart" },
     { key: "license", labelKey: "settings.tab.license" },
     ...(isEnabled("enterprise_tab") ? [{ key: "enterprise" as Tab, labelKey: "settings.tab.enterprise" }] : []),
@@ -2315,6 +2317,8 @@ DNS Servers:   ${networkInfo?.dns_servers.join(", ") || "8.8.8.8, 1.1.1.1"}`}</c
           </div>
         </div>
       )}
+
+      {tab === "mail" && <MailSettingsTab />}
 
       {tab === "autostart" && (
         <div className="space-y-4">

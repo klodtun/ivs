@@ -1,0 +1,13 @@
+{% block subject %}[iVS] App "{{ app_name }}" is in an error state{% endblock %}
+{% block body %}
+Hello,
+
+The app "{{ app_name }}" ({{ app_slug }}) on {{ box_name }} is in an error state, detected at {{ updated_at }}.
+
+What to do
+1. Open the Applications page in iVS and read this app's logs.
+2. If a deploy just failed, check the build log.
+3. Do not redeploy before exporting the app's data: a redeploy replaces the app's data directory.
+
+This notice is not repeated for the same app within 24 hours.
+{% endblock %}

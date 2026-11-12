@@ -1,0 +1,8 @@
+{% block subject %}[iVS] Test message{% endblock %}
+{% block body %}
+Hello,
+
+This is a test message sent by {{ requested_by }} from the settings page of {{ box_name }} at {{ now }}.
+
+If you are reading this, the mail relay is configured correctly and the system can now deliver notifications.
+{% endblock %}

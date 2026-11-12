@@ -402,6 +402,115 @@ async function request<T>(
   return res.json();
 }
 
+export interface MailPreset {
+  label: string;
+  host: string;
+  port: number;
+  security: string;
+  provider: string;
+  hint_th: string;
+  hint_en: string;
+}
+
+export interface MailConfig {
+  enabled: boolean;
+  preset: string;
+  host: string;
+  port: number;
+  security: "starttls" | "ssl" | "none";
+  username: string;
+  password_configured: boolean;
+  from_address: string;
+  from_name: string;
+  locale: "th" | "en";
+  recipients_raw: string;
+  recipients_effective: string[];
+  dashboard_url: string;
+  dashboard_url_effective: string;
+  configured: boolean;
+  presets: Record<string, MailPreset>;
+}
+
+export interface MailConfigUpdate {
+  enabled?: boolean;
+  preset?: string;
+  host?: string;
+  port?: number;
+  security?: string;
+  username?: string;
+  password?: string;
+  from_address?: string;
+  from_name?: string;
+  locale?: string;
+  recipients?: string;
+  dashboard_url?: string;
+}
+
+export interface MailTestResult {
+  ok: boolean;
+  message: string;
+  elapsed_ms: number;
+  host?: string;
+  port?: number;
+  security?: string;
+}
+
+export interface MailStatus {
+  enabled: boolean;
+  configured: boolean;
+  counts: Record<string, number>;
+  last_sent_at: string | null;
+  recipients: string[];
+  templates: string[];
+}
+
+export interface MailOutboxRow {
+  id: number;
+  to_email: string;
+  template: string;
+  subject: string;
+  status: "queued" | "sending" | "sent" | "failed" | "dead";
+  attempts: number;
+  last_error: string;
+  created_at: string | null;
+  sent_at: string | null;
+  next_attempt_at: string | null;
+}
+
+export interface MailRopaRecipient {
+  kind: string;
+  role?: string;
+  name: string;
+  purpose?: string;
+  note?: string;
+  added_at?: string;
+}
+
+export interface MailRopa {
+  activity_th: string;
+  activity_en: string;
+  purpose: string;
+  data_categories: string[];
+  legal_basis: string;
+  retention: string;
+  recipients: MailRopaRecipient[];
+  status: "draft" | "confirmed";
+  needs_review: boolean;
+  confirmed_by: string;
+  confirmed_at: string;
+  dpa_url: string;
+  dpa_note: string;
+  created_at?: string;
+}
+
+export interface MailBasisOption {
+  value: string;
+  label_th: string;
+  label_en: string;
+  erasable: boolean;
+  why: string;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string }>("/auth/login", {
@@ -961,6 +1070,22 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+
+  // ── Mail (โมดูลจดหมาย ระยะที่ 0: รีเลย์ภายนอก) ──────────────────────────
+  getMailConfig: () => request<MailConfig>("/mail/config"),
+  updateMailConfig: (body: MailConfigUpdate) =>
+    request<MailConfig>("/mail/config", { method: "PUT", body: JSON.stringify(body) }),
+  sendMailTest: (to: string) =>
+    request<MailTestResult>("/mail/test", { method: "POST", body: JSON.stringify({ to }) }),
+  getMailStatus: () => request<MailStatus>("/mail/status"),
+  getMailOutbox: (limit = 50) => request<MailOutboxRow[]>(`/mail/outbox?limit=${limit}`),
+  retryMail: (id: number) =>
+    request<{ message: string; id: number }>(`/mail/outbox/${id}/retry`, { method: "POST" }),
+  processMailNow: () =>
+    request<{ sent: number; failed: number; dead: number }>("/mail/process-now", { method: "POST" }),
+  getMailRopa: () => request<{ record: MailRopa; basis_options: MailBasisOption[] }>("/mail/ropa"),
+  confirmMailRopa: (body: { legal_basis: string; dpa_url?: string; dpa_note?: string; purpose?: string; retention?: string }) =>
+    request<MailRopa>("/mail/ropa/confirm", { method: "PUT", body: JSON.stringify(body) }),
 
   getVaultKeys: () => request<any[]>("/vault"),
 

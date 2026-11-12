@@ -1,0 +1,10 @@
+{% block subject %}[iVS] Tunnel for "{{ app_name }}" expires within 24 hours{% endblock %}
+{% block body %}
+Hello,
+
+The tunnel opened for the app "{{ app_name }}" expires at {{ expires_at }}.
+
+Public URL: {{ public_url }}
+
+The link stops working the moment it expires. If it is still needed, create a new tunnel from the Tunnels page in iVS and tell whoever holds the old link.
+{% endblock %}

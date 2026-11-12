@@ -1,0 +1,15 @@
+{% block subject %}[iVS] Erasure request completed (#{{ request_id }}){% endblock %}
+{% block body %}
+Hello,
+
+A data subject erasure request has been executed.
+
+Request number: {{ request_id }}
+Identifier type: {{ target_type }}
+Executed by: {{ executed_by }}
+Legal basis cited: {{ legal_basis }}
+Rows pseudonymised or deleted: {{ rows_affected }}
+SHA-256 of the certificate: {{ sha256 }}
+
+The data subject's identifier is deliberately not included in this message (data minimisation). Details are in Settings, PDPA tab.
+{% endblock %}

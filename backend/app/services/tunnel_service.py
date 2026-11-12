@@ -500,6 +500,20 @@ class TunnelService:
 
         if expired:
             db.commit()
+            # แจ้งผู้ดูแลว่าช่องทางออกนอกองค์กรปิดลงแล้ว — นำเข้าตรงนี้เพื่อไม่ให้
+            # mail_service กับ tunnel_service นำเข้ากันเป็นวง
+            try:
+                from app.services import mail_service
+                from app.models import App
+                for tunnel in expired:
+                    app = db.query(App).filter(App.id == tunnel.app_id).first()
+                    mail_service.notify_admins(db, "tunnel_expired", {
+                        "app_name": app.name if app else f"app#{tunnel.app_id}",
+                        "public_url": tunnel.public_url or "-",
+                        "expired_at": now.strftime("%Y-%m-%d %H:%M UTC"),
+                    }, dedupe_key=f"tunnel_expired:{tunnel.id}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"mail: tunnel expiry notice not queued: {e}")
 
     async def _stop_process(self, tunnel_id: int):
         """Gracefully stop a tunnel subprocess."""

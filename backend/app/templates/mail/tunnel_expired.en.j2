@@ -1,0 +1,10 @@
+{% block subject %}[iVS] Tunnel for "{{ app_name }}" has expired{% endblock %}
+{% block body %}
+Hello,
+
+The tunnel for the app "{{ app_name }}" expired and was closed at {{ expired_at }}.
+
+Former public URL: {{ public_url }}
+
+The link no longer works, so external access has ended as scheduled. No action is needed unless the tunnel is still required.
+{% endblock %}

@@ -1,0 +1,14 @@
+{% block subject %}[iVS] Audit log export completed — {{ filename }}{% endblock %}
+{% block body %}
+Hello,
+
+An audit log export has completed.
+
+Exported by: {{ exported_by }}
+File: {{ filename }}
+Records: {{ record_count }}
+Range: {{ date_range }}
+SHA-256 of the file: {{ sha256 }}
+
+Keep this SHA-256 together with the file so its integrity can be verified when it is used as evidence. The file can be downloaded from Settings, Audit Logs tab.
+{% endblock %}
