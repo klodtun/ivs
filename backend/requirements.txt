@@ -18,6 +18,7 @@ alembic==1.13.3
 jinja2==3.1.4
 ntplib==0.4.0
 pyyaml==6.0.2
+zeroconf==0.154.0
 
 # PDF/A pipeline (ม.10(2) — เอกสารต้องแสดงข้อความในภายหลังได้)
 # WeasyPrint วาดผ่าน Pango ซึ่งจัด shaping ภาษาไทยและตัดบรรทัดได้ถูกต้อง
