@@ -1,4 +1,7 @@
 # ข้อกำหนดความต้องการของระบบ (SRS) — Smart Lantern Recovery บน iVS
+# Software Requirements Specification (SRS) — Smart Lantern Recovery on iVS
+
+> ภาษาไทย: หัวข้อ 1 · English: Section 1-EN (immediately after Section 1). The full specification from Section 2 onward is in Thai.
 
 เอกสารฉบับนี้เป็นข้อกำหนดความต้องการของระบบประเมิน ติดตาม และเก็บกู้โคมลอย
 (Smart Lantern Recovery หรือ SLR) สำหรับงานยี่เป็งและเทศกาลโคมลอยขนาดใหญ่
@@ -19,11 +22,42 @@
 | เป้าหมาย | ให้ผู้จัดงานรู้ล่วงหน้าว่าโคมน่าจะตกบริเวณใด ส่งทีมเก็บกู้ได้ตรงจุด มีหลักฐานการเก็บและกำจัดที่ตรวจสอบได้ และให้ผู้ร่วมงานเห็นผลลัพธ์นั้นด้วยตนเอง |
 | คุณค่าต่อผู้ร่วมงาน | คลายความกังวลว่าโคมที่ปล่อยไปจะเป็นภาระต่อชุมชนหรือสิ่งแวดล้อม และมีส่วนร่วมผ่านการแจ้งพบโคมและกิจกรรมปลูกป่าชดเชยคาร์บอน |
 | กลุ่มเป้าหมาย | งานยี่เป็งและเทศกาลโคมลอยขนาดใหญ่ ออกแบบให้รองรับหลายองค์กรตั้งแต่ต้น |
-| รูปแบบการติดตาม | การคาดการณ์จุดตกเป็นหลัก GPS ติดโคมเป็นส่วนเสริมในระยะที่ 2 |
+| รูปแบบการติดตาม | การคาดการณ์จุดตกเป็นหลัก GPS ติดโคมเป็นส่วนเสริมในระยะที่ 3 |
 | แพลตฟอร์ม | Mobile App (iOS และ Android) สำหรับเจ้าหน้าที่, Web Admin สำหรับผู้จัดงาน และหน้าสาธารณะบนเว็บสำหรับผู้ร่วมงาน (ไม่ต้องติดตั้งแอป) |
 | การแบ่งระยะ | (1) แผนที่ ข้อมูลลม พื้นที่ และการเก็บกู้แบบไม่มีสัญญาณ, (2) แบบจำลองจุดตกและหน้าสาธารณะ, (3) GPS ติดโคมและการสอบเทียบแบบจำลองจากข้อมูลจริง |
 | ระยะเวลาโดยประมาณ | ระยะที่ 1 และ 2 ประมาณ 12 สัปดาห์ (ตามแผน 6 รอบการพัฒนาในฉบับร่าง) ระยะที่ 3 ขึ้นกับการได้อุปกรณ์และการอนุญาต |
 | ความเสี่ยงหลัก | แบบจำลองยังไม่ผ่านการสอบเทียบ, สัญญาณมือถือหนาแน่นในคืนงาน, การอนุญาตด้านการบินและการปล่อยโคม, สิทธิ์ใช้ข้อมูลลมเชิงพาณิชย์ |
+
+---
+
+## 1-EN. Executive Summary (English)
+
+This document specifies a system to predict, track and recover sky lanterns
+(Smart Lantern Recovery, SLR) for Yi Peng and other large lantern festivals.
+It is deployed as an application on the organizer's own iVS (Internal Vibe Server) platform.
+
+> Basis: the draft Technical Specification supplied by the project owner, the original goal of
+> engaging festival participants, and the real constraints of iVS in this repository
+> (target machines with 4 to 8 GB RAM, Caddy as the front-end proxy). This document
+> **supersedes** the draft only where marked "ปรับจากฉบับร่าง" (revised from draft);
+> everything else follows the draft.
+
+| Topic | Summary |
+| --- | --- |
+| Goal | Let organizers know in advance where lanterns are likely to land, send recovery teams to the right places, keep verifiable evidence of collection and disposal, and let participants see the results for themselves. |
+| Value to participants | Reassurance that released lanterns do not become a burden on communities or the environment, plus participation through reporting found lanterns and tree-planting activities that offset carbon. |
+| Target users | Yi Peng and large lantern festivals; multi-organization by design from the start. |
+| Tracking approach | Landing prediction is primary; GPS trackers on a subset of lanterns are an add-on in Phase 3. |
+| Platforms | Mobile App (iOS and Android) for field staff, Web Admin for organizers, and a public web page for participants (no app install required). |
+| Phases | (1) Map, wind data, areas and offline recovery; (2) landing prediction and the public page; (3) GPS trackers and model calibration from actual finds. |
+| Estimated timeline | Phases 1 and 2 in about 12 weeks (six two-week sprints as in the draft); Phase 3 depends on hardware selection and permits. |
+| Key risks | Prediction model not yet calibrated; congested mobile networks on festival night; aviation and lantern-release permits; commercial-use terms of weather data. |
+
+Key decisions in brief: weather from Open-Meteo (two independent models, including pressure-level winds),
+MET Norway and the Thai Meteorological Department; six containers instead of twelve to fit iVS hardware;
+QR codes printed on lanterns so anyone who finds one can report it; a carbon ledger that always separates
+estimated emissions, realized offsets and projected offsets; and no release can be recorded until permits
+and aviation coordination are attached (Section 9).
 
 ---
 
@@ -175,8 +209,50 @@ Windy เก็บไว้เป็นทางเลือกในระย�
 | FR-PUB-03 | เมื่อสแกน QR ของรอบปล่อยหรือของโคม แสดงสถานะของรอบนั้นหรือดวงนั้น | จำเป็น |
 | FR-PUB-04 | ไม่แสดงตำแหน่งเจ้าหน้าที่ ชื่อเจ้าหน้าที่ หรือภาพหลักฐานที่ยังไม่ผ่านการคัดกรอง | จำเป็น |
 | FR-PUB-05 | ให้ผู้ร่วมงานกรอกช่องทางติดต่อแบบสมัครใจ เพื่อรับแจ้งเมื่อโคมของตนถูกพบหรือเมื่อมีกิจกรรมปลูกป่า | ควรมี |
-| FR-PUB-06 | รองรับภาษาไทยและภาษาอังกฤษสำหรับนักท่องเที่ยว | ควรมี |
+| FR-PUB-06 | หน้าแรกและทุกหน้าของหน้าสาธารณะแสดงได้ทั้งภาษาไทยและภาษาอังกฤษ ตามข้อกำหนดในหัวข้อ 5.3 | จำเป็น |
 | FR-PUB-07 | หน้าสาธารณะต้องรับผู้เข้าชมจำนวนมากได้โดยไม่กระทบ API ของเจ้าหน้าที่ (หัวข้อ 7.3) | จำเป็น |
+
+### 5.3 หน้าแรกสองภาษา (ไทยและอังกฤษ)
+
+ผู้ร่วมงานยี่เป็งส่วนใหญ่เป็นนักท่องเที่ยวต่างชาติ หน้าแรกจึงต้องใช้งานได้ครบทั้งสองภาษา
+
+| รหัส | ข้อกำหนด | ระดับ |
+| --- | --- | --- |
+| FR-I18N-01 | มีปุ่มสลับภาษา "ไทย / EN" ที่แถบด้านบนของทุกหน้า มองเห็นได้โดยไม่ต้องเลื่อนหน้าจอ | จำเป็น |
+| FR-I18N-02 | เลือกภาษาเริ่มต้นจากภาษาของเบราว์เซอร์ หากไม่ใช่ภาษาไทยให้แสดงภาษาอังกฤษ | จำเป็น |
+| FR-I18N-03 | จำภาษาที่ผู้ใช้เลือกไว้ในเครื่อง และรองรับการระบุภาษาในที่อยู่ เช่น `?lang=en` เพื่อพิมพ์ QR แยกภาษาได้ | จำเป็น |
+| FR-I18N-04 | แปลข้อความทุกส่วน ได้แก่ ปุ่ม หัวข้อการ์ด หมายเหตุ ข้อความแจ้งเมื่อไม่มีข้อมูล ข้อความขอความยินยอม และข้อความผิดพลาด ห้ามมีข้อความที่เขียนตายตัวในโค้ด | จำเป็น |
+| FR-I18N-05 | วันที่แสดงตามภาษา: ภาษาไทยใช้พุทธศักราช (24 พ.ย. 2569 เวลา 21:33 น.) ภาษาอังกฤษใช้คริสต์ศักราช (24 Nov 2026, 21:33) โดยเก็บเวลาเป็น UTC และแสดงตามเขตเวลา Asia/Bangkok | จำเป็น |
+| FR-I18N-06 | ชื่องานและชื่อสถานที่เก็บได้ทั้งสองภาษาในฐานข้อมูล หากไม่มีภาษาอังกฤษให้แสดงภาษาไทยแทน ไม่แสดงช่องว่าง | จำเป็น |
+| FR-I18N-07 | ตัวเลขและหน่วย (เปอร์เซ็นต์ gCO2e tCO2e) แสดงรูปแบบเดียวกันทั้งสองภาษา | จำเป็น |
+| FR-I18N-08 | ชื่อสถานที่บนแผนที่ใช้ชั้นข้อมูลของแผนที่ตามภาษาที่เลือก หากผู้ให้บริการแผนที่รองรับ | ควรมี |
+| FR-I18N-09 | ข้อความภาษาอังกฤษต้องผ่านการตรวจทานโดยผู้ใช้ภาษาอังกฤษได้ดีก่อนเปิดใช้ โดยเฉพาะข้อความขอความยินยอมตาม PDPA | จำเป็น |
+
+**ตารางคำแปลข้อความบนหน้าแรกปัจจุบัน (ตั้งต้นสำหรับไฟล์ภาษา)**
+
+| คีย์ | ภาษาไทย | English |
+| --- | --- | --- |
+| `nav.forReleasers` | ข้อมูลสำหรับผู้ปล่อยโคม | For lantern releasers |
+| `layer.weather` | สภาพอากาศ (ลม) | Weather (wind) |
+| `layer.prediction` | พยากรณ์จุดตก | Landing forecast |
+| `event.releaseAt` | ปล่อย {date} เวลา {time} น. | Release: {date}, {time} |
+| `card.myLanterns` | โคมของฉัน | My lanterns |
+| `unit.lantern` | โคม | lantern(s) |
+| `card.landingAreas` | บริเวณที่คาดว่าโคมจะตก (ทั้งงาน): | Likely landing areas (whole event): |
+| `card.forecastNote` | พยากรณ์รอบ {n} · คำนวณจากลมตามระดับความสูง เป็นการประมาณ ไม่ใช่ตำแหน่งแน่นอน | Forecast run {n} · based on winds at altitude. An estimate, not an exact location. |
+| `card.releaseWeather` | สภาพอากาศตอนปล่อย | Weather at release |
+| `empty.wind` | ยังไม่มีข้อมูลลม | No wind data yet |
+| `card.eventCarbon` | คาร์บอนของงานนี้ | This event's carbon |
+| `carbon.yours` | ของคุณ | Yours |
+| `carbon.event` | ทั้งงาน ({n} โคม) | Whole event ({n} lanterns) |
+| `carbon.offset` | ชดเชยแล้ว (ประมาณการโครงการ) | Offset so far (project estimate) |
+| `carbon.breakdown` | เผาไหม้เชื้อเพลิงพาราฟินระหว่างลอย · การผลิตโคม (ต้นน้ำ) · น้ำมันรถทีมเก็บกู้ · ต่อโคม | Paraffin burned in flight · lantern production (upstream) · recovery team fuel · per lantern |
+| `card.chooseOffset` | เลือกโครงการชดเชย | Choose an offset project |
+| `empty.offset` | ยังไม่มีโครงการชดเชย | No offset projects yet |
+
+หมายเหตุ: ป้าย "ชดเชยแล้ว (ประมาณการโครงการ)" บนหน้าแรกปัจจุบันรวมความหมายของ "ชดเชยแล้ว" กับ "ประมาณการ"
+ไว้ในป้ายเดียว ซึ่งขัดกับหลักการในหัวข้อ 6.1 ข้อ 1 ควรแยกเป็น "ชดเชยแล้ว" (Offset realized)
+และ "คาดว่าจะชดเชย" (Offset projected) ทั้งสองภาษา
 
 ### 5.2 การแจ้งพบโคมโดยประชาชน
 
